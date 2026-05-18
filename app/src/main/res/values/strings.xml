@@ -406,6 +406,33 @@
     <string name="score_reminder_subtitle">有新成绩时提醒我</string>
     <string name="score_reminder_notification_title">有新成绩</string>
     <string name="score_reminder_notification_more">%s 等%d门课程已出成绩</string>
+
+    <string name="navi_credit_stats">学分统计</string>
+    <string name="credit_stats_title">学分统计</string>
+    <string name="credit_total">总学分</string>
+    <string name="credit_total_subjects">课程数</string>
+    <string name="credit_spa_subtotal">计入平均学分绩</string>
+    <string name="credit_non_spa_subtotal">不计入</string>
+    <string name="credit_no_data">暂无科目数据，请先导入课表</string>
+    <string name="credit_data_from_timetable">数据来源于本地课表科目</string>
+    <string name="credit_set_goal">设置学分目标</string>
+    <string name="credit_expand_detail">查看领域分布</string>
+    <string name="credit_collapse_detail">收起</string>
+    <string name="credit_format">%.1f 学分</string>
+    <string name="credit_goal_progress_format">%.1f / %.1f</string>
+    <string name="credit_type_required">必修</string>
+    <string name="credit_type_required_check">必修（考查）</string>
+    <string name="credit_type_limited">限选</string>
+    <string name="credit_type_elective">任选</string>
+    <string name="credit_type_mooc">MOOC</string>
+    <string name="credit_type_unknown">其他</string>
+    <string name="credit_field_row">· %1$s  %2$.1f 学分</string>
+
+    <plurals name="credit_subject_count">
+        <item quantity="one">%d 门课</item>
+        <item quantity="other">%d 门课</item>
+    </plurals>
+
     <string name="exam_time">时间</string>
     <string name="exam_type">类型</string>
     <string name="pick_exam_term">选择学期</string>
