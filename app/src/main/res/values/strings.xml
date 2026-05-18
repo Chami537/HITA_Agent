@@ -176,6 +176,8 @@
     <string name="course_contribution_mode_multi_section_append">子课程章节补充</string>
     <string name="score_summary_gpa">学分绩</string>
     <string name="score_summary_rank">排名</string>
+    <string name="score_weighted_avg_local">加权平均分</string>
+    <string name="score_total_credits_local">总学分</string>
     <string name="navi_campus_vote_p">态度墙</string>
     <string name="navi_campus_billboard_p">食堂排行</string>
     <string name="navi_mood_greet">Hi, 今天心情如何？</string>
