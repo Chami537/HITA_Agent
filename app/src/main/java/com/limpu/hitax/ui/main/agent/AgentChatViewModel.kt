@@ -277,6 +277,7 @@ class AgentChatViewModel @Inject constructor(
                             val action = trace.message.substringAfter("→ ", "").trim()
                             when {
                                 action.contains("get_timetable") -> "正在查询课表…"
+                                action.contains("search_timetable") -> "正在搜索课表事件…"
                                 action.contains("search_course") -> "正在搜索课程信息…"
                                 action.contains("get_course_detail") -> "正在获取课程详情…"
                                 action.contains("search_teacher") -> "正在搜索教师信息…"

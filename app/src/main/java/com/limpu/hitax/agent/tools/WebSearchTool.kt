@@ -26,7 +26,7 @@ class WebSearchTool : ReActTool {
         return results.take(5).mapIndexed { index, r ->
             val title = r["title"]?.toString() ?: "Result ${index + 1}"
             val url = r["url"]?.toString() ?: ""
-            val desc = r["description"]?.toString() ?: ""
+            val desc = r["content"]?.toString()?.ifBlank { r["description"]?.toString() } ?: ""
             "$title\n$url\n$desc"
         }.joinToString("\n\n")
     }

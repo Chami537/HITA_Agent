@@ -187,6 +187,11 @@ class TimetableRepository @Inject constructor(val application: Application) {
         return timetableDao.searchLocation("%$str%")
     }
 
+    @WorkerThread
+    fun searchEventsByKeywordSync(keyword: String): List<EventItem> {
+        return eventItemDao.searchEventsByNameSync(keyword)
+    }
+
     fun actionDeleteTimetables(timetables: List<Timetable>) {
         val ids = mutableListOf<String>()
         for (tt in timetables) {
@@ -327,37 +332,44 @@ class TimetableRepository @Inject constructor(val application: Application) {
                 calendar.properties.add(ProdId("-//StupidTree//HITA//EN"))
                 calendar.properties.add(Version.VERSION_2_0)
                 calendar.properties.add(CalScale.GREGORIAN)
+                val timetable = timetableDao.getTimetableByIdSync(timetableId)
                 for (ei in eventItemDao.getEventsOfTimetableSync(timetableId)) {
                     val start = DateTime(ei.from)
                     start.isUtc = true
                     val end = DateTime(ei.to)
                     end.isUtc = true
                     val event = VEvent(start, end, ei.name)
-                    val locationText = when (ei.type) {
-                        EventItem.TYPE.CLASS, EventItem.TYPE.EXAM -> listOf(
-                            ei.place?.trim().orEmpty(),
-                            ei.teacher?.trim().orEmpty()
-                        ).filter { it.isNotEmpty() }.joinToString(" ")
 
-                        else -> ei.place?.trim().orEmpty()
+                    val place = ei.place?.trim().orEmpty()
+                    if (place.isNotEmpty()) {
+                        event.properties.add(Location(place))
                     }
-                    if (locationText.isNotEmpty()) {
-                        event.properties.add(Location(locationText))
+
+                    val weekNumber = timetable?.getWeekNumber(ei.from.time) ?: -1
+                    val weekText = if (weekNumber > 0) "第${weekNumber}周" else "未知周次"
+                    val description = buildString {
+                        if (!ei.teacher.isNullOrBlank()) appendLine("教师：${ei.teacher}")
+                        appendLine("周次：$weekText")
+                        appendLine("来源：HITA Android")
+                    }.trim()
+                    event.properties.add(Description(description))
+
+                    event.properties.add(XProperty("X-HITA-SCHEMA", "1.0"))
+                    event.properties.add(XProperty("X-HITA-SOURCE", "android"))
+                    event.properties.add(XProperty("X-HITA-COURSE-NAME", ei.name))
+                    if (!ei.teacher.isNullOrBlank()) {
+                        event.properties.add(XProperty("X-HITA-TEACHER", ei.teacher))
                     }
+                    if (place.isNotEmpty()) {
+                        event.properties.add(XProperty("X-HITA-CLASSROOM", place))
+                    }
+                    if (weekNumber > 0) {
+                        event.properties.add(XProperty("X-HITA-WEEKS", weekNumber.toString()))
+                    }
+                    event.properties.add(XProperty("X-HITA-TYPE", ei.type.name.lowercase()))
+
                     event.properties.add(Uid(UidGenerator("hita").generateUid().value))
-                    // 添加邀请者
-//                val dev1 = Attendee(URI.create("https://hita.store/search?type=teacher"))
-//                dev1.parameters.add(Role.REQ_PARTICIPANT)
-//                dev1.parameters.add(Cn(ei.teacher))
-//                event.properties.add(dev1)
-//                val recur = Recur(Recur.WEEKLY, Int.MAX_VALUE)
-//                recur.dayList.add(WeekDay.MO)
-//                recur.dayList.add(WeekDay.TU)
-//                recur.dayList.add(WeekDay.WE)
-//                recur.dayList.add(WeekDay.TH)
-//                recur.dayList.add(WeekDay.FR)
-//                val rule = RRule(recur)
-//                event.properties.add(rule)
+
                     val valarm = VAlarm(Dur(0, 0, -10, 0))
                     val isCourseLike = ei.type == EventItem.TYPE.CLASS || ei.type == EventItem.TYPE.EXAM
                     valarm.properties.add(Summary(if (isCourseLike) "课程提醒" else "事件提醒"))

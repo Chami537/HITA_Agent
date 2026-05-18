@@ -29,6 +29,7 @@ class TimetableAgentEngine(
         val toolName = when (input.action) {
             TimetableAgentInput.Action.GET_LOCAL_TIMETABLE -> "get_local_timetable"
             TimetableAgentInput.Action.ADD_TIMETABLE_ARRANGEMENT -> "add_timetable_arrangement"
+            TimetableAgentInput.Action.SEARCH_TIMETABLE -> "search_local_timetable"
         }
 
         val tool = toolRegistry.get<TimetableAgentInput, TimetableAgentOutput>(toolName)

@@ -106,6 +106,9 @@ interface EventItemDao {
     fun updateClassesAddOffset(timetableId: String, offset: Long)
 
 
+    @Query("SELECT * FROM events WHERE name LIKE '%' || :keyword || '%' ORDER BY `from` DESC LIMIT 50")
+    fun searchEventsByNameSync(keyword: String): List<EventItem>
+
     @Query("delete from events")
     fun clear()
 }

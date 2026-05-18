@@ -98,13 +98,16 @@ class CourseResourceSearchActivity :
             binding.searchInput.setSelection(normalized.length)
             binding.swipeRefresh.isRefreshing = true
             viewModel.search(normalized)
+        } else {
+            // Load all courses on initial open
+            binding.swipeRefresh.isRefreshing = true
+            viewModel.search("")
         }
     }
 
     private fun startSearch() {
         val input = binding.searchInput.text?.toString()?.trim().orEmpty()
         val query = CourseCodeUtils.normalize(input) ?: input
-        if (query.isBlank()) return
         val imm = getSystemService(INPUT_METHOD_SERVICE) as? InputMethodManager
         imm?.hideSoftInputFromWindow(binding.searchInput.windowToken, 0)
         binding.swipeRefresh.isRefreshing = true

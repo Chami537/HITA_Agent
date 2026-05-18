@@ -82,8 +82,8 @@ object LlmChatService {
         )
         val thinkingSteps = mutableListOf<String>()
 
-        repeat(15) { step ->
-            emitTraceToMain(onTrace, AgentTraceEvent(stage = "react_step", message = "步骤 ${step + 1}/15: 正在思考…", payload = ""))
+        repeat(30) { step ->
+            emitTraceToMain(onTrace, AgentTraceEvent(stage = "react_step", message = "步骤 ${step + 1}/30: 正在思考…", payload = ""))
 
             val request = ChatCompletionRequest(
                 model = LlmClient.MODEL,
@@ -176,7 +176,7 @@ object LlmChatService {
         }
 
         val thinking = thinkingSteps.joinToString("\n")
-        return Pair("达到最大步骤限制（15步），请简化您的问题", thinking)
+        return Pair("达到最大步骤限制（30步），请简化您的问题", thinking)
     }
 
     internal data class ParsedStep(val thought: String, val action: String, val actionInput: String)

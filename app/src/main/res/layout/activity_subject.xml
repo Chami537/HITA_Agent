@@ -254,22 +254,29 @@
 
             </LinearLayout>
 
-            <LinearLayout
+            <androidx.cardview.widget.CardView
+                android:id="@+id/button_course_contribute"
                 android:layout_width="match_parent"
-                android:layout_height="wrap_content"
+                android:layout_height="48dp"
                 android:layout_marginStart="@dimen/space_4"
                 android:layout_marginEnd="@dimen/space_4"
                 android:layout_marginBottom="@dimen/space_4"
-                android:orientation="horizontal">
+                android:clickable="true"
+                android:foreground="?attr/selectableItemBackground"
+                app:cardBackgroundColor="?attr/backgroundColorSecond"
+                app:cardCornerRadius="24dp"
+                app:cardElevation="0dp">
 
-                <com.google.android.material.button.MaterialButton
-                    android:id="@+id/button_course_contribute"
-                    style="@style/Widget.MaterialComponents.Button.OutlinedButton"
-                    android:layout_width="match_parent"
-                    android:layout_height="48dp"
-                    android:text="@string/course_resource_contribute" />
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_gravity="center"
+                    android:text="@string/course_resource_contribute"
+                    android:textColor="?attr/colorPrimary"
+                    android:textSize="14sp"
+                    android:textStyle="bold" />
 
-            </LinearLayout>
+            </androidx.cardview.widget.CardView>
 
             <androidx.cardview.widget.CardView
                 android:layout_width="match_parent"
@@ -296,6 +303,16 @@
                         android:textColor="?attr/textColorPrimary"
                         android:textSize="18sp"
                         android:textStyle="bold" />
+
+                    <LinearLayout
+                        android:id="@+id/hoa_candidates_list"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginStart="@dimen/space_3"
+                        android:layout_marginTop="@dimen/space_2"
+                        android:layout_marginEnd="@dimen/space_3"
+                        android:orientation="vertical"
+                        android:visibility="gone" />
 
                     <TextView
                         android:id="@+id/readme_source"
@@ -326,7 +343,7 @@
                         android:layout_marginEnd="@dimen/space_4"
                         android:background="?attr/backgroundColorSecondAsTint"
                         android:padding="@dimen/space_3"
-                        android:text="💡 课程资源来自深圳校区"
+                        android:text="💡 深圳资源来自深圳校区"
                         android:textColor="?attr/textColorSecondary"
                         android:textSize="12sp"
                         android:visibility="gone"
@@ -353,6 +370,49 @@
                         android:layout_marginBottom="@dimen/space_3"
                         android:nestedScrollingEnabled="false"
                         android:overScrollMode="never" />
+
+                </LinearLayout>
+
+            </androidx.cardview.widget.CardView>
+
+            <androidx.cardview.widget.CardView
+                android:id="@+id/external_resource_card"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="@dimen/space_4"
+                android:layout_marginTop="@dimen/space_2"
+                android:layout_marginEnd="@dimen/space_4"
+                android:layout_marginBottom="@dimen/space_4"
+                android:visibility="gone"
+                app:cardBackgroundColor="?attr/backgroundColorSecond"
+                app:cardCornerRadius="24dp"
+                app:cardElevation="0dp">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical">
+
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginStart="@dimen/space_4"
+                        android:layout_marginTop="@dimen/space_4"
+                        android:layout_marginEnd="@dimen/space_4"
+                        android:text="@string/external_resource_title"
+                        android:textColor="?attr/textColorPrimary"
+                        android:textSize="18sp"
+                        android:textStyle="bold" />
+
+                    <LinearLayout
+                        android:id="@+id/external_resource_list"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginStart="@dimen/space_3"
+                        android:layout_marginTop="@dimen/space_2"
+                        android:layout_marginEnd="@dimen/space_3"
+                        android:layout_marginBottom="@dimen/space_3"
+                        android:orientation="vertical" />
 
                 </LinearLayout>
 

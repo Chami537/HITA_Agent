@@ -107,10 +107,12 @@
         <activity android:name=".ui.news.lecture.ActivityLecture" />
         <activity android:name=".ui.news.NewsDetailActivity" />
         <activity android:name=".ui.resource.InternalWebActivity" />
+        <activity android:name=".ui.resource.UnifiedResourceSearchActivity" />
         <activity android:name=".ui.resource.CourseResourceSearchActivity" />
         <activity android:name=".ui.resource.ExternalResourceSearchActivity" />
         <activity android:name=".ui.resource.CourseReadmeActivity" />
         <activity android:name=".ui.resource.CourseContributionActivity" />
+        <activity android:name=".ui.resource.MarkdownViewerActivity" />
     </application>
 
 </manifest>

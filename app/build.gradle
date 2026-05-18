@@ -5,8 +5,8 @@ plugins {
     id 'dagger.hilt.android.plugin'
 }
 
-def appVersionCodeValue = 2026051201
-def appVersionNameValue = "2.0.5"
+def appVersionCodeValue = 2026051801
+def appVersionNameValue = "2.0.7"
 
 
 android {
@@ -30,7 +30,7 @@ android {
             }
         }
 
-        buildConfigField "String", "HOA_BASE_URL", '"http://47.115.160.70:8081"'
+        buildConfigField "String", "HOA_BASE_URL", '"http://139.199.173.108:8081"'
         buildConfigField "String", "AGENT_BACKEND_BASE_URL", '"http://139.199.173.108:8080"'
         buildConfigField "String", "HOA_API_KEY", '""'
         buildConfigField "String", "UPDATE_URL", '"https://github.com/LiPu-jpg/HITA_Agent/releases/latest"'
@@ -108,8 +108,10 @@ dependencies {
     implementation "androidx.lifecycle:lifecycle-viewmodel-ktx:2.8.4"
     //Glide图片加载
     implementation 'com.github.bumptech.glide:glide:4.16.0'
-//retrofit2的gson转换器
-    implementation 'com.squareup.retrofit2:converter-gson:2.3.0'
+    // Retrofit2 + OkHttp
+    implementation 'com.squareup.retrofit2:retrofit:2.9.0'
+    implementation 'com.squareup.retrofit2:converter-gson:2.9.0'
+    implementation 'com.squareup.okhttp3:okhttp:4.12.0'
     //jsoup爬虫
     implementation 'org.jsoup:jsoup:1.18.2'
 

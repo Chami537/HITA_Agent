@@ -341,7 +341,6 @@ class MainActivity : HiltBaseActivity<ActivityMainBinding>(),
             }
         }
         viewModel.loggedInUserLiveData.observe(this) {
-            LogUtils.e(it.toString())
             refreshDrawerEasInfo()
         }
     }

@@ -126,6 +126,14 @@ class AgentChatDialog :
                     ),
                 )
             }
+
+            TimetableAgentInput.Action.SEARCH_TIMETABLE -> {
+                TimetableAgentInput(
+                    application = requireActivity().application,
+                    action = action,
+                    keyword = text,
+                )
+            }
         }
     }
 
@@ -153,6 +161,23 @@ class AgentChatDialog :
                     "已成功添加 ${output.addedEventIds.size} 个活动。"
                 } else {
                     "活动添加成功。"
+                }
+            }
+
+            TimetableAgentInput.Action.SEARCH_TIMETABLE -> {
+                if (output.events.isEmpty()) {
+                    "未找到匹配的事件。"
+                } else {
+                    buildString {
+                        append("找到 ${output.events.size} 个匹配的事件:\n")
+                        output.events.take(10).forEach { ev ->
+                            append("\n• ${ev.name}")
+                            if (ev.place.isNotBlank()) append("  @ ${ev.place}")
+                        }
+                        if (output.events.size > 10) {
+                            append("\n\n…还有 ${output.events.size - 10} 个")
+                        }
+                    }
                 }
             }
         }

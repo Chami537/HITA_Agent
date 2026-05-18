@@ -23,11 +23,9 @@ data class BraveSearchRequest(val query: String, val count: Int = 5)
 
 data class BraveAnswerRequest(
     val query: String,
-    val model: String = "",
-    val country: String = "",
-    val language: String = "",
-    val enable_citations: Boolean = true,
-    val enable_research: Boolean = false,
+    val count: Int = 10,
+    val freshness: String = "noLimit",
+    val answer: Boolean = true,
 )
 
 data class BraveAnswerResult(
@@ -108,10 +106,10 @@ interface AgentBackendApi {
     @POST("api/crawl/status")
     fun crawlStatus(@Body request: CrawlStatusRequest): Call<Map<String, Any>>
 
-    @POST("api/search/brave")
+    @POST("api/search/bocha")
     fun braveSearch(@Body request: BraveSearchRequest): Call<Map<String, Any>>
 
-    @POST("api/search/brave/answer")
+    @POST("api/search/bocha/ai-search")
     fun braveAnswer(@Body request: BraveAnswerRequest): Call<Map<String, Any>>
 
     @POST("api/rag/query")
@@ -381,12 +379,13 @@ object AgentBackendClient {
 
     fun ragQuerySync(query: String): String? {
         return try {
-            val response = api.ragQuery(RagQueryRequest(query = query, top_k = 5)).execute()
+            val response = api.ragQuery(RagQueryRequest(query = query, top_k = 10)).execute()
             if (!response.isSuccessful) {
                 LogUtils.w("RAG query HTTP ${response.code()}: ${response.errorBody()?.string()?.take(200)}")
                 return "RAG 查询失败: HTTP ${response.code()}"
             }
             val body = response.body() ?: return "RAG 查询失败: 空响应"
+            LogUtils.d("RAG raw response: $body")
             val ok = body["ok"] as? Boolean ?: false
             if (!ok) {
                 val error = body["error"] as? Map<*, *>
@@ -394,15 +393,20 @@ object AgentBackendClient {
             }
             val unwrapped = unwrapSkillOutput(body)
             val result = unwrapped ?: body
-            val hits = result["hits"] as? List<Map<String, Any>>
+            LogUtils.d("RAG unwrapped result keys: ${result.keys}")
+            // RAG 接口的数据在 result["result"]["hits"] 中
+            val data = result["result"] as? Map<String, Any> ?: result
+            val hits = data["hits"] as? List<Map<String, Any>>
+                ?: data["results"] as? List<Map<String, Any>>
+                ?: data["documents"] as? List<Map<String, Any>>
             if (hits == null || hits.isEmpty()) {
                 return "未找到相关内容。"
             }
             buildString {
                 append("找到 ${hits.size} 条相关内容:\n")
-                hits.take(5).forEach { h ->
+                hits.take(10).forEach { h ->
                     val title = h["title"]?.toString()?.takeIf { it.isNotBlank() } ?: "无标题"
-                    val snippet = h["snippet"]?.toString()?.take(200) ?: ""
+                    val snippet = h["snippet"]?.toString()?.take(10000) ?: ""
                     val score = h["score"]?.toString()?.take(5) ?: ""
                     append("\n• [$title] 相关度:$score\n  $snippet")
                 }

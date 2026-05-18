@@ -100,6 +100,29 @@ internal object ToolHelper {
                             if (output.addedEventIds.isNotEmpty()) "已成功添加 ${output.addedEventIds.size} 个活动。"
                             else "活动添加成功。"
                         }
+                        TimetableAgentInput.Action.SEARCH_TIMETABLE -> {
+                            if (output.events.isEmpty()) "未找到匹配的事件。"
+                            else {
+                                val sdf = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.CHINA)
+                                buildString {
+                                    append("找到 ${output.events.size} 个匹配的事件:\n")
+                                    output.events.take(20).forEach { ev ->
+                                        val from = sdf.format(Date(ev.fromMs))
+                                        val to = sdf.format(Date(ev.toMs))
+                                        val typeLabel = when (ev.type.name) {
+                                            "EXAM" -> "[考试]"
+                                            "CLASS" -> "[课程]"
+                                            "OTHER" -> "[其他]"
+                                            else -> "[${ev.type.name}]"
+                                        }
+                                        append("\n$typeLabel ${ev.name}")
+                                        append("\n  时间: $from ~ $to")
+                                        if (ev.place.isNotBlank()) append("\n  地点: ${ev.place}")
+                                        if (ev.teacher.isNotBlank()) append("\n  教师: ${ev.teacher}")
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
                 else -> "工具执行失败: ${result.error ?: "未知错误"}"

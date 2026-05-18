@@ -29,7 +29,6 @@ class ExternalResourceSearchViewModel @Inject constructor(
     }
 
     fun search(query: String) {
-        if (query.isBlank()) return
         queryLiveData.value = query.trim()
     }
 

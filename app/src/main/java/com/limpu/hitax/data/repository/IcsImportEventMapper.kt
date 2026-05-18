@@ -1,6 +1,7 @@
 package com.limpu.hitax.data.repository
 
 import com.limpu.hitax.data.model.timetable.EventItem
+import net.fortuna.ical4j.model.Property
 import net.fortuna.ical4j.model.component.VEvent
 import java.sql.Timestamp
 import java.util.UUID
@@ -21,26 +22,26 @@ object IcsImportEventMapper {
         if (endTime <= startTime) return null
 
         val descriptionLines = extractDescriptionLines(event)
+        val resolvedType = resolveType(event) ?: type
         val item = EventItem()
         item.id = UUID.randomUUID().toString()
         item.timetableId = timetableId
         item.name = resolveName(event, descriptionLines)
-
         item.place = resolvePlace(event, descriptionLines)
-        item.teacher = ""
-
+        item.teacher = resolveTeacher(event)
         item.from = Timestamp(startTime)
         item.to = Timestamp(endTime)
         item.subjectId = subjectId
         item.fromNumber = 0
         item.lastNumber = 0
-        item.type = type
+        item.type = resolvedType
         item.source = EventItem.SOURCE_ICS_IMPORT
         item.color = -1
         return item
     }
 
     private fun resolveName(event: VEvent, descriptionLines: List<String>): String {
+        getXProperty(event, "X-HITA-COURSE-NAME")?.let { return it }
         val summary = event.summary?.value?.trim().orEmpty()
         if (summary.isNotEmpty()) return summary
         val fromDescription = descriptionLines.firstOrNull { !isPeriodLine(it) }
@@ -49,12 +50,28 @@ object IcsImportEventMapper {
     }
 
     private fun resolvePlace(event: VEvent, descriptionLines: List<String>): String {
+        getXProperty(event, "X-HITA-CLASSROOM")?.let { return it }
         val location = event.location?.value?.trim().orEmpty()
         if (location.isNotEmpty()) return location
         return descriptionLines
             .asReversed()
             .firstOrNull { !isPeriodLine(it) }
             .orEmpty()
+    }
+
+    private fun resolveTeacher(event: VEvent): String {
+        return getXProperty(event, "X-HITA-TEACHER").orEmpty()
+    }
+
+    private fun resolveType(event: VEvent): EventItem.TYPE? {
+        val typeStr = getXProperty(event, "X-HITA-TYPE") ?: return null
+        return when (typeStr.lowercase()) {
+            "class" -> EventItem.TYPE.CLASS
+            "exam" -> EventItem.TYPE.EXAM
+            "other" -> EventItem.TYPE.OTHER
+            "tag" -> EventItem.TYPE.TAG
+            else -> null
+        }
     }
 
     private fun extractDescriptionLines(event: VEvent): List<String> {
@@ -68,5 +85,16 @@ object IcsImportEventMapper {
 
     private fun isPeriodLine(line: String): Boolean {
         return PERIOD_LINE_REGEX.matches(line)
+    }
+
+    internal fun getXProperty(event: VEvent, name: String): String? {
+        val props = event.properties ?: return null
+        for (entry in props) {
+            val property = entry as? Property ?: continue
+            if (property.name.equals(name, ignoreCase = true)) {
+                return property.value?.trim()?.takeIf { it.isNotEmpty() }
+            }
+        }
+        return null
     }
 }

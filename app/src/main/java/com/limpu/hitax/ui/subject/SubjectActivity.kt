@@ -7,8 +7,12 @@ import android.os.Bundle
 import android.text.TextUtils
 import android.text.method.LinkMovementMethod
 import android.util.TypedValue
+import android.view.Gravity
 import android.view.View
 import android.view.animation.DecelerateInterpolator
+import android.widget.ImageView
+import android.widget.LinearLayout
+import android.widget.TextView
 import androidx.appcompat.app.AlertDialog
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.LiveData
@@ -25,14 +29,22 @@ import com.limpu.hitax.agent.subject.SubjectReadmeAgentInput
 import com.limpu.hitax.agent.subject.SubjectReadmeAgentOutput
 import com.limpu.hitax.data.model.resource.CourseReadmeData
 import com.limpu.hitax.data.model.resource.CourseResourceItem
+import com.limpu.hitax.data.model.resource.ExternalCourseItem
+import com.limpu.hitax.data.model.resource.ExternalResourceEntry
+import com.limpu.hitax.data.model.resource.ResourceSource
 import com.limpu.hitax.data.model.eas.EASToken
 import com.limpu.hitax.data.model.timetable.EventItem
 import com.limpu.hitax.data.model.timetable.TermSubject
 import com.limpu.hitax.data.repository.EASRepository
+import com.limpu.hitax.data.repository.ExternalResourceRepository
 import com.limpu.hitax.data.repository.HoaRepository
 import com.limpu.hitax.databinding.ActivitySubjectBinding
+import com.limpu.hitax.databinding.ItemExternalResourceEntryBinding
+import com.limpu.hitax.databinding.ItemUnifiedResourceBinding
 import com.limpu.hitax.ui.base.HiltBaseActivity
 import com.limpu.hitax.ui.event.add.PopupAddEvent
+import com.limpu.hitax.ui.resource.ExternalResourceSearchActivity
+import com.limpu.hitax.ui.resource.MarkdownViewerActivity
 import com.limpu.hitax.utils.ActivityUtils
 import com.limpu.hitax.utils.CourseCodeUtils
 import com.limpu.hitax.utils.CourseNameUtils
@@ -70,6 +82,7 @@ class SubjectActivity : HiltBaseActivity<ActivitySubjectBinding>(),
 
     @Inject lateinit var easRepository: EASRepository
     @Inject lateinit var hoaRepository: HoaRepository
+    @Inject lateinit var externalResourceRepository: ExternalResourceRepository
 
     protected val viewModel: SubjectViewModel by viewModels()
     var firstEnterCourse = true
@@ -92,6 +105,9 @@ class SubjectActivity : HiltBaseActivity<ActivitySubjectBinding>(),
     private var selectedReadmeCandidate: CourseResourceItem? = null
     private lateinit var agentTraceAdapter: SubjectAgentTraceListAdapter
 
+    private var externalResourceLiveData: LiveData<DataState<List<ExternalCourseItem>>>? = null
+    private var externalResourceObserver: Observer<DataState<List<ExternalCourseItem>>>? = null
+
     private val markwon: Markwon by lazy {
         Markwon.builder(this)
             .usePlugin(LinkifyPlugin.create())
@@ -103,8 +119,9 @@ class SubjectActivity : HiltBaseActivity<ActivitySubjectBinding>(),
             .usePlugin(GlideImagesPlugin.create(this))
             .usePlugin(object : AbstractMarkwonPlugin() {
                 override fun configureConfiguration(builder: MarkwonConfiguration.Builder) {
-                    builder.linkResolver { _: View, link: String ->
-                        openLink(resolveReadmeLink(link, currentReadmeSource))
+                    builder.linkResolver { view: View, link: String ->
+                        val source = (view.tag as? String)?.takeIf { it.isNotBlank() } ?: currentReadmeSource
+                        openLink(resolveReadmeLink(link, source))
                     }
                 }
             })
@@ -305,11 +322,11 @@ class SubjectActivity : HiltBaseActivity<ActivitySubjectBinding>(),
         if (key == readmeResolveKey) return
         readmeResolveKey = key
         showReadmeLoading()
-        agentTraceAdapter.clear()
-        binding.agentTraceList.visibility = View.GONE
 
         // 显示校区数据源提示
         updateCampusSourceHint()
+
+        searchExternalResources(subject)
 
         readmeAgentSession?.dispose()
         val session = readmeAgentProvider.createSession()
@@ -323,19 +340,7 @@ class SubjectActivity : HiltBaseActivity<ActivitySubjectBinding>(),
                 campus = hoaCampus,
             ),
             onTrace = { trace ->
-                // 只在DEBUG模式下显示trace信息
-                LogUtils.d( "agent trace: stage=${trace.stage} message=${trace.message} payload=${trace.payload}")
-                if (BuildConfig.DEBUG) {
-                    runOnUiThread {
-                        if (binding.agentTraceList.visibility != View.VISIBLE) {
-                            binding.agentTraceList.visibility = View.VISIBLE
-                        }
-                        agentTraceAdapter.append(trace)
-                        if (agentTraceAdapter.itemCount > 0) {
-                            binding.agentTraceList.scrollToPosition(agentTraceAdapter.itemCount - 1)
-                        }
-                    }
-                }
+                LogUtils.d("agent trace: stage=${trace.stage} message=${trace.message} payload=${trace.payload}")
             },
             onResult = { result ->
                 runOnUiThread {
@@ -369,63 +374,110 @@ class SubjectActivity : HiltBaseActivity<ActivitySubjectBinding>(),
             "loadReadmeForSubject: subjectId=${subject.id} code=${subject.code} name=${subject.name} " +
                 "candidateCount=${candidates.size} candidates=${candidates.take(8).joinToString { "${it.repoType}|${it.repoName}|${it.courseCode}|${it.courseName}" }}"
         )
+        binding.hoaCandidatesList.removeAllViews()
         when (candidates.size) {
             0 -> {
                 selectedReadmeCandidate = null
+                binding.hoaCandidatesList.visibility = View.GONE
                 showReadmeMessage(getString(R.string.course_readme_missing))
                 binding.readmeSource.text = ""
                 clearReadmeObserver()
             }
 
-            1 -> {
-                val candidate = candidates.first()
-                val repoName = candidate.repoName.trim()
-                if (repoName.isBlank()) {
-                    selectedReadmeCandidate = null
-                    showReadmeMessage(getString(R.string.course_readme_missing))
-                    binding.readmeSource.text = ""
-                    clearReadmeObserver()
-                } else {
-                    LogUtils.d( "loadReadmeForSubject: auto-selected repo=$repoName")
-                    selectedReadmeCandidate = candidate
-                    observeReadme(repoName)
-                }
+            else -> {
+                binding.hoaCandidatesList.visibility = View.VISIBLE
+                renderHoaCandidateCards(candidates)
+                selectedReadmeCandidate = null
+                showReadmeMessage("点击上方卡片查看深圳资源")
+                binding.readmeSource.text = ""
+                clearReadmeObserver()
             }
-
-            else -> showReadmeCandidateChooser(candidates.take(3))
         }
     }
 
-    private fun showReadmeCandidateChooser(candidates: List<CourseResourceItem>) {
-        val labels = candidates.map {
-            val code = it.courseCode.ifBlank { it.repoName }
-            val name = it.courseName.ifBlank { code }
-            "$code  $name"
-        }.toTypedArray()
+    private fun renderHoaCandidateCards(candidates: List<CourseResourceItem>) {
+        binding.hoaCandidatesList.removeAllViews()
+        for (item in candidates) {
+            val wrapper = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
 
-        AlertDialog.Builder(this)
-            .setTitle("找到多个课程资源，请选择")
-            .setItems(labels) { _, which ->
-                val selected = candidates.getOrNull(which)
-                val repoName = selected?.repoName?.trim().orEmpty()
-                if (repoName.isBlank()) {
-                    selectedReadmeCandidate = null
-                    showReadmeMessage(getString(R.string.course_readme_missing))
-                    binding.readmeSource.text = ""
-                    clearReadmeObserver()
-                    return@setItems
+            val cardBinding = ItemUnifiedResourceBinding.inflate(layoutInflater, wrapper, false)
+            val displayName = item.courseName.takeIf { it.isNotBlank() }
+                ?: item.repoName
+            val subtitle = listOfNotNull(
+                item.courseCode.takeIf { it.isNotBlank() },
+                item.repoType.takeIf { it.isNotBlank() },
+            ).joinToString("  ·  ")
+            cardBinding.title.text = displayName
+            cardBinding.subtitle.text = subtitle
+            cardBinding.sourceChip.text = "HOA"
+            try {
+                cardBinding.sourceChip.setChipBackgroundColorResource(R.color.primary)
+            } catch (_: Exception) {
+            }
+
+            val expandable = LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+                visibility = View.GONE
+                setPadding(
+                    resources.getDimensionPixelSize(R.dimen.space_4),
+                    resources.getDimensionPixelSize(R.dimen.space_2),
+                    resources.getDimensionPixelSize(R.dimen.space_4),
+                    resources.getDimensionPixelSize(R.dimen.space_2),
+                )
+            }
+
+            val contentText = TextView(this).apply {
+                setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f)
+                setTextColor(binding.readmeText.currentTextColor)
+                movementMethod = null
+            }
+            expandable.addView(contentText)
+
+            wrapper.addView(cardBinding.root)
+            wrapper.addView(expandable)
+
+            var isExpanded = false
+            var liveData: LiveData<DataState<CourseReadmeData>>? = null
+            var observer: Observer<DataState<CourseReadmeData>>? = null
+
+            cardBinding.root.setOnClickListener {
+                isExpanded = !isExpanded
+                expandable.visibility = if (isExpanded) View.VISIBLE else View.GONE
+
+                if (isExpanded && contentText.text.isEmpty()) {
+                    val repoName = item.repoName.trim()
+                    if (repoName.isBlank()) return@setOnClickListener
+
+                    contentText.text = "加载中..."
+                    liveData?.removeObserver(observer ?: return@setOnClickListener)
+                    liveData = hoaRepository.getCourseReadme(repoName, hoaCampus)
+                    observer = Observer { state ->
+                        when (state.state) {
+                            DataState.STATE.SUCCESS -> {
+                                val data = state.data
+                                if (data == null) {
+                                    contentText.text = "加载失败"
+                                    return@Observer
+                                }
+                                contentText.tag = data.source
+                                val scoped = filterReadmeForCandidate(data.markdown, item)
+                                val processed = preprocessReadme(scoped)
+                                markwon.setMarkdown(contentText, processed)
+                                contentText.movementMethod = LinkMovementMethod.getInstance()
+                            }
+                            else -> {
+                                contentText.text = state.message?.takeIf { it.isNotBlank() } ?: "加载失败"
+                            }
+                        }
+                    }
+                    liveData?.observe(this, observer!!)
+                } else if (!isExpanded) {
+                    liveData?.removeObserver(observer ?: return@setOnClickListener)
                 }
-                selectedReadmeCandidate = selected
-                observeReadme(repoName)
             }
-            .setNegativeButton("取消") { _, _ ->
-                selectedReadmeCandidate = null
-                showReadmeMessage(getString(R.string.course_readme_missing))
-                binding.readmeSource.text = ""
-                clearReadmeObserver()
-            }
-            .setCancelable(true)
-            .show()
+
+            binding.hoaCandidatesList.addView(wrapper)
+        }
     }
 
     private fun observeReadme(repoName: String) {
@@ -483,6 +535,217 @@ class SubjectActivity : HiltBaseActivity<ActivitySubjectBinding>(),
         readmeObserver = null
     }
 
+    private fun searchExternalResources(subject: TermSubject) {
+        clearExternalResourceObserver()
+        binding.externalResourceCard.visibility = View.GONE
+        binding.externalResourceList.removeAllViews()
+
+        val query = subject.name.trim().takeIf { it.isNotBlank() }
+            ?: subject.code?.trim()?.takeIf { it.isNotBlank() }
+            ?: return
+
+        val liveData = externalResourceRepository.searchCourses(query)
+        externalResourceLiveData = liveData
+        val observer = Observer<DataState<List<ExternalCourseItem>>> { state ->
+            if (state.state == DataState.STATE.SUCCESS) {
+                val items = state.data ?: emptyList()
+                renderExternalResourceCards(items)
+            }
+        }
+        externalResourceObserver = observer
+        liveData.observe(this, observer)
+    }
+
+    private fun clearExternalResourceObserver() {
+        val live = externalResourceLiveData
+        val observer = externalResourceObserver
+        if (live != null && observer != null) {
+            live.removeObserver(observer)
+        }
+        externalResourceLiveData = null
+        externalResourceObserver = null
+    }
+
+    private fun renderExternalResourceCards(items: List<ExternalCourseItem>) {
+        binding.externalResourceList.removeAllViews()
+        if (items.isEmpty()) {
+            binding.externalResourceCard.visibility = View.GONE
+            return
+        }
+
+        binding.externalResourceCard.visibility = View.VISIBLE
+        for (item in items) {
+            val wrapper = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+
+            val cardBinding = ItemUnifiedResourceBinding.inflate(layoutInflater, wrapper, false)
+            cardBinding.title.text = item.courseName
+            cardBinding.subtitle.text = item.category
+            cardBinding.sourceChip.text = when (item.source) {
+                ResourceSource.HITCS -> "HITCS"
+                ResourceSource.FIREWORKS -> "薪火"
+            }
+            try {
+                val colorRes = when (item.source) {
+                    ResourceSource.HITCS -> R.color.subject3
+                    ResourceSource.FIREWORKS -> R.color.subject4
+                }
+                cardBinding.sourceChip.setChipBackgroundColorResource(colorRes)
+            } catch (_: Exception) {
+            }
+
+            val expandable = LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+                visibility = View.GONE
+                setPadding(
+                    resources.getDimensionPixelSize(R.dimen.space_3),
+                    resources.getDimensionPixelSize(R.dimen.space_2),
+                    resources.getDimensionPixelSize(R.dimen.space_3),
+                    resources.getDimensionPixelSize(R.dimen.space_2),
+                )
+            }
+
+            val breadcrumbBar = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                visibility = View.GONE
+            }
+            val backButton = ImageView(this).apply {
+                setImageResource(R.drawable.ic_baseline_keyboard_arrow_right_24)
+                rotation = 180f
+                setPadding(8, 8, 8, 8)
+            }
+            val breadcrumbText = TextView(this).apply {
+                setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
+                setTextColor(binding.readmeText.currentTextColor)
+                ellipsize = TextUtils.TruncateAt.MIDDLE
+                isSingleLine = true
+            }
+            breadcrumbBar.addView(backButton)
+            breadcrumbBar.addView(
+                breadcrumbText,
+                LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f),
+            )
+            expandable.addView(breadcrumbBar)
+
+            val fileListContainer = LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+            }
+            expandable.addView(fileListContainer)
+
+            wrapper.addView(cardBinding.root)
+            wrapper.addView(expandable)
+
+            var isExpanded = false
+            val browseStack = ArrayDeque<InlineBrowseState>()
+            var currentLiveData: LiveData<DataState<List<ExternalResourceEntry>>>? = null
+            var currentObserver: Observer<DataState<List<ExternalResourceEntry>>>? = null
+
+            fun clearCurrentObserver() {
+                currentLiveData?.removeObserver(currentObserver ?: return)
+                currentLiveData = null
+                currentObserver = null
+            }
+
+            fun loadDirectory(path: String, source: ResourceSource) {
+                clearCurrentObserver()
+                fileListContainer.removeAllViews()
+
+                val loadingView = TextView(this).apply {
+                    text = "加载中..."
+                    setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f)
+                    setTextColor(binding.readmeText.currentTextColor)
+                    setPadding(16, 16, 16, 16)
+                }
+                fileListContainer.addView(loadingView)
+
+                currentLiveData = externalResourceRepository.listDirectory(path, source)
+                currentObserver = Observer { state ->
+                    fileListContainer.removeAllViews()
+                    if (state.state == DataState.STATE.SUCCESS) {
+                        val entries = state.data ?: emptyList()
+                        if (entries.isEmpty()) {
+                            val emptyView = TextView(this).apply {
+                                text = "空文件夹"
+                                setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f)
+                                setTextColor(binding.readmeText.currentTextColor)
+                                setPadding(16, 16, 16, 16)
+                            }
+                            fileListContainer.addView(emptyView)
+                        } else {
+                            for (entry in entries) {
+                                val entryBinding = ItemExternalResourceEntryBinding.inflate(
+                                    layoutInflater, fileListContainer, false,
+                                )
+                                entryBinding.name.text = entry.name
+                                if (entry.isDir) {
+                                    entryBinding.icon.setImageResource(R.drawable.ic_baseline_menu_24)
+                                    entryBinding.fileSize.visibility = View.GONE
+                                } else {
+                                    entryBinding.icon.setImageResource(R.drawable.ic_baseline_search_24)
+                                    if (entry.size > 0) {
+                                        entryBinding.fileSize.text = formatFileSize(entry.size)
+                                        entryBinding.fileSize.visibility = View.VISIBLE
+                                    } else {
+                                        entryBinding.fileSize.visibility = View.GONE
+                                    }
+                                }
+                                entryBinding.card.setOnClickListener {
+                                    if (entry.isDir) {
+                                        val current = browseStack.last()
+                                        val newBreadcrumb = "${current.breadcrumb} / ${entry.name}"
+                                        val newState = InlineBrowseState(entry.path, entry.source, newBreadcrumb)
+                                        browseStack.addLast(newState)
+                                        breadcrumbText.text = newBreadcrumb
+                                        loadDirectory(entry.path, entry.source)
+                                    } else {
+                                        handleInlineFileClick(entry)
+                                    }
+                                }
+                                fileListContainer.addView(entryBinding.root)
+                            }
+                        }
+                    } else {
+                        val errorView = TextView(this).apply {
+                            text = state.message?.takeIf { it.isNotBlank() } ?: "加载失败"
+                            setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f)
+                            setTextColor(binding.readmeText.currentTextColor)
+                            setPadding(16, 16, 16, 16)
+                        }
+                        fileListContainer.addView(errorView)
+                    }
+                }
+                currentLiveData?.observe(this, currentObserver!!)
+            }
+
+            backButton.setOnClickListener {
+                if (browseStack.size > 1) {
+                    browseStack.removeLast()
+                    val previous = browseStack.last()
+                    breadcrumbText.text = previous.breadcrumb
+                    loadDirectory(previous.path, previous.source)
+                }
+            }
+
+            cardBinding.root.setOnClickListener {
+                isExpanded = !isExpanded
+                expandable.visibility = if (isExpanded) View.VISIBLE else View.GONE
+
+                if (isExpanded && browseStack.isEmpty()) {
+                    browseStack.clear()
+                    val state = InlineBrowseState(item.path, item.source, item.courseName)
+                    browseStack.addLast(state)
+                    breadcrumbText.text = item.courseName
+                    breadcrumbBar.visibility = View.VISIBLE
+                    loadDirectory(item.path, item.source)
+                } else if (!isExpanded) {
+                    clearCurrentObserver()
+                }
+            }
+
+            binding.externalResourceList.addView(wrapper)
+        }
+    }
+
     private fun showReadmeLoading() {
         binding.readmeProgress.visibility = View.VISIBLE
         binding.readmeSource.text = ""
@@ -495,6 +758,12 @@ class SubjectActivity : HiltBaseActivity<ActivitySubjectBinding>(),
         binding.readmeText.text = message
         binding.readmeText.movementMethod = null
     }
+
+    private data class InlineBrowseState(
+        val path: String,
+        val source: ResourceSource,
+        val breadcrumb: String,
+    )
 
     private data class ReadmeSection(
         val level: Int,
@@ -937,6 +1206,7 @@ class SubjectActivity : HiltBaseActivity<ActivitySubjectBinding>(),
 
     override fun onDestroy() {
         clearReadmeObserver()
+        clearExternalResourceObserver()
         readmeAgentSession?.dispose()
         readmeAgentSession = null
         super.onDestroy()
@@ -948,7 +1218,7 @@ class SubjectActivity : HiltBaseActivity<ActivitySubjectBinding>(),
 
     /**
      * 更新校区数据源提示
-     * 当用户是本部或威海校区时，提示课程资源来自深圳
+     * 当用户是本部或威海校区时，提示深圳资源来自深圳
      */
     private fun updateCampusSourceHint() {
         val easCampus = easRepository.getEasToken().campus
@@ -960,12 +1230,89 @@ class SubjectActivity : HiltBaseActivity<ActivitySubjectBinding>(),
         if (shouldShowHint) {
             binding.campusSourceHint.visibility = View.VISIBLE
             binding.campusSourceHint.text = when (easCampus) {
-                EASToken.Campus.BENBU -> "💡 课程资源来自深圳校区（本部数据）"
-                EASToken.Campus.WEIHAI -> "💡 课程资源来自深圳校区（威海数据）"
-                else -> "💡 课程资源来自深圳校区"
+                EASToken.Campus.BENBU -> "💡 深圳资源来自深圳校区（本部数据）"
+                EASToken.Campus.WEIHAI -> "💡 深圳资源来自深圳校区（威海数据）"
+                else -> "💡 深圳资源来自深圳校区"
             }
         } else {
             binding.campusSourceHint.visibility = View.GONE
+        }
+    }
+
+    private fun formatFileSize(bytes: Long): String {
+        return when {
+            bytes < 1024 -> "$bytes B"
+            bytes < 1024 * 1024 -> "${bytes / 1024} KB"
+            bytes < 1024 * 1024 * 1024 -> String.format("%.1f MB", bytes / (1024.0 * 1024.0))
+            else -> String.format("%.1f GB", bytes / (1024.0 * 1024.0 * 1024.0))
+        }
+    }
+
+    private fun handleInlineFileClick(entry: ExternalResourceEntry) {
+        val url = entry.downloadUrl
+
+        if (url.startsWith("https://fireworks.jwyihao.top")) {
+            startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
+            return
+        }
+
+        val rawUrl = if (entry.path.isNotBlank()) {
+            val repo = when (entry.source) {
+                ResourceSource.HITCS -> "HITLittleZheng/HITCS"
+                ResourceSource.FIREWORKS -> "HIT-Fireworks/fireworks-notes-society"
+            }
+            val encodedPath = entry.path.split("/").joinToString("/") { segment ->
+                java.net.URLEncoder.encode(segment, "UTF-8").replace("+", "%20")
+            }
+            "https://raw.githubusercontent.com/$repo/main/$encodedPath"
+        } else if (url.isNotBlank() && !url.startsWith("https://fireworks.")) {
+            url
+        } else {
+            return
+        }
+        val downloadUrl = "https://ghproxy.net/$rawUrl"
+
+        if (entry.name.endsWith(".md", ignoreCase = true)) {
+            startActivity(Intent(this, MarkdownViewerActivity::class.java).apply {
+                putExtra("url", downloadUrl)
+                putExtra("title", entry.name)
+            })
+            return
+        }
+
+        val fileName = entry.name
+        try {
+            val dm = getSystemService(DOWNLOAD_SERVICE) as android.app.DownloadManager
+            val request = android.app.DownloadManager.Request(Uri.parse(downloadUrl))
+                .setTitle(fileName)
+                .setDescription("正在下载 $fileName")
+                .setNotificationVisibility(
+                    android.app.DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED
+                )
+                .setAllowedOverMetered(true)
+                .setAllowedOverRoaming(true)
+                .setDestinationInExternalPublicDir(
+                    android.os.Environment.DIRECTORY_DOWNLOADS,
+                    fileName
+                )
+            dm.enqueue(request)
+            com.google.android.material.snackbar.Snackbar.make(
+                binding.root,
+                "开始下载: $fileName",
+                com.google.android.material.snackbar.Snackbar.LENGTH_SHORT
+            ).show()
+        } catch (e: Exception) {
+            LogUtils.e("Download failed: ${e.message}")
+            try {
+                val intent = Intent(Intent.ACTION_VIEW, Uri.parse(downloadUrl))
+                startActivity(intent)
+            } catch (e2: Exception) {
+                com.google.android.material.snackbar.Snackbar.make(
+                    binding.root,
+                    "下载失败: ${e.message}",
+                    com.google.android.material.snackbar.Snackbar.LENGTH_LONG
+                ).show()
+            }
         }
     }
 

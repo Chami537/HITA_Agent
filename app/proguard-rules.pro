@@ -157,6 +157,10 @@
 -keep class net.fortuna.ical4j.** { *; }
 -dontwarn net.fortuna.ical4j.**
 
+# ====== Apache Commons Logging (ical4j dependency) ======
+-keep class org.apache.commons.logging.** { *; }
+-dontwarn org.apache.commons.logging.**
+
 # ====== WorkManager ======
 -keep class * extends androidx.work.Worker { <init>(...); }
 -keep class * extends androidx.work.ListenableWorker { <init>(...); }

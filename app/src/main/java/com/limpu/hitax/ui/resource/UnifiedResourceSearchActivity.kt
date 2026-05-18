@@ -1,11 +1,11 @@
 package com.limpu.hitax.ui.resource
 
+import android.app.DownloadManager
 import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
+import android.os.Environment
 import android.view.KeyEvent
-import android.view.Menu
-import android.view.MenuItem
 import android.view.View
 import android.view.ViewGroup
 import android.view.inputmethod.EditorInfo
@@ -18,45 +18,29 @@ import androidx.core.view.updatePadding
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import androidx.viewbinding.ViewBinding
+import com.google.android.material.chip.Chip
 import com.google.android.material.snackbar.Snackbar
 import com.limpu.component.data.DataState
 import com.limpu.hitax.R
-import com.limpu.hitax.data.model.resource.ExternalCourseItem
 import com.limpu.hitax.data.model.resource.ExternalResourceEntry
 import com.limpu.hitax.data.model.resource.ResourceSource
-import com.limpu.hitax.databinding.ActivityExternalResourceSearchBinding
-import com.limpu.hitax.databinding.ItemExternalCourseBinding
+import com.limpu.hitax.data.model.resource.UnifiedResourceItem
+import com.limpu.hitax.databinding.ActivityUnifiedResourceSearchBinding
 import com.limpu.hitax.databinding.ItemExternalResourceEntryBinding
+import com.limpu.hitax.databinding.ItemUnifiedResourceBinding
 import com.limpu.hitax.ui.base.HiltBaseActivity
+import com.limpu.hitax.utils.ActivityUtils
+import com.limpu.hitax.utils.CourseCodeUtils
 import com.limpu.hitax.utils.LogUtils
 import com.limpu.style.base.BaseListAdapter
 import dagger.hilt.android.AndroidEntryPoint
 
 @AndroidEntryPoint
-class ExternalResourceSearchActivity :
-    HiltBaseActivity<ActivityExternalResourceSearchBinding>() {
+class UnifiedResourceSearchActivity :
+    HiltBaseActivity<ActivityUnifiedResourceSearchBinding>() {
 
-    companion object {
-        private const val EXTRA_BROWSE_PATH = "browse_path"
-        private const val EXTRA_BROWSE_SOURCE = "browse_source"
-        private const val EXTRA_BROWSE_NAME = "browse_name"
-
-        fun browseIntent(
-            context: android.content.Context,
-            path: String,
-            source: ResourceSource,
-            courseName: String,
-        ): Intent {
-            return Intent(context, ExternalResourceSearchActivity::class.java).apply {
-                putExtra(EXTRA_BROWSE_PATH, path)
-                putExtra(EXTRA_BROWSE_SOURCE, source.name)
-                putExtra(EXTRA_BROWSE_NAME, courseName)
-            }
-        }
-    }
-
-    private val viewModel: ExternalResourceSearchViewModel by viewModels()
-    private lateinit var courseAdapter: CourseAdapter
+    private val viewModel: UnifiedResourceSearchViewModel by viewModels()
+    private lateinit var searchAdapter: SearchResultAdapter
     private lateinit var entryAdapter: EntryAdapter
     private var isBrowseMode = false
     private val browseStack = ArrayDeque<BrowseState>()
@@ -67,8 +51,8 @@ class ExternalResourceSearchActivity :
         val breadcrumb: String,
     )
 
-    override fun initViewBinding(): ActivityExternalResourceSearchBinding =
-        ActivityExternalResourceSearchBinding.inflate(layoutInflater)
+    override fun initViewBinding(): ActivityUnifiedResourceSearchBinding =
+        ActivityUnifiedResourceSearchBinding.inflate(layoutInflater)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -77,12 +61,12 @@ class ExternalResourceSearchActivity :
     }
 
     override fun initViews() {
-        binding.toolbar.title = getString(R.string.external_resource_title)
+        binding.toolbar.title = getString(R.string.unified_resource_title)
 
-        courseAdapter = CourseAdapter(mutableListOf())
+        searchAdapter = SearchResultAdapter(mutableListOf())
         entryAdapter = EntryAdapter(mutableListOf())
         binding.list.layoutManager = LinearLayoutManager(this)
-        binding.list.adapter = courseAdapter
+        binding.list.adapter = searchAdapter
 
         binding.searchInput.setOnEditorActionListener(object : TextView.OnEditorActionListener {
             override fun onEditorAction(v: TextView?, actionId: Int, event: KeyEvent?): Boolean {
@@ -93,7 +77,7 @@ class ExternalResourceSearchActivity :
                 return false
             }
         })
-        binding.searchButton.setOnClickListener { startSearch() }
+        binding.searchInputLayout.setEndIconOnClickListener { startSearch() }
         binding.swipeRefresh.setColorSchemeColors(getColorPrimary())
         binding.swipeRefresh.setOnRefreshListener {
             if (isBrowseMode) {
@@ -109,12 +93,12 @@ class ExternalResourceSearchActivity :
             binding.swipeRefresh.isRefreshing = false
             if (state.state == DataState.STATE.SUCCESS) {
                 val items = state.data ?: emptyList()
-                courseAdapter.notifyItemChangedSmooth(items)
+                searchAdapter.notifyItemChangedSmooth(items)
                 binding.emptyText.visibility = if (items.isEmpty()) View.VISIBLE else View.GONE
-                binding.emptyText.setText(R.string.external_resource_empty)
+                binding.emptyText.setText(R.string.course_resource_empty)
             } else {
                 binding.emptyText.visibility = View.VISIBLE
-                binding.emptyText.setText(R.string.external_resource_failed)
+                binding.emptyText.setText(R.string.course_resource_failed)
                 state.message?.takeIf { it.isNotBlank() }?.let {
                     Snackbar.make(binding.root, it, Snackbar.LENGTH_LONG).show()
                 }
@@ -138,18 +122,14 @@ class ExternalResourceSearchActivity :
             }
         }
 
-        val browsePath = intent.getStringExtra(EXTRA_BROWSE_PATH)
-        val browseSourceName = intent.getStringExtra(EXTRA_BROWSE_SOURCE)
-        val browseName = intent.getStringExtra(EXTRA_BROWSE_NAME)
-        if (!browsePath.isNullOrBlank() && !browseSourceName.isNullOrBlank()) {
-            val source = ResourceSource.valueOf(browseSourceName)
-            enterBrowseMode(ExternalCourseItem(
-                courseName = browseName.orEmpty(),
-                source = source,
-                path = browsePath,
-            ))
+        val initialQuery = intent.getStringExtra("query")
+        if (!initialQuery.isNullOrBlank()) {
+            val normalized = CourseCodeUtils.normalize(initialQuery) ?: initialQuery
+            binding.searchInput.setText(normalized)
+            binding.searchInput.setSelection(normalized.length)
+            binding.swipeRefresh.isRefreshing = true
+            viewModel.search(normalized)
         } else {
-            // Load all courses on initial open
             binding.swipeRefresh.isRefreshing = true
             viewModel.search("")
         }
@@ -168,17 +148,34 @@ class ExternalResourceSearchActivity :
         viewModel.search(input)
     }
 
-    private fun enterBrowseMode(item: ExternalCourseItem) {
+    private fun onItemClick(item: UnifiedResourceItem) {
+        when (item) {
+            is UnifiedResourceItem.HoaCourse -> {
+                ActivityUtils.startCourseReadmeActivity(
+                    this,
+                    item.repoName,
+                    item.courseName,
+                    item.courseCode,
+                    item.repoType,
+                )
+            }
+            is UnifiedResourceItem.ExternalCourse -> {
+                enterBrowseMode(item)
+            }
+        }
+    }
+
+    private fun enterBrowseMode(item: UnifiedResourceItem.ExternalCourse) {
         isBrowseMode = true
         browseStack.clear()
         val state = BrowseState(item.path, item.source, item.courseName)
         browseStack.addLast(state)
 
-        binding.searchBar.visibility = View.GONE
+        binding.searchInputLayout.visibility = View.GONE
         binding.breadcrumb.visibility = View.VISIBLE
         binding.breadcrumb.text = item.courseName
         binding.list.adapter = entryAdapter
-        binding.toolbar.title = getString(R.string.external_resource_browse)
+        binding.toolbar.title = getString(R.string.unified_resource_browse)
 
         binding.swipeRefresh.isRefreshing = true
         viewModel.browse(item.path, item.source)
@@ -207,13 +204,13 @@ class ExternalResourceSearchActivity :
         isBrowseMode = false
         browseStack.clear()
 
-        binding.searchBar.visibility = View.VISIBLE
+        binding.searchInputLayout.visibility = View.VISIBLE
         binding.breadcrumb.visibility = View.GONE
-        binding.list.adapter = courseAdapter
-        binding.toolbar.title = getString(R.string.external_resource_title)
+        binding.list.adapter = searchAdapter
+        binding.toolbar.title = getString(R.string.unified_resource_title)
     }
 
-    @Deprecated("Use OnBackPressedCallback in production")
+    @Deprecated("Use OnBackPressedDispatcher in production")
     override fun onBackPressed() {
         if (isBrowseMode && browseStack.size > 1) {
             browseStack.removeLast()
@@ -230,19 +227,14 @@ class ExternalResourceSearchActivity :
         }
     }
 
-    /**
-     * Handle file click: download actual files, open website links in browser.
-     */
     private fun handleFileClick(entry: ExternalResourceEntry) {
         val url = entry.downloadUrl
 
-        // Fireworks website links → open in browser (not a downloadable file)
         if (url.startsWith("https://fireworks.jwyihao.top")) {
             startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
             return
         }
 
-        // Build download URL via GitHub proxy (raw.githubusercontent.com blocked on CN mobile)
         val rawUrl = if (entry.path.isNotBlank()) {
             val repo = when (entry.source) {
                 ResourceSource.HITCS -> "HITLittleZheng/HITCS"
@@ -257,10 +249,8 @@ class ExternalResourceSearchActivity :
         } else {
             return
         }
-        // Wrap with proxy for reliable access on Chinese mobile networks
         val downloadUrl = "https://ghproxy.net/$rawUrl"
 
-        // Markdown files → preview in-app instead of downloading
         if (entry.name.endsWith(".md", ignoreCase = true)) {
             startActivity(Intent(this, MarkdownViewerActivity::class.java).apply {
                 putExtra("url", downloadUrl)
@@ -269,39 +259,24 @@ class ExternalResourceSearchActivity :
             return
         }
 
-        // Download with correct filename
-        val fileName = entry.name // e.g. "总结.pdf"
+        val fileName = entry.name
         try {
-            val dm = getSystemService(DOWNLOAD_SERVICE) as android.app.DownloadManager
-            val request = android.app.DownloadManager.Request(Uri.parse(downloadUrl))
+            val dm = getSystemService(DOWNLOAD_SERVICE) as DownloadManager
+            val request = DownloadManager.Request(Uri.parse(downloadUrl))
                 .setTitle(fileName)
                 .setDescription("正在下载 $fileName")
-                .setNotificationVisibility(
-                    android.app.DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED
-                )
+                .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
                 .setAllowedOverMetered(true)
                 .setAllowedOverRoaming(true)
-                .setDestinationInExternalPublicDir(
-                    android.os.Environment.DIRECTORY_DOWNLOADS,
-                    fileName
-                )
+                .setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, fileName)
             dm.enqueue(request)
-            com.google.android.material.snackbar.Snackbar.make(
-                binding.root,
-                "开始下载: $fileName",
-                com.google.android.material.snackbar.Snackbar.LENGTH_SHORT
-            ).show()
+            Snackbar.make(binding.root, "开始下载: $fileName", Snackbar.LENGTH_SHORT).show()
         } catch (e: Exception) {
             LogUtils.e("Download failed: ${e.message}")
             try {
-                val intent = Intent(Intent.ACTION_VIEW, Uri.parse(downloadUrl))
-                startActivity(intent)
+                startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(downloadUrl)))
             } catch (e2: Exception) {
-                com.google.android.material.snackbar.Snackbar.make(
-                    binding.root,
-                    "下载失败: ${e.message}",
-                    com.google.android.material.snackbar.Snackbar.LENGTH_LONG
-                ).show()
+                Snackbar.make(binding.root, "下载失败: ${e.message}", Snackbar.LENGTH_LONG).show()
             }
         }
     }
@@ -325,32 +300,32 @@ class ExternalResourceSearchActivity :
         }
     }
 
-    inner class CourseAdapter(mBeans: MutableList<ExternalCourseItem>) :
-        BaseListAdapter<ExternalCourseItem, CourseAdapter.Holder>(this, mBeans) {
+    inner class SearchResultAdapter(mBeans: MutableList<UnifiedResourceItem>) :
+        BaseListAdapter<UnifiedResourceItem, SearchResultAdapter.Holder>(this, mBeans) {
 
-        inner class Holder(val binding: ItemExternalCourseBinding) :
+        inner class Holder(val binding: ItemUnifiedResourceBinding) :
             RecyclerView.ViewHolder(binding.root)
 
         override fun getViewBinding(parent: ViewGroup, viewType: Int): ViewBinding {
-            return ItemExternalCourseBinding.inflate(layoutInflater, parent, false)
+            return ItemUnifiedResourceBinding.inflate(layoutInflater, parent, false)
         }
 
         override fun createViewHolder(viewBinding: ViewBinding, viewType: Int): Holder {
-            return Holder(viewBinding as ItemExternalCourseBinding)
+            return Holder(viewBinding as ItemUnifiedResourceBinding)
         }
 
-        override fun bindHolder(holder: Holder, data: ExternalCourseItem?, position: Int) {
+        override fun bindHolder(holder: Holder, data: UnifiedResourceItem?, position: Int) {
             data ?: return
-            holder.binding.title.text = data.courseName
-            holder.binding.subtitle.text = data.category
-            holder.binding.sourceTag.text = when (data.source) {
-                ResourceSource.HITCS -> getString(R.string.external_resource_source_hitcs)
-                ResourceSource.FIREWORKS -> getString(R.string.external_resource_source_fireworks)
+            holder.binding.title.text = data.displayName
+            holder.binding.subtitle.text = data.subtitle
+            val chip = holder.binding.sourceChip
+            chip.text = data.sourceTag
+            try {
+                chip.setChipBackgroundColorResource(data.sourceColor)
+            } catch (_: Exception) {
+                // fallback to default
             }
-            holder.binding.sourceTag.visibility = View.VISIBLE
-            holder.binding.card.setOnClickListener {
-                enterBrowseMode(data)
-            }
+            holder.binding.root.setOnClickListener { onItemClick(data) }
         }
     }
 

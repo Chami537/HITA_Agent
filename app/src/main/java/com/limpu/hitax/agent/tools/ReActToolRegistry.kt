@@ -19,6 +19,7 @@ class ReActToolRegistry {
             register("web_search", WebSearchTool())
             register("brave_answer", BraveAnswerTool())
             register("rag_search", RagSearchTool())
+            register("search_timetable", SearchTimetableTool())
             register("crawl_page", CrawlPageTool())
             register("crawl_site", CrawlSiteTool())
             register("crawl_status", CrawlStatusTool())

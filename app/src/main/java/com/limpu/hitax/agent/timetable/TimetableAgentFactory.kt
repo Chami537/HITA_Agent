@@ -11,6 +11,7 @@ object TimetableAgentFactory {
         val registry = AgentToolRegistry().apply {
             register(GetLocalTimetableTool())
             register(AddTimetableArrangementTool())
+            register(SearchLocalTimetableTool())
         }
         return AgentOrchestrator(TimetableAgentEngine(registry))
     }

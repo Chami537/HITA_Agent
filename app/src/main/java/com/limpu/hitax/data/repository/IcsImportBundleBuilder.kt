@@ -338,6 +338,7 @@ object IcsImportBundleBuilder {
     }
 
     private fun resolveCourseName(event: VEvent): String {
+        IcsImportEventMapper.getXProperty(event, "X-HITA-COURSE-NAME")?.let { return it }
         val summary = event.summary?.value?.trim().orEmpty()
         if (summary.isNotEmpty()) return summary
         val fromDescription = event.description?.value

@@ -10,10 +10,12 @@ data class TimetableAgentInput(
     val fromMs: Long? = null,
     val toMs: Long? = null,
     val arrangement: ArrangementInput? = null,
+    val keyword: String? = null,
 ) {
     enum class Action {
         GET_LOCAL_TIMETABLE,
         ADD_TIMETABLE_ARRANGEMENT,
+        SEARCH_TIMETABLE,
     }
 }
 

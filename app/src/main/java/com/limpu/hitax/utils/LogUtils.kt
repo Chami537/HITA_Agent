@@ -21,11 +21,15 @@ object LogUtils {
     private fun getCallerTag(): String {
         return try {
             val stackTrace = Thread.currentThread().stackTrace
-            // 找到第一个不是LogUtils/Thread的方法调用
+            // 找到第一个不是LogUtils/Thread/VMStack等内部类的方法调用
             val caller = stackTrace.firstOrNull { element ->
-                !element.className.contains("LogUtils") &&
-                !element.className.contains("Thread") &&
-                !element.className.contains("getStackTrace")
+                val cn = element.className
+                !cn.contains("LogUtils") &&
+                !cn.contains("Thread") &&
+                !cn.contains("getStackTrace") &&
+                !cn.contains("dalvik.system.VMStack") &&
+                !cn.contains("java.lang.reflect.Method") &&
+                !cn.contains("kotlin.coroutines")
             }
             caller?.className?.substringAfterLast('.') ?: GLOBAL_TAG
         } catch (e: Exception) {

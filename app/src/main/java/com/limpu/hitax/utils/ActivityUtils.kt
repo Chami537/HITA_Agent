@@ -20,8 +20,8 @@ import com.limpu.hitax.ui.myprofile.MyProfileActivity
 import com.limpu.hitax.ui.eas.imp.ImportTimetableActivity
 import com.limpu.hitax.ui.resource.CourseContributionActivity
 import com.limpu.hitax.ui.resource.CourseReadmeActivity
-import com.limpu.hitax.ui.resource.CourseResourceSearchActivity
 import com.limpu.hitax.ui.resource.InternalWebActivity
+import com.limpu.hitax.ui.resource.UnifiedResourceSearchActivity
 import com.limpu.hitax.ui.news.NewsDetailActivity
 import com.limpu.hitax.ui.profile.ProfileActivity
 import com.limpu.hitax.ui.search.SearchActivity
@@ -309,7 +309,7 @@ object ActivityUtils {
         query: String? = null,
         mode: CourseResourceMode = CourseResourceMode.VIEW,
     ) {
-        val i = Intent(from, CourseResourceSearchActivity::class.java)
+        val i = Intent(from, UnifiedResourceSearchActivity::class.java)
         i.putExtra("query", query)
         i.putExtra("mode", mode.name)
         from.startActivity(i)
