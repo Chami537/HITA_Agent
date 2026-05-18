@@ -58,13 +58,14 @@ class AgentChatViewModel @Inject constructor(
     @Volatile
     private var messageList: List<AgentChatMessage> = emptyList()
 
-    private val chatHistory = mutableListOf<ChatMessage>()
+    // 按 session 隔离的状态
+    private val sessionChatHistories = mutableMapOf<String, MutableList<ChatMessage>>()
+    private val sessionPlaceholders = mutableMapOf<String, AgentChatMessage>()
+    private val sessionLoadingStates = mutableMapOf<String, Boolean>()
 
     @Volatile
     var currentSessionId: String? = null
         private set
-
-    private var placeholderMessage: AgentChatMessage? = null
 
     private fun publishMessages() {
         if (Looper.myLooper() == Looper.getMainLooper()) {
@@ -91,11 +92,11 @@ class AgentChatViewModel @Inject constructor(
     }
 
     fun addMessage(message: AgentChatMessage) {
+        val sid = currentSessionId ?: return
         synchronized(this) {
             messageList = messageList + message
             publishMessages()
         }
-        val sid = currentSessionId ?: return
         ioExecutor.execute {
             messageDao.save(
                 ChatMessageEntity(
@@ -109,9 +110,11 @@ class AgentChatViewModel @Inject constructor(
         }
     }
 
-    fun updateOrCreatePlaceholder(text: String, thinking: String? = null) {
+    fun updateOrCreatePlaceholder(text: String, thinking: String? = null, targetSessionId: String? = null) {
+        val sid = targetSessionId ?: currentSessionId ?: return
+        if (sid != currentSessionId) return
         synchronized(this) {
-            val existing = placeholderMessage
+            val existing = sessionPlaceholders[sid]
             if (existing != null) {
                 val idx = messageList.indexOf(existing)
                 if (idx >= 0) {
@@ -120,7 +123,7 @@ class AgentChatViewModel @Inject constructor(
                         thinking = thinking ?: existing.thinking,
                     )
                     messageList = messageList.toMutableList().apply { set(idx, updated) }
-                    placeholderMessage = updated
+                    sessionPlaceholders[sid] = updated
                     publishMessages()
                     return
                 }
@@ -131,25 +134,35 @@ class AgentChatViewModel @Inject constructor(
                 thinking = thinking,
                 isPlaceholder = true,
             )
-            placeholderMessage = newPlaceholder
+            sessionPlaceholders[sid] = newPlaceholder
             messageList = messageList + newPlaceholder
             publishMessages()
         }
     }
 
-    fun replacePlaceholder(finalMessage: AgentChatMessage) {
-        synchronized(this) {
-            val existing = placeholderMessage ?: return
-            val idx = messageList.indexOf(existing)
-            if (idx >= 0) {
-                messageList = messageList.toMutableList().apply { set(idx, finalMessage) }
-            } else {
-                messageList = messageList + finalMessage
+    fun replacePlaceholder(finalMessage: AgentChatMessage, targetSessionId: String? = null) {
+        val sid = targetSessionId ?: currentSessionId ?: return
+        if (sid == currentSessionId) {
+            synchronized(this) {
+                val existing = sessionPlaceholders[sid]
+                if (existing != null) {
+                    val idx = messageList.indexOf(existing)
+                    if (idx >= 0) {
+                        messageList = messageList.toMutableList().apply { set(idx, finalMessage) }
+                    } else {
+                        messageList = messageList + finalMessage
+                    }
+                    sessionPlaceholders.remove(sid)
+                    publishMessages()
+                } else {
+                    messageList = messageList + finalMessage
+                    sessionPlaceholders.remove(sid)
+                    publishMessages()
+                }
             }
-            placeholderMessage = null
-            publishMessages()
+        } else {
+            sessionPlaceholders.remove(sid)
         }
-        val sid = currentSessionId ?: return
         ioExecutor.execute {
             messageDao.save(
                 ChatMessageEntity(
@@ -174,6 +187,8 @@ class AgentChatViewModel @Inject constructor(
     }
 
     fun setLoading(loading: Boolean) {
+        val sid = currentSessionId ?: return
+        sessionLoadingStates[sid] = loading
         publishLoading(loading)
     }
 
@@ -188,17 +203,20 @@ class AgentChatViewModel @Inject constructor(
     fun createNewSession() {
         val session = ChatSession()
         currentSessionId = session.id
-        chatHistory.clear()
+        sessionChatHistories[session.id] = mutableListOf()
+        sessionPlaceholders.remove(session.id)
+        sessionLoadingStates[session.id] = false
         messageList = emptyList()
         publishMessages()
         publishStatus("")
+        publishLoading(false)
         ioExecutor.execute { sessionDao.save(session) }
     }
 
     fun switchToSession(sessionId: String) {
         if (sessionId == currentSessionId) return
         currentSessionId = sessionId
-        chatHistory.clear()
+        sessionChatHistories.getOrPut(sessionId) { mutableListOf() }
         ioExecutor.execute {
             val entities = messageDao.getBySessionSync(sessionId)
             val restored = entities.map { e ->
@@ -208,20 +226,22 @@ class AgentChatViewModel @Inject constructor(
                     timestampMs = e.timestampMs,
                 )
             }
-            synchronized(this) {
-                messageList = restored
-                chatHistory.addAll(
-                    restored.filter {
-                        it.role == AgentChatMessage.Role.USER || it.role == AgentChatMessage.Role.ASSISTANT
-                    }.map {
-                        ChatMessage(
-                            role = if (it.role == AgentChatMessage.Role.USER) "user" else "assistant",
-                            content = it.text,
-                        )
-                    }
+            val restoredHistory = restored.filter {
+                it.role == AgentChatMessage.Role.USER || it.role == AgentChatMessage.Role.ASSISTANT
+            }.map {
+                ChatMessage(
+                    role = if (it.role == AgentChatMessage.Role.USER) "user" else "assistant",
+                    content = it.text,
                 )
             }
+            synchronized(this) {
+                messageList = restored
+                sessionChatHistories[sessionId] = restoredHistory.toMutableList()
+                sessionPlaceholders.remove(sessionId)
+            }
             _messages.postValue(restored)
+            _isLoading.postValue(sessionLoadingStates[sessionId] ?: false)
+            _status.postValue("")
         }
     }
 
@@ -229,6 +249,9 @@ class AgentChatViewModel @Inject constructor(
         ioExecutor.execute {
             messageDao.deleteBySession(session.id)
             sessionDao.delete(session)
+            sessionChatHistories.remove(session.id)
+            sessionPlaceholders.remove(session.id)
+            sessionLoadingStates.remove(session.id)
             val nextSessionId = nextSessionIdAfterDeletion(
                 deletedSessionId = session.id,
                 currentSessionId = currentSessionId,
@@ -258,19 +281,21 @@ class AgentChatViewModel @Inject constructor(
         agentProvider: com.limpu.hitax.agent.core.AgentProvider<TimetableAgentInput, TimetableAgentOutput>,
     ) {
         ensureSession()
-        synchronized(this) {
-            chatHistory.add(ChatMessage(role = "user", content = text))
-        }
+        val sid = currentSessionId ?: return
+        val history = sessionChatHistories.getOrPut(sid) { mutableListOf() }
+        history.add(ChatMessage(role = "user", content = text))
 
         viewModelScope.launch {
-            setLoading(true)
+            sessionLoadingStates[sid] = true
+            if (sid == currentSessionId) publishLoading(true)
 
             LlmChatService.chat(
-                history = synchronized(this) { chatHistory.toList() },
+                history = history.toList(),
                 timetableId = null,
                 application = application,
                 agentProvider = agentProvider,
                 onTrace = { trace ->
+                    if (currentSessionId != sid) return@chat
                     val statusText = when (trace.stage) {
                         "react_start" -> "正在分析您的问题…"
                         "react_step" -> {
@@ -298,30 +323,44 @@ class AgentChatViewModel @Inject constructor(
                     } else {
                         null
                     }
-                    updateOrCreatePlaceholder(statusText, currentThinking)
+                    updateOrCreatePlaceholder(statusText, currentThinking, targetSessionId = sid)
                 },
                 onResult = { result ->
+                    sessionLoadingStates[sid] = false
+                    if (sid == currentSessionId) publishLoading(false)
                     when (result) {
                         is LlmChatResult.Success -> {
-                            synchronized(this) {
-                                chatHistory.add(ChatMessage(role = "assistant", content = result.text))
+                            history.add(ChatMessage(role = "assistant", content = result.text))
+                            ioExecutor.execute {
+                                messageDao.save(
+                                    ChatMessageEntity(
+                                        sessionId = sid,
+                                        role = AgentChatMessage.Role.ASSISTANT.name,
+                                        text = result.text,
+                                        timestampMs = System.currentTimeMillis(),
+                                    )
+                                )
+                                sessionDao.updateTitle(sid, deriveTitle(), System.currentTimeMillis())
                             }
-                            replacePlaceholder(AgentChatMessage(
-                                role = AgentChatMessage.Role.ASSISTANT,
-                                text = result.text,
-                                thinking = result.thinking,
-                            ))
-                            setStatus("完成")
+                            if (currentSessionId == sid) {
+                                replacePlaceholder(AgentChatMessage(
+                                    role = AgentChatMessage.Role.ASSISTANT,
+                                    text = result.text,
+                                    thinking = result.thinking,
+                                ), targetSessionId = sid)
+                                setStatus("完成")
+                            }
                         }
                         is LlmChatResult.Error -> {
-                            replacePlaceholder(AgentChatMessage(
-                                role = AgentChatMessage.Role.ASSISTANT,
-                                text = "操作失败: ${result.error}",
-                            ))
-                            setStatus("失败")
+                            if (currentSessionId == sid) {
+                                replacePlaceholder(AgentChatMessage(
+                                    role = AgentChatMessage.Role.ASSISTANT,
+                                    text = "操作失败: ${result.error}",
+                                ), targetSessionId = sid)
+                                setStatus("失败")
+                            }
                         }
                     }
-                    setLoading(false)
                 },
             )
         }
@@ -335,24 +374,25 @@ class AgentChatViewModel @Inject constructor(
         agentProvider: com.limpu.hitax.agent.core.AgentProvider<TimetableAgentInput, TimetableAgentOutput>,
     ) {
         ensureSession()
+        val sid = currentSessionId ?: return
+        val history = sessionChatHistories.getOrPut(sid) { mutableListOf() }
 
         val userMessage = "$text\n\n[文件: $fileName]"
-
-        synchronized(this) {
-            chatHistory.add(ChatMessage(role = "user", content = userMessage))
-        }
+        history.add(ChatMessage(role = "user", content = userMessage))
 
         viewModelScope.launch {
-            setLoading(true)
+            sessionLoadingStates[sid] = true
+            if (sid == currentSessionId) publishLoading(true)
 
             LlmChatService.chatWithAttachment(
-                history = synchronized(this) { chatHistory.toList() },
+                history = history.toList(),
                 attachmentBase64 = base64Content,
                 attachmentMimeType = mimeType,
                 timetableId = null,
                 application = application,
                 agentProvider = agentProvider,
                 onTrace = { trace: AgentTraceEvent ->
+                    if (currentSessionId != sid) return@chatWithAttachment
                     val statusText = when (trace.stage) {
                         "react_start" -> "正在分析附件…"
                         "react_step" -> {
@@ -375,32 +415,44 @@ class AgentChatViewModel @Inject constructor(
                     } else {
                         null
                     }
-                    updateOrCreatePlaceholder(statusText, currentThinking)
+                    updateOrCreatePlaceholder(statusText, currentThinking, targetSessionId = sid)
                 },
                 onResult = { result: LlmChatResult ->
+                    sessionLoadingStates[sid] = false
+                    if (sid == currentSessionId) publishLoading(false)
                     when (result) {
                         is LlmChatResult.Success -> {
-                            synchronized(this) {
-                                // chatWithAttachment 已经在内部更新了历史，这里不需要再次添加
-                                // 但需要确保最新的回复在历史中
-                                if (!chatHistory.any { it.role == "assistant" && it.content == result.text }) {
-                                    chatHistory.add(ChatMessage(role = "assistant", content = result.text))
-                                }
+                            if (!history.any { it.role == "assistant" && it.content == result.text }) {
+                                history.add(ChatMessage(role = "assistant", content = result.text))
                             }
-                            replacePlaceholder(AgentChatMessage(
-                                role = AgentChatMessage.Role.ASSISTANT,
-                                text = result.text,
-                                thinking = result.thinking
-                            ))
+                            ioExecutor.execute {
+                                messageDao.save(
+                                    ChatMessageEntity(
+                                        sessionId = sid,
+                                        role = AgentChatMessage.Role.ASSISTANT.name,
+                                        text = result.text,
+                                        timestampMs = System.currentTimeMillis(),
+                                    )
+                                )
+                                sessionDao.updateTitle(sid, deriveTitle(), System.currentTimeMillis())
+                            }
+                            if (currentSessionId == sid) {
+                                replacePlaceholder(AgentChatMessage(
+                                    role = AgentChatMessage.Role.ASSISTANT,
+                                    text = result.text,
+                                    thinking = result.thinking
+                                ), targetSessionId = sid)
+                            }
                         }
                         is LlmChatResult.Error -> {
-                            replacePlaceholder(AgentChatMessage(
-                                role = AgentChatMessage.Role.ASSISTANT,
-                                text = "抱歉，处理过程中出现错误：${result.error}"
-                            ))
+                            if (currentSessionId == sid) {
+                                replacePlaceholder(AgentChatMessage(
+                                    role = AgentChatMessage.Role.ASSISTANT,
+                                    text = "抱歉，处理过程中出现错误：${result.error}"
+                                ), targetSessionId = sid)
+                            }
                         }
                     }
-                    setLoading(false)
                 },
             )
         }

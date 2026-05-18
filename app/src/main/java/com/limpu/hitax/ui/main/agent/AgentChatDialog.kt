@@ -1,7 +1,10 @@
 package com.limpu.hitax.ui.main.agent
 
+import android.app.AlertDialog
 import android.view.View
 import android.view.inputmethod.EditorInfo
+import android.widget.ArrayAdapter
+import android.widget.Toast
 import androidx.recyclerview.widget.LinearLayoutManager
 import com.limpu.hitax.R
 import com.limpu.hitax.agent.core.AgentProvider
@@ -10,6 +13,7 @@ import com.limpu.hitax.agent.timetable.ArrangementInput
 import com.limpu.hitax.agent.timetable.TimetableAgentFactory
 import com.limpu.hitax.agent.timetable.TimetableAgentInput
 import com.limpu.hitax.agent.timetable.TimetableAgentOutput
+import com.limpu.hitax.data.model.chat.ChatSession
 import com.limpu.hitax.databinding.DialogAgentChatBinding
 import com.limpu.style.widgets.TransparentModeledBottomSheetDialog
 import dagger.hilt.android.AndroidEntryPoint
@@ -33,8 +37,11 @@ class AgentChatDialog :
     private var agentSession: AgentSession<TimetableAgentInput, TimetableAgentOutput>? = null
 
     private lateinit var messageAdapter: AgentChatMessageAdapter
+    private var sessionList: List<ChatSession> = emptyList()
 
     override fun initViews(view: View) {
+        viewModel.ensureSession()
+
         messageAdapter = AgentChatMessageAdapter()
         binding?.messageList?.apply {
             layoutManager = LinearLayoutManager(requireContext()).apply { stackFromEnd = true }
@@ -43,6 +50,8 @@ class AgentChatDialog :
 
         binding?.closeButton?.setOnClickListener { dismiss() }
         binding?.sendButton?.setOnClickListener { sendMessage() }
+        binding?.newSessionButton?.setOnClickListener { viewModel.createNewSession() }
+        binding?.deleteSessionButton?.setOnClickListener { showDeleteSessionDialog() }
 
         binding?.inputField?.setOnEditorActionListener { _, actionId, _ ->
             if (actionId == EditorInfo.IME_ACTION_SEND) {
@@ -58,6 +67,22 @@ class AgentChatDialog :
             if (list.isNotEmpty()) {
                 binding?.messageList?.scrollToPosition(list.size - 1)
             }
+        }
+        viewModel.sessions.observe(this) { sessions ->
+            sessionList = sessions
+            val names = sessions.map { it.title }
+            val adapter = ArrayAdapter(requireContext(), android.R.layout.simple_spinner_item, names)
+            adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
+            binding?.sessionSpinner?.adapter = adapter
+            val current = viewModel.currentSessionId
+            val idx = sessions.indexOfFirst { it.id == current }.coerceAtLeast(0)
+            binding?.sessionSpinner?.setSelection(idx, false)
+        }
+        binding?.sessionSpinner?.onItemSelectedListener = object : android.widget.AdapterView.OnItemSelectedListener {
+            override fun onItemSelected(parent: android.widget.AdapterView<*>, v: View?, position: Int, id: Long) {
+                sessionList.getOrNull(position)?.let { viewModel.switchToSession(it.id) }
+            }
+            override fun onNothingSelected(parent: android.widget.AdapterView<*>) {}
         }
         viewModel.status.observe(this) { text ->
             if (text.isNotEmpty()) {
@@ -80,6 +105,21 @@ class AgentChatDialog :
         viewModel.addMessage(AgentChatMessage(role = AgentChatMessage.Role.USER, text = text))
 
         viewModel.sendToLlm(text, agentProvider)
+    }
+
+    private fun showDeleteSessionDialog() {
+        val current = sessionList.getOrNull(binding?.sessionSpinner?.selectedItemPosition ?: 0)
+        if (current != null) {
+            AlertDialog.Builder(requireContext())
+                .setTitle("删除会话")
+                .setMessage("删除「${current.title}」的聊天记录？")
+                .setPositiveButton("删除") { _, _ ->
+                    viewModel.deleteSession(current)
+                    Toast.makeText(requireContext(), "已删除", Toast.LENGTH_SHORT).show()
+                }
+                .setNegativeButton("取消", null)
+                .show()
+        }
     }
 
     private fun detectAction(text: String): TimetableAgentInput.Action {
@@ -112,9 +152,9 @@ class AgentChatDialog :
             }
 
             TimetableAgentInput.Action.ADD_TIMETABLE_ARRANGEMENT -> {
-                val now = Calendar.getInstance()
-                val fromMs = now.timeInMillis
-                now.add(Calendar.HOUR_OF_DAY, 1)
+        val now = Calendar.getInstance()
+        val fromMs = now.timeInMillis
+        now.add(Calendar.HOUR_OF_DAY, 1)
 
                 TimetableAgentInput(
                     application = requireActivity().application,

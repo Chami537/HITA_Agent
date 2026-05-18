@@ -38,6 +38,46 @@
 
     </LinearLayout>
 
+    <!-- Session bar -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:paddingStart="@dimen/space_6"
+        android:paddingEnd="@dimen/space_4"
+        android:paddingTop="@dimen/space_1"
+        android:paddingBottom="@dimen/space_2">
+
+        <Spinner
+            android:id="@+id/sessionSpinner"
+            android:layout_width="0dp"
+            android:layout_height="36dp"
+            android:layout_weight="1"
+            android:spinnerMode="dropdown" />
+
+        <ImageView
+            android:id="@+id/newSessionButton"
+            android:layout_width="36dp"
+            android:layout_height="36dp"
+            android:foreground="?attr/selectableItemBackgroundBorderless"
+            android:padding="6dp"
+            android:src="@android:drawable/ic_menu_add"
+            app:tint="?attr/textColorSecondary"
+            android:contentDescription="新对话" />
+
+        <ImageView
+            android:id="@+id/deleteSessionButton"
+            android:layout_width="36dp"
+            android:layout_height="36dp"
+            android:foreground="?attr/selectableItemBackgroundBorderless"
+            android:padding="6dp"
+            android:src="@android:drawable/ic_menu_delete"
+            app:tint="?attr/textColorSecondary"
+            android:contentDescription="删除对话" />
+
+    </LinearLayout>
+
     <!-- Status line -->
     <TextView
         android:id="@+id/statusText"
