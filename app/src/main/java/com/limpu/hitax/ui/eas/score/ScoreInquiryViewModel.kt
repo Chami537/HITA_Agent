@@ -13,7 +13,7 @@ import com.limpu.hitax.data.model.eas.TermItem
 import com.limpu.hitax.data.repository.EASRepository
 import com.limpu.hitax.data.source.web.service.EASService
 import com.limpu.hitax.ui.eas.EASViewModel
-import com.limpu.hitax.utils.GPAUtils
+import com.limpu.hitax.utils.WeightedScoreCalculator
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
 
@@ -58,10 +58,10 @@ class ScoreInquiryViewModel @Inject constructor(easRepo: EASRepository) : EASVie
     val scoreSummaryLiveData: LiveData<ScoreSummary?> =
         scoresWithSummaryLiveData.map { it.data?.summary }
 
-    /** 本地计算的学分绩（加权平均分） */
-    val localGPALiveData: LiveData<GPAUtils.LocalGPA> =
+    /** 本地计算的 GPA / CGPA / 学分绩 */
+    val localScoreLiveData: LiveData<WeightedScoreCalculator.ScoreResult> =
         scoresLiveData.map { state ->
-            GPAUtils.calculate(state.data ?: emptyList())
+            WeightedScoreCalculator.calculate(state.data ?: emptyList())
         }
 
     /**

@@ -133,13 +133,15 @@ class ScoreInquiryActivity :
                 rank
             }
         }
-        viewModel.localGPALiveData.observe(this) { localGPA ->
-            if (localGPA.validCourses > 0) {
-                binding.scoreWeightedAvgValue.text = String.format("%.1f", localGPA.weightedAverage)
-                binding.scoreTotalCreditsValue.text = localGPA.totalCredits.toString()
+        viewModel.localScoreLiveData.observe(this) { localScore ->
+            if (localScore.validCourses > 0) {
+                binding.scoreLocalGpaValue.text = String.format("%.2f", localScore.gpa)
+                binding.scoreLocalCgpaValue.text = String.format("%.2f", localScore.cgpa)
+                binding.scoreWeightedAvgValue.text = String.format("%.1f", localScore.weightedAverage)
             } else {
+                binding.scoreLocalGpaValue.text = "-"
+                binding.scoreLocalCgpaValue.text = "-"
                 binding.scoreWeightedAvgValue.text = "-"
-                binding.scoreTotalCreditsValue.text = "-"
             }
         }
         viewModel.selectedTestTypeLiveData.observe(this) {

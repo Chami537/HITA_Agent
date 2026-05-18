@@ -226,11 +226,11 @@
                                 <TextView
                                     android:layout_width="wrap_content"
                                     android:layout_height="wrap_content"
-                                    android:text="@string/score_weighted_avg_local"
+                                    android:text="@string/score_local_gpa"
                                     android:textColor="?attr/textColorSecondary" />
 
                                 <TextView
-                                    android:id="@+id/score_weighted_avg_value"
+                                    android:id="@+id/score_local_gpa_value"
                                     android:layout_width="wrap_content"
                                     android:layout_height="wrap_content"
                                     android:layout_marginTop="4dp"
@@ -249,11 +249,34 @@
                                 <TextView
                                     android:layout_width="wrap_content"
                                     android:layout_height="wrap_content"
-                                    android:text="@string/score_total_credits_local"
+                                    android:text="@string/score_local_cgpa"
                                     android:textColor="?attr/textColorSecondary" />
 
                                 <TextView
-                                    android:id="@+id/score_total_credits_value"
+                                    android:id="@+id/score_local_cgpa_value"
+                                    android:layout_width="wrap_content"
+                                    android:layout_height="wrap_content"
+                                    android:layout_marginTop="4dp"
+                                    android:text="-"
+                                    android:textColor="?attr/textColorPrimary"
+                                    android:textSize="16sp"
+                                    android:textStyle="bold" />
+                            </LinearLayout>
+
+                            <LinearLayout
+                                android:layout_width="0dp"
+                                android:layout_height="wrap_content"
+                                android:layout_weight="1"
+                                android:orientation="vertical">
+
+                                <TextView
+                                    android:layout_width="wrap_content"
+                                    android:layout_height="wrap_content"
+                                    android:text="@string/score_local_weighted_avg"
+                                    android:textColor="?attr/textColorSecondary" />
+
+                                <TextView
+                                    android:id="@+id/score_weighted_avg_value"
                                     android:layout_width="wrap_content"
                                     android:layout_height="wrap_content"
                                     android:layout_marginTop="4dp"
