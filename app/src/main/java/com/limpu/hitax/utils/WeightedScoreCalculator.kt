@@ -55,16 +55,30 @@ object WeightedScoreCalculator {
     }
 
     /**
-     * 多学期累计CGPA
+     * 多学期累计所有指标
      * CGPA = Σ(所有学期绩点×学分) / Σ(所有学期学分)
+     * 累计学分绩 = Σ(所有学期成绩×学分) / Σ(所有学期学分)
      */
-    fun calculateCGPA(allSemesterItems: List<List<CourseScoreItem>>): Float {
+    fun calculateCumulative(allSemesterItems: List<List<CourseScoreItem>>): ScoreResult {
         val allValid = allSemesterItems.flatten().filter { it.credits > 0 && it.finalScores > 0 }
-        if (allValid.isEmpty()) return 0f
+        if (allValid.isEmpty()) {
+            return ScoreResult(0f, 0f, 0f, 0, 0)
+        }
         val totalCredits = allValid.sumOf { it.credits }
+        val totalScoreXCredit = allValid.sumOf { it.finalScores * it.credits }
         val totalGradePointXCredit = allValid.sumOf {
             (scoreToGradePoint(it.finalScores) * it.credits.toDouble())
         }.toFloat()
-        return totalGradePointXCredit / totalCredits
+
+        val cumulativeWeightedAverage = totalScoreXCredit.toFloat() / totalCredits
+        val cumulativeGpa = totalGradePointXCredit / totalCredits
+
+        return ScoreResult(
+            gpa = cumulativeGpa,
+            cgpa = cumulativeGpa,
+            weightedAverage = cumulativeWeightedAverage,
+            totalCredits = totalCredits,
+            validCourses = allValid.size
+        )
     }
 }

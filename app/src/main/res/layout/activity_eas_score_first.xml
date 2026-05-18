@@ -149,7 +149,16 @@
                         android:orientation="vertical"
                         android:padding="16dp">
 
-                        <!-- 服务器数据行 -->
+                        <!-- 教务系统数据 -->
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="@string/score_section_server"
+                            android:textColor="?attr/textColorSecondary"
+                            android:textSize="11sp"
+                            android:alpha="0.7"
+                            android:layout_marginBottom="8dp" />
+
                         <LinearLayout
                             android:layout_width="match_parent"
                             android:layout_height="wrap_content"
@@ -211,7 +220,16 @@
                             android:background="?attr/textColorSecondary"
                             android:alpha="0.2" />
 
-                        <!-- 本地计算行 -->
+                        <!-- 全部学期累计 -->
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="@string/score_section_cumulative"
+                            android:textColor="?attr/textColorSecondary"
+                            android:textSize="11sp"
+                            android:alpha="0.7"
+                            android:layout_marginBottom="8dp" />
+
                         <LinearLayout
                             android:layout_width="match_parent"
                             android:layout_height="wrap_content"
@@ -226,11 +244,11 @@
                                 <TextView
                                     android:layout_width="wrap_content"
                                     android:layout_height="wrap_content"
-                                    android:text="@string/score_local_gpa"
+                                    android:text="@string/score_cumulative_weighted_avg"
                                     android:textColor="?attr/textColorSecondary" />
 
                                 <TextView
-                                    android:id="@+id/score_local_gpa_value"
+                                    android:id="@+id/score_cumulative_wavg_value"
                                     android:layout_width="wrap_content"
                                     android:layout_height="wrap_content"
                                     android:layout_marginTop="4dp"
@@ -249,11 +267,11 @@
                                 <TextView
                                     android:layout_width="wrap_content"
                                     android:layout_height="wrap_content"
-                                    android:text="@string/score_local_cgpa"
+                                    android:text="@string/score_cumulative_gpa"
                                     android:textColor="?attr/textColorSecondary" />
 
                                 <TextView
-                                    android:id="@+id/score_local_cgpa_value"
+                                    android:id="@+id/score_cumulative_gpa_value"
                                     android:layout_width="wrap_content"
                                     android:layout_height="wrap_content"
                                     android:layout_marginTop="4dp"
@@ -272,11 +290,11 @@
                                 <TextView
                                     android:layout_width="wrap_content"
                                     android:layout_height="wrap_content"
-                                    android:text="@string/score_local_weighted_avg"
+                                    android:text="@string/score_total_credits"
                                     android:textColor="?attr/textColorSecondary" />
 
                                 <TextView
-                                    android:id="@+id/score_weighted_avg_value"
+                                    android:id="@+id/score_total_credits_value"
                                     android:layout_width="wrap_content"
                                     android:layout_height="wrap_content"
                                     android:layout_marginTop="4dp"

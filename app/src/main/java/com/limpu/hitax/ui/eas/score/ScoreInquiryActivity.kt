@@ -56,10 +56,12 @@ class ScoreInquiryActivity :
                         for (t in data.data!!) {
                             if (t.isCurrent) {
                                 viewModel.selectedTermLiveData.value = t
+                                viewModel.loadCumulativeScores(data.data!!)
                                 return@observe
                             }
                         }
                         viewModel.selectedTermLiveData.value = data.data?.get(0)
+                        viewModel.loadCumulativeScores(data.data!!)
                     }
                 }
 
@@ -133,15 +135,16 @@ class ScoreInquiryActivity :
                 rank
             }
         }
-        viewModel.localScoreLiveData.observe(this) { localScore ->
-            if (localScore.validCourses > 0) {
-                binding.scoreLocalGpaValue.text = String.format("%.2f", localScore.gpa)
-                binding.scoreLocalCgpaValue.text = String.format("%.2f", localScore.cgpa)
-                binding.scoreWeightedAvgValue.text = String.format("%.1f", localScore.weightedAverage)
+        viewModel.localScoreLiveData.observe(this) { }
+        viewModel.cumulativeScoreLiveData.observe(this) { cumulative ->
+            if (cumulative.validCourses > 0) {
+                binding.scoreCumulativeWavgValue.text = String.format("%.1f", cumulative.weightedAverage)
+                binding.scoreCumulativeGpaValue.text = String.format("%.2f", cumulative.gpa)
+                binding.scoreTotalCreditsValue.text = cumulative.totalCredits.toString()
             } else {
-                binding.scoreLocalGpaValue.text = "-"
-                binding.scoreLocalCgpaValue.text = "-"
-                binding.scoreWeightedAvgValue.text = "-"
+                binding.scoreCumulativeWavgValue.text = "-"
+                binding.scoreCumulativeGpaValue.text = "-"
+                binding.scoreTotalCreditsValue.text = "-"
             }
         }
         viewModel.selectedTestTypeLiveData.observe(this) {

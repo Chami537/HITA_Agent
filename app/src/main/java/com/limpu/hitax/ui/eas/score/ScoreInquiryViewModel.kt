@@ -1,9 +1,13 @@
 package com.limpu.hitax.ui.eas.score
 
+import android.os.Handler
+import android.os.Looper
 import androidx.lifecycle.LiveData
 import androidx.lifecycle.MutableLiveData
+import androidx.lifecycle.Observer
 import androidx.lifecycle.map
 import androidx.lifecycle.switchMap
+import androidx.lifecycle.viewModelScope
 import com.limpu.component.data.DataState
 import com.limpu.component.data.MTransformations
 import com.limpu.component.data.Trigger
@@ -15,6 +19,11 @@ import com.limpu.hitax.data.source.web.service.EASService
 import com.limpu.hitax.ui.eas.EASViewModel
 import com.limpu.hitax.utils.WeightedScoreCalculator
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeout
 import javax.inject.Inject
 
 @HiltViewModel
@@ -58,11 +67,17 @@ class ScoreInquiryViewModel @Inject constructor(easRepo: EASRepository) : EASVie
     val scoreSummaryLiveData: LiveData<ScoreSummary?> =
         scoresWithSummaryLiveData.map { it.data?.summary }
 
-    /** 本地计算的 GPA / CGPA / 学分绩 */
+    /** 当前学期的本地计算 GPA / CGPA / 学分绩 */
     val localScoreLiveData: LiveData<WeightedScoreCalculator.ScoreResult> =
         scoresLiveData.map { state ->
             WeightedScoreCalculator.calculate(state.data ?: emptyList())
         }
+
+    /** 全部学期累计 CGPA / 学分绩 */
+    val cumulativeScoreLiveData: MutableLiveData<WeightedScoreCalculator.ScoreResult> =
+        MutableLiveData()
+
+    private var cumulativeLoaded = false
 
     /**
      * 方法区
@@ -77,6 +92,50 @@ class ScoreInquiryViewModel @Inject constructor(easRepo: EASRepository) : EASVie
         selectedTermLiveData.value = term
         selectedTestTypeLiveData.value = testType
         return true
+    }
+
+    fun loadCumulativeScores(terms: List<TermItem>) {
+        if (cumulativeLoaded) return
+        cumulativeLoaded = true
+        viewModelScope.launch {
+            val allSemesterItems = terms.map { term ->
+                async { fetchTermScores(term) }
+            }.awaitAll()
+            val result = WeightedScoreCalculator.calculateCumulative(allSemesterItems)
+            cumulativeScoreLiveData.value = result
+        }
+    }
+
+    private suspend fun fetchTermScores(term: TermItem): List<CourseScoreItem> {
+        return try {
+            withTimeout(15000L) {
+                val deferred = CompletableDeferred<List<CourseScoreItem>>()
+                val liveData = easRepo.getPersonalScores(term, EASService.TestType.NORMAL)
+                val observer = Observer<DataState<List<CourseScoreItem>>> { state ->
+                    when (state.state) {
+                        DataState.STATE.SUCCESS -> {
+                            deferred.complete(state.data ?: emptyList())
+                        }
+                        DataState.STATE.NOTHING -> {} // 加载中
+                        else -> {
+                            deferred.complete(emptyList())
+                        }
+                    }
+                }
+                Handler(Looper.getMainLooper()).post {
+                    liveData.observeForever(observer)
+                }
+                try {
+                    deferred.await()
+                } finally {
+                    Handler(Looper.getMainLooper()).post {
+                        liveData.removeObserver(observer)
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            emptyList()
+        }
     }
 
     private fun parseStartYear(raw: String?): Int? {

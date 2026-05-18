@@ -8,11 +8,7 @@ plugins {
 def appVersionCodeValue = 2026051801
 def appVersionNameValue = "2.0.7"
 
-
 android {
-
-//    buildToolsVersion '31.0.0-rc5'
-
     defaultConfig {
         applicationId "com.limpu.hitax"
         minSdkVersion 26
@@ -39,19 +35,11 @@ android {
         buildConfigField "String", "UPDATE_LOG", '""'
         buildConfigField "boolean", "UPDATE_ALLOW_PRERELEASE", "true"
     }
-//    viewBinding{
-//        enabled = true
-//    }
+
     buildFeatures {
-        //dataBinding = true
-        // for view binding :
         buildConfig = true
         viewBinding = true
         compose = false
-        composeOptions {
-            kotlinCompilerVersion '1.4.30'
-            kotlinCompilerExtensionVersion compose_version
-        }
     }
 
     buildTypes {
@@ -73,10 +61,8 @@ android {
     }
     kotlinOptions {
         jvmTarget = '1.8'
-//        useIR = true
     }
     namespace 'com.limpu.hitax'
-
 }
 
 dependencies {
@@ -99,10 +85,8 @@ dependencies {
     androidTestImplementation 'androidx.test.ext:junit:1.2.1'
     androidTestImplementation 'androidx.test.espresso:espresso-core:3.6.1'
 
-
     implementation "androidx.room:room-runtime:2.6.1"
     kapt "androidx.room:room-compiler:2.6.1"
-
 
     //kotlin的viewModel
     implementation "androidx.lifecycle:lifecycle-viewmodel-ktx:2.8.4"
@@ -133,28 +117,6 @@ dependencies {
     implementation 'com.cncoderx.wheelview:library:1.2.2'//滚轮选择器
 
     implementation 'com.github.ibrahimsn98:SmoothBottomBar:1.7.6'//底部导航
-
-
-
-    //jetpack compose
-    implementation "androidx.compose.ui:ui:$compose_version"
-    // Tooling support (Previews, etc.)
-    implementation "androidx.compose.ui:ui-tooling:$compose_version"
-    // Foundation (Border, Background, Box, Image, Scroll, shapes, animations, etc.)
-    implementation "androidx.compose.foundation:foundation:$compose_version"
-    // Material Design
-    implementation "androidx.compose.material:material:$compose_version"
-    // Material design icons
-    implementation "androidx.compose.material:material-icons-core:$compose_version"
-    implementation "androidx.compose.material:material-icons-extended:$compose_version"
-    // Integration with observables
-    implementation "androidx.compose.runtime:runtime-livedata:$compose_version"
-    implementation "androidx.compose.runtime:runtime-rxjava2:$compose_version"
-    // UI Tests
-    androidTestImplementation "androidx.compose.ui:ui-test-junit4:$compose_version"
-
-    //setContent被移除
-    implementation 'androidx.activity:activity-compose:1.9.1'
 
     implementation 'org.mnode.ical4j:ical4j:1.0.2'
 
@@ -189,7 +151,6 @@ dependencies {
 
     // Fragment KTX for by viewModels()
     implementation 'androidx.fragment:fragment-ktx:1.8.2'
-
 }
 
 // Compatibility alias for tooling/scripts that still invoke :app:testClasses (Java plugin task).
