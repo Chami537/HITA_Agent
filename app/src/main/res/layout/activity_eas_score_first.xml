@@ -70,8 +70,8 @@
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:text="-"
-                        android:textColor="?attr/textColorPrimary"
-                        android:textSize="16sp" />
+                        android:textAppearance="@style/TextAppearance.HITA.BodyLarge"
+                        android:textColor="?attr/textColorPrimary" />
 
                     <ImageView
                         android:layout_width="12dp"
@@ -98,8 +98,8 @@
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:text="-"
-                        android:textColor="?attr/textColorPrimary"
-                        android:textSize="16sp" />
+                        android:textAppearance="@style/TextAppearance.HITA.BodyLarge"
+                        android:textColor="?attr/textColorPrimary" />
 
                     <ImageView
                         android:layout_width="12dp"
@@ -155,7 +155,7 @@
                             android:layout_height="wrap_content"
                             android:text="@string/score_section_server"
                             android:textColor="?attr/textColorSecondary"
-                            android:textSize="11sp"
+                            android:textAppearance="@style/TextAppearance.HITA.LabelSmall"
                             android:alpha="0.7"
                             android:layout_marginBottom="8dp" />
 
@@ -182,8 +182,8 @@
                                     android:layout_height="wrap_content"
                                     android:layout_marginTop="4dp"
                                     android:text="-"
+                                    android:textAppearance="@style/TextAppearance.HITA.TitleMedium"
                                     android:textColor="?attr/textColorPrimary"
-                                    android:textSize="16sp"
                                     android:textStyle="bold" />
                             </LinearLayout>
 
@@ -205,8 +205,8 @@
                                     android:layout_height="wrap_content"
                                     android:layout_marginTop="4dp"
                                     android:text="-"
+                                    android:textAppearance="@style/TextAppearance.HITA.TitleMedium"
                                     android:textColor="?attr/textColorPrimary"
-                                    android:textSize="16sp"
                                     android:textStyle="bold" />
                             </LinearLayout>
                         </LinearLayout>
@@ -226,7 +226,7 @@
                             android:layout_height="wrap_content"
                             android:text="@string/score_section_cumulative"
                             android:textColor="?attr/textColorSecondary"
-                            android:textSize="11sp"
+                            android:textAppearance="@style/TextAppearance.HITA.LabelSmall"
                             android:alpha="0.7"
                             android:layout_marginBottom="8dp" />
 
@@ -253,8 +253,8 @@
                                     android:layout_height="wrap_content"
                                     android:layout_marginTop="4dp"
                                     android:text="-"
+                                    android:textAppearance="@style/TextAppearance.HITA.TitleMedium"
                                     android:textColor="?attr/colorPrimary"
-                                    android:textSize="16sp"
                                     android:textStyle="bold" />
                             </LinearLayout>
 
@@ -276,8 +276,8 @@
                                     android:layout_height="wrap_content"
                                     android:layout_marginTop="4dp"
                                     android:text="-"
+                                    android:textAppearance="@style/TextAppearance.HITA.TitleMedium"
                                     android:textColor="?attr/textColorPrimary"
-                                    android:textSize="16sp"
                                     android:textStyle="bold" />
                             </LinearLayout>
 
@@ -299,8 +299,8 @@
                                     android:layout_height="wrap_content"
                                     android:layout_marginTop="4dp"
                                     android:text="-"
+                                    android:textAppearance="@style/TextAppearance.HITA.TitleMedium"
                                     android:textColor="?attr/textColorPrimary"
-                                    android:textSize="16sp"
                                     android:textStyle="bold" />
                             </LinearLayout>
                         </LinearLayout>
@@ -335,6 +335,7 @@
                                 android:layout_width="wrap_content"
                                 android:layout_height="wrap_content"
                                 android:text="@string/score_reminder_title"
+                                android:textAppearance="@style/TextAppearance.HITA.TitleMedium"
                                 android:textColor="?attr/textColorPrimary"
                                 android:textStyle="bold" />
 
@@ -343,8 +344,8 @@
                                 android:layout_height="wrap_content"
                                 android:layout_marginTop="4dp"
                                 android:text="@string/score_reminder_subtitle"
-                                android:textColor="?attr/textColorSecondary"
-                                android:textSize="12sp" />
+                                android:textAppearance="@style/TextAppearance.HITA.BodySmall"
+                                android:textColor="?attr/textColorSecondary" />
                         </LinearLayout>
 
                         <Switch

@@ -71,8 +71,8 @@
                             android:ellipsize="end"
                             android:singleLine="true"
                             android:text="-"
-                            android:textColor="?attr/textColorPrimary"
-                            android:textSize="28sp" />
+                            android:textAppearance="@style/TextAppearance.HITA.HeadlineMedium"
+                            android:textColor="?attr/textColorPrimary" />
 
                         <ImageView
                             android:layout_width="18dp"
@@ -113,8 +113,8 @@
                             android:ellipsize="end"
                             android:singleLine="true"
                             android:text="-"
-                            android:textColor="?attr/textColorPrimary"
-                            android:textSize="28sp" />
+                            android:textAppearance="@style/TextAppearance.HITA.HeadlineMedium"
+                            android:textColor="?attr/textColorPrimary" />
 
                         <ImageView
                             android:layout_width="18dp"

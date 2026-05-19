@@ -50,8 +50,8 @@
                     android:gravity="center"
                     android:singleLine="true"
                     android:text="@string/title_timetable_manager"
-                    android:textColor="?attr/textColorPrimary"
-                    android:textSize="32sp" />
+                    android:textAppearance="@style/TextAppearance.HITA.HeadlineLarge"
+                    android:textColor="?attr/textColorPrimary" />
 
                 <Space
                     android:layout_width="0dp"
@@ -140,8 +140,8 @@
                 android:paddingStart="@dimen/space_6"
                 android:paddingEnd="@dimen/space_6"
                 android:text="@string/title_teachers"
+                android:textAppearance="@style/TextAppearance.HITA.TitleLarge"
                 android:textColor="?attr/textColorPrimary"
-                android:textSize="22sp"
                 android:textStyle="bold"
                 android:visibility="gone" />
 
@@ -173,8 +173,8 @@
                     android:paddingStart="@dimen/space_8"
                     android:paddingEnd="@dimen/space_6"
                     android:text="@string/title_subjects"
+                    android:textAppearance="@style/TextAppearance.HITA.TitleLarge"
                     android:textColor="?attr/textColorPrimary"
-                    android:textSize="22sp"
                     android:textStyle="bold" />
 
                 <ImageView
@@ -238,8 +238,8 @@
                 android:paddingStart="@dimen/space_8"
                 android:paddingEnd="@dimen/space_6"
                 android:text="@string/timetable_structure_label"
+                android:textAppearance="@style/TextAppearance.HITA.TitleLarge"
                 android:textColor="?attr/textColorPrimary"
-                android:textSize="22sp"
                 android:textStyle="bold" />
 
             <com.google.android.material.card.MaterialCardView
