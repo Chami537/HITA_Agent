@@ -2,9 +2,12 @@ package com.limpu.hitax.utils
 
 import android.app.Activity
 import android.app.DownloadManager
+import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.content.SharedPreferences
+import android.database.Cursor
 import android.net.Uri
 import android.os.Environment
 import android.view.View
@@ -414,6 +417,9 @@ object ActivityUtils {
             }).show(activity.supportFragmentManager, "update")
     }
 
+    private var lastDownloadId: Long = -1
+    private var downloadReceiver: BroadcastReceiver? = null
+
     private fun downloadAndInstall(activity: AppCompatActivity, cr: CheckUpdateResult) {
         val downloadUrl = cr.downloadUrl.ifEmpty { cr.latestUrl }
         val fileName = "HITA_v${cr.latestVersionName}.apk"
@@ -424,8 +430,44 @@ object ActivityUtils {
             .setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, fileName)
             .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
         val dm = activity.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
-        dm.enqueue(request)
-        Toast.makeText(activity, "已开始下载，请查看通知栏", Toast.LENGTH_SHORT).show()
+        lastDownloadId = dm.enqueue(request)
+
+        downloadReceiver?.let { activity.unregisterReceiver(it) }
+        val receiver = object : BroadcastReceiver() {
+            override fun onReceive(context: Context, intent: Intent) {
+                if (intent.action != DownloadManager.ACTION_DOWNLOAD_COMPLETE) return
+                val downloadId = intent.getLongExtra(DownloadManager.EXTRA_DOWNLOAD_ID, -1)
+                if (downloadId != lastDownloadId) return
+
+                try {
+                    val query = DownloadManager.Query().setFilterById(downloadId)
+                    val cursor: Cursor = dm.query(query)
+                    if (cursor.moveToFirst()) {
+                        val status = cursor.getInt(cursor.getColumnIndexOrThrow(DownloadManager.COLUMN_STATUS))
+                        if (status == DownloadManager.STATUS_SUCCESSFUL) {
+                            val uri = dm.getUriForDownloadedFile(downloadId)
+                            if (uri != null) {
+                                val installIntent = Intent(Intent.ACTION_VIEW).apply {
+                                    setDataAndType(uri, "application/vnd.android.package-archive")
+                                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                }
+                                context.startActivity(installIntent)
+                            }
+                        }
+                    }
+                    cursor.close()
+                } catch (_: Exception) { }
+
+                try {
+                    context.unregisterReceiver(this)
+                } catch (_: Exception) { }
+            }
+        }
+        val filter = IntentFilter(DownloadManager.ACTION_DOWNLOAD_COMPLETE)
+        activity.applicationContext.registerReceiver(receiver, filter)
+        downloadReceiver = receiver
+        Toast.makeText(activity, "已开始下载", Toast.LENGTH_SHORT).show()
     }
 
     fun startNewsActivity(from: Context, url: String, title: String) {
