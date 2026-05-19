@@ -5,8 +5,8 @@ plugins {
     id 'dagger.hilt.android.plugin'
 }
 
-def appVersionCodeValue = 2026051801
-def appVersionNameValue = "2.0.7"
+def appVersionCodeValue = 2026051901
+def appVersionNameValue = "2.0.8"
 
 android {
     defaultConfig {
