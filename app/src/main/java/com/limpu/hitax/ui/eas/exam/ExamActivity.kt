@@ -61,10 +61,6 @@ class ExamActivity :
             it?.let { term ->
                 binding.refresh.isRefreshing = true
                 binding.examTermText.text = getDisplayTermName(term)
-                // 显示加载提示，避免用户以为卡住了
-                if (viewModel.examInfoLiveData.value?.data.isNullOrEmpty()) {
-                    Toast.makeText(this, "正在加载考试数据，请稍候...", Toast.LENGTH_SHORT).show()
-                }
             }
         }
         viewModel.selectedExamTypeLiveData.observe(this) {

@@ -108,10 +108,9 @@ class ExamViewModel @Inject constructor(
         lastRefreshTime = currentTime
         previousTerm = selectedTerm
 
-        pageController.value = Trigger.actioning
-
         // 如果学期为null，等待学期列表加载，不提前设置本地数据
         if (selectedTerm == null) {
+            pageController.value = Trigger.actioning
             LogUtils.d("⏳ term is null, waiting for term list to load first", "ExamViewModel")
             termsLiveData.observeForever(object : androidx.lifecycle.Observer<DataState<List<TermItem>>> {
                 override fun onChanged(result: DataState<List<TermItem>>) {
