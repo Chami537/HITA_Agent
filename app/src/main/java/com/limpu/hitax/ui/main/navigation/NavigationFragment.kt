@@ -22,6 +22,7 @@ import com.limpu.hitax.ui.eas.classroom.EmptyClassroomActivity
 import com.limpu.hitax.ui.eas.exam.ExamActivity
 import com.limpu.hitax.ui.eas.imp.ImportTimetableActivity
 import com.limpu.hitax.ui.eas.login.PopUpLoginEAS
+import com.limpu.hitax.ui.credit.CreditStatsActivity
 import com.limpu.hitax.ui.eas.score.ScoreInquiryActivity
 import com.limpu.hitax.utils.ActivityUtils
 import com.limpu.hitax.utils.ActivityUtils.CourseResourceMode
@@ -161,6 +162,12 @@ class NavigationFragment : HiltBaseFragment<FragmentNavigationBinding>() {
             ActivityUtils.startActivity(
                 requireContext(),
                 EmptyClassroomActivity::class.java
+            )
+        }
+        binding?.cardCreditStats?.setOnClickListener {
+            ActivityUtils.startActivity(
+                requireContext(),
+                CreditStatsActivity::class.java
             )
         }
         binding?.cardScores?.setOnClickListener {

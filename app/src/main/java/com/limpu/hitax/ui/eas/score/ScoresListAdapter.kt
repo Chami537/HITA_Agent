@@ -30,6 +30,7 @@ class ScoresListAdapter(mContext: Context, mBeans: MutableList<CourseScoreItem>)
             holder.binding.divider2.visibility = View.VISIBLE
         }
         holder.binding.title.text = data?.courseName
+        holder.binding.credits.text = data?.credits?.takeIf { it > 0 }?.let { "${it}学分" } ?: ""
         holder.binding.scores.text = data?.finalScoresText?.takeIf { it.isNotBlank() }
             ?: data?.finalScores?.takeIf { it >= 0 }?.toString()
             ?: "--"

@@ -26,6 +26,10 @@ object RepositoryModule {
 
     @Provides
     @Singleton
+    fun provideCreditGoalStore(@ApplicationContext context: Context): CreditGoalStore = CreditGoalStore(context)
+
+    @Provides
+    @Singleton
     fun provideTimetablePreferenceSource(@ApplicationContext context: Context): TimetablePreferenceSource = TimetablePreferenceSource(context)
 
     @Provides
