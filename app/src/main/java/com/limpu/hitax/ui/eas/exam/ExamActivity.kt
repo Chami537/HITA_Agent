@@ -34,14 +34,9 @@ class ExamActivity :
     private fun bindLiveData(){
         viewModel.termsLiveData.observe(this) { data ->
             if (data.state == DataState.STATE.SUCCESS) {
-                if (!data.data.isNullOrEmpty()) {
-                    for (t in data.data!!) {
-                        if (t.isCurrent) {
-                            viewModel.selectedTermLiveData.value = t
-                            return@observe
-                        }
-                    }
-                    viewModel.selectedTermLiveData.value = data.data?.get(0)
+                if (data.data.isNullOrEmpty()) {
+                    binding.refresh.isRefreshing = false
+                    binding.examTermText.setText(R.string.load_failed)
                 }
             } else if (data.state == DataState.STATE.NOT_LOGGED_IN) {
                 // 处理认证过期，触发自动重新登录
@@ -107,7 +102,6 @@ class ExamActivity :
     override fun refresh() {
         binding.refresh.isRefreshing = true
         resetSessionRetryState() // 重置会话重试状态
-        Toast.makeText(this, "正在加载考试数据，请稍候...", Toast.LENGTH_SHORT).show()
         viewModel.startRefresh()
     }
 

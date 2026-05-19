@@ -108,7 +108,10 @@ class ExamViewModel @Inject constructor(
         lastRefreshTime = currentTime
         previousTerm = selectedTerm
 
-        pageController.value = Trigger.actioning
+        // 触发学期列表加载（首次加载或学期变更时需要）
+        if (selectedTerm == null) {
+            pageController.value = Trigger.actioning
+        }
 
         // 如果学期为null，等待学期列表加载，不提前设置本地数据
         if (selectedTerm == null) {
@@ -134,6 +137,8 @@ class ExamViewModel @Inject constructor(
             })
             return
         }
+
+        pageController.value = Trigger.actioning
 
         // 调用API获取服务器考试数据，传递学期参数
         LogUtils.d("🌐 calling getExamInfo API with term: ${selectedTerm.name}", "ExamViewModel")

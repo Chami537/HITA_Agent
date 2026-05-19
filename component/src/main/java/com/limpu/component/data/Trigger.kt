@@ -21,11 +21,6 @@ open class Trigger {
         get() = state == STATES.ACTION
 
     companion object {
-        val actioning: Trigger
-            get() {
-                val trigger = Trigger()
-                trigger.setActioning()
-                return trigger
-            }
+        val actioning: Trigger = Trigger().apply { setActioning() }
     }
 }
