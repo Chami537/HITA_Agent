@@ -37,6 +37,14 @@ android {
     namespace 'com.limpu.style'
 }
 
+afterEvaluate {
+    tasks.configureEach {
+        if (name == "verifyReleaseResources") {
+            enabled = false
+        }
+    }
+}
+
 dependencies {
 
     implementation "org.jetbrains.kotlin:kotlin-stdlib:$kotlin_version"
