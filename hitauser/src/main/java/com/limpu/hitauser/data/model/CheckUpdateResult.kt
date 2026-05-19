@@ -6,4 +6,5 @@ class CheckUpdateResult {
     var latestVersionName: String = ""
     var latestUrl: String = ""
     var updateLog: String = ""
+    var downloadUrl: String = ""
 }

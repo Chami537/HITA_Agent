@@ -40,10 +40,14 @@ class UpdateRepository @Inject constructor(
                 }
             }.trim()
 
+            val apkAsset = best.assets?.find {
+                it.name?.endsWith(".apk", ignoreCase = true) == true
+            }
             val result = CheckUpdateResult().apply {
                 latestVersionName = latestVersion.displayName()
                 latestVersionCode = latestVersion.toVersionCode()
                 latestUrl = best.htmlUrl ?: updateUrl
+                downloadUrl = apkAsset?.downloadUrl ?: best.htmlUrl ?: updateUrl
                 updateLog = updateLogText
                 shouldUpdate = latestVersion > current
             }

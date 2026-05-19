@@ -1,10 +1,12 @@
 package com.limpu.hitax.utils
 
 import android.app.Activity
+import android.app.DownloadManager
 import android.content.Context
 import android.content.Intent
 import android.content.SharedPreferences
 import android.net.Uri
+import android.os.Environment
 import android.view.View
 import android.widget.ImageView
 import android.widget.Toast
@@ -380,14 +382,12 @@ object ActivityUtils {
     }
 
     fun showUpdateNotificationForce(cr:CheckUpdateResult,activity: AppCompatActivity){
-        PopUpText().setText("版本：${cr.latestVersionName}\n更新内容：${cr.updateLog}\n" + "是否前往下载？")
+        PopUpText().setText("版本：${cr.latestVersionName}\n更新内容：${cr.updateLog}\n" + "是否下载安装？")
             .setTitle(R.string.new_version_available)
             .setOnConfirmListener(object : PopUpText.OnConfirmListener {
 
                 override fun OnConfirm() {
-                    val uri: Uri = Uri.parse(cr.latestUrl);
-                    val intent = Intent(Intent.ACTION_VIEW, uri);
-                    activity.startActivity(intent)
+                    downloadAndInstall(activity, cr)
                 }
             }).show(activity.supportFragmentManager, "update")
     }
@@ -397,13 +397,11 @@ object ActivityUtils {
        val preference: SharedPreferences =
             activity.application.getSharedPreferences("update_skip", Context.MODE_PRIVATE)
         if(preference.getBoolean(cr.latestVersionCode.toString(),false)) return
-        PopUpUpdate().setText("版本：${cr.latestVersionName}\n更新内容：${cr.updateLog}\n" + "是否前往下载？")
+        PopUpUpdate().setText("版本：${cr.latestVersionName}\n更新内容：${cr.updateLog}\n" + "是否下载安装？")
             .setTitle(R.string.new_version_available)
             .setOnActionListener(object : PopUpUpdate.OnActionListener {
                 override fun onConfirm() {
-                    val uri: Uri = Uri.parse(cr.latestUrl);
-                    val intent = Intent(Intent.ACTION_VIEW, uri);
-                    activity.startActivity(intent)
+                    downloadAndInstall(activity, cr)
                 }
 
                 override fun onCancel() {
@@ -414,6 +412,20 @@ object ActivityUtils {
                     preference.edit().putBoolean(cr.latestVersionCode.toString(),true).apply()
                 }
             }).show(activity.supportFragmentManager, "update")
+    }
+
+    private fun downloadAndInstall(activity: AppCompatActivity, cr: CheckUpdateResult) {
+        val downloadUrl = cr.downloadUrl.ifEmpty { cr.latestUrl }
+        val fileName = "HITA_v${cr.latestVersionName}.apk"
+        val request = DownloadManager.Request(Uri.parse(downloadUrl))
+            .setTitle("HITA 更新下载")
+            .setDescription("正在下载 v${cr.latestVersionName}")
+            .setMimeType("application/vnd.android.package-archive")
+            .setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, fileName)
+            .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
+        val dm = activity.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
+        dm.enqueue(request)
+        Toast.makeText(activity, "已开始下载，请查看通知栏", Toast.LENGTH_SHORT).show()
     }
 
     fun startNewsActivity(from: Context, url: String, title: String) {
