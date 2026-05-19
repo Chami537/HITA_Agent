@@ -88,6 +88,7 @@ class MainActivity : HiltBaseActivity<ActivityMainBinding>(),
 
         private var childContent: View? = null
         private var usableHeightPrevious = 0
+        private val resizeThresholdPx = 24
 
         fun assistActivity() {
             val content = activity.findViewById<View>(android.R.id.content) as ViewGroup
@@ -102,14 +103,16 @@ class MainActivity : HiltBaseActivity<ActivityMainBinding>(),
                 val usableHeightSansKeyboard = childContent?.rootView?.height ?: 0
                 val heightDifference = usableHeightSansKeyboard - usableHeightNow
                 if (heightDifference > (usableHeightSansKeyboard / 4)) {
-                    // keyboard probably just became visible
-                    // 只给 ViewPager 添加底部 padding，不影响导航栏
+                    // keyboard probably just became visible. If adjustResize already resized the
+                    // activity content, adding keyboard-height padding again pushes Agent input too high.
                     val pager = activity.findViewById<View>(R.id.pager)
+                    val contentHeight = childContent?.height ?: 0
+                    val alreadyResized = contentHeight <= usableHeightNow + resizeThresholdPx
                     pager?.setPadding(
                         pager.paddingLeft,
                         pager.paddingTop,
                         pager.paddingRight,
-                        heightDifference // 底部padding等于键盘高度
+                        if (alreadyResized) 0 else heightDifference
                     )
                 } else {
                     // keyboard probably just became hidden
