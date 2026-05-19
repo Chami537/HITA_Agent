@@ -56,10 +56,12 @@ class ScoreInquiryActivity :
                         for (t in data.data!!) {
                             if (t.isCurrent) {
                                 viewModel.selectedTermLiveData.value = t
+                                viewModel.loadCumulativeScores(data.data!!)
                                 return@observe
                             }
                         }
                         viewModel.selectedTermLiveData.value = data.data?.get(0)
+                        viewModel.loadCumulativeScores(data.data!!)
                     }
                 }
 
@@ -120,10 +122,8 @@ class ScoreInquiryActivity :
             }
         }
         viewModel.scoreSummaryLiveData.observe(this) { summary ->
-            val hasSummary = summary != null && (
-                summary.gpa.isNotBlank() || summary.rank.isNotBlank() || summary.total.isNotBlank()
-            )
-            binding.scoreSummaryCard.visibility = if (hasSummary) View.VISIBLE else View.GONE
+            // 本地计算始终可用，卡片始终显示（只要有成绩数据）
+            binding.scoreSummaryCard.visibility = View.VISIBLE
             val gpaRaw = summary?.gpa?.ifBlank { "-" } ?: "-"
             val gpa = gpaRaw.toDoubleOrNull()?.let { String.format("%.2f", it) } ?: gpaRaw
             val rank = summary?.rank?.ifBlank { "-" } ?: "-"
@@ -133,6 +133,18 @@ class ScoreInquiryActivity :
                 "$rank / $total"
             } else {
                 rank
+            }
+        }
+        viewModel.localScoreLiveData.observe(this) { }
+        viewModel.cumulativeScoreLiveData.observe(this) { cumulative ->
+            if (cumulative.validCourses > 0) {
+                binding.scoreCumulativeWavgValue.text = String.format("%.1f", cumulative.weightedAverage)
+                binding.scoreCumulativeGpaValue.text = String.format("%.2f", cumulative.gpa)
+                binding.scoreTotalCreditsValue.text = cumulative.totalCredits.toString()
+            } else {
+                binding.scoreCumulativeWavgValue.text = "-"
+                binding.scoreCumulativeGpaValue.text = "-"
+                binding.scoreTotalCreditsValue.text = "-"
             }
         }
         viewModel.selectedTestTypeLiveData.observe(this) {

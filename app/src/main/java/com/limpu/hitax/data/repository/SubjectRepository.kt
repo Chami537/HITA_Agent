@@ -24,6 +24,9 @@ class SubjectRepository @Inject constructor(application: Application) {
         return subjectDao.getSubjects(timetableId)
     }
 
+    fun getAllSubjects(): LiveData<List<TermSubject>> {
+        return subjectDao.getAllSubjects()
+    }
 
     fun getSubjectById(subjectId: String): LiveData<TermSubject> {
         return subjectDao.getSubjectById(subjectId)

@@ -539,6 +539,58 @@
                         app:srcCompat="@drawable/ic_baseline_keyboard_arrow_right_24"
                         app:tint="?attr/colorOnSurfaceVariant" />
                 </LinearLayout>
+
+                <View
+                    android:layout_width="match_parent"
+                    android:layout_height="0.5dp"
+                    android:layout_marginStart="@dimen/space_4"
+                    android:layout_marginEnd="@dimen/space_4"
+                    android:background="?attr/colorOutlineVariant" />
+
+                <LinearLayout
+                    android:id="@+id/card_credit_stats"
+                    android:layout_width="match_parent"
+                    android:layout_height="56dp"
+                    android:foreground="?attr/selectableItemBackgroundBorderless"
+                    android:gravity="center_vertical"
+                    android:orientation="horizontal"
+                    android:paddingStart="@dimen/space_4"
+                    android:paddingEnd="@dimen/space_4">
+
+                    <ImageView
+                        android:layout_width="40dp"
+                        android:layout_height="40dp"
+                        android:background="@drawable/shape_circle"
+                        android:backgroundTint="?attr/colorPrimaryContainer"
+                        android:padding="8dp"
+                        android:scaleType="fitCenter"
+                        app:srcCompat="@drawable/ic_baseline_format_list_bulleted_24"
+                        app:tint="?attr/colorOnPrimaryContainer" />
+
+                    <LinearLayout
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_marginStart="@dimen/space_3"
+                        android:layout_weight="1"
+                        android:gravity="center_vertical"
+                        android:orientation="vertical">
+
+                        <com.limpu.hitax.ui.widgets.FocusTextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:singleLine="true"
+                            android:text="@string/navi_credit_stats"
+                            android:textAppearance="@style/TextAppearance.HITA.BodyMedium"
+                            android:textColor="?attr/colorOnSurface" />
+                    </LinearLayout>
+
+                    <ImageView
+                        android:layout_width="24dp"
+                        android:layout_height="24dp"
+                        android:tintMode="src_in"
+                        app:srcCompat="@drawable/ic_baseline_keyboard_arrow_right_24"
+                        app:tint="?attr/colorOnSurfaceVariant" />
+                </LinearLayout>
             </LinearLayout>
         </com.google.android.material.card.MaterialCardView>
 

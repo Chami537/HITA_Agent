@@ -51,4 +51,10 @@ interface SubjectDao {
 
     @Query("delete from subject")
     fun clear()
+
+    @Query("SELECT * FROM subject")
+    fun getAllSubjectsSync(): List<TermSubject>
+
+    @Query("SELECT * FROM subject")
+    fun getAllSubjects(): LiveData<List<TermSubject>>
 }

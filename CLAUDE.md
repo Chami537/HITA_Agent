@@ -84,7 +84,7 @@ agent/
 
 ### UI Layer
 
-- ViewBinding enabled (no Compose in production despite Compose dependencies being present)
+- ViewBinding enabled (Compose dependencies removed, not in use)
 - Fragments extend `BaseFragment` / `BaseFragmentClassic` from style module
 - Adapters extend `BaseListAdapter` / `BaseListAdapterClassic`
 - Markdown rendering via Markwon library
@@ -105,3 +105,46 @@ Defined in `app/build.gradle`:
 - Coroutines: use `viewModelScope.launch`, never `GlobalScope`
 - Room schema exports to `app/schemas/`
 - ProGuard enabled for release builds (`minifyEnabled true`, `shrinkResources true`)
+
+## Development Workflow
+
+### 每次会话开始时
+告诉 Claude：
+1. 要做什么功能（一句话目标）
+2. 涉及哪些文件/模块（如果知道的话）
+3. 是先出方案再写代码，还是直接动手
+
+### 功能开发流程
+```
+明确需求 → [出方案] → 写代码 → Review → 构建验证 → Commit
+```
+
+| 步骤 | 做什么 | 谁的职责 |
+|------|--------|----------|
+| 1. 明确需求 | 描述功能：数据来源、展示形式、边界情况 | 你 |
+| 2. 出方案 | 列出实现路径和取舍，等你确认 | Claude（可选，大功能建议走） |
+| 3. 写代码 | 按方案实现，修改最少文件 | Claude |
+| 4. Review | 让 Claude 检查自己写的代码有没有问题 | Claude |
+| 5. 构建验证 | `./gradlew assembleDebug` 确保能编译 | 你或 Claude |
+| 6. Commit | 一个功能一个 commit，conventional commits 格式 | 你确认后 Claude 执行 |
+
+### 分支规范
+```
+feat/xxx        # 新功能
+fix/xxx         # bug 修复
+refactor/xxx    # 重构（不改行为）
+```
+一个分支只做一个功能。合完就删。不要直接在 master 上改。
+
+### 提交前检查
+- [ ] `./gradlew assembleDebug` 通过
+- [ ] 改动限定在功能范围内，没有顺手改无关文件
+- [ ] 删掉调试用的 log / Toast
+- [ ] 硬编码的字符串优先放 `strings.xml`
+- [ ] Commit message 说明「做了什么、为什么」
+
+### 常见陷阱
+- **EAS HTML 解析**：三校区（深圳/本部/威海）的 HTML 结构不同，改 EAS 相关代码要同时确认三校区
+- **数据库迁移**：Room schema 变更需要升 `@Database` version + 写 migration，否则老用户安装会 crash
+- **主线程网络请求**：所有 EAS/Retrofit 调用必须在协程里，不要在主线程做网络 IO
+- **Hardcoded 中文**：UI 文字放 `strings.xml`（已有中英文两版本）
