@@ -18,11 +18,11 @@
    动作输入示例：{"course_code": "COMP3003"}
    用途：查询课程的具体内容、教师评价、章节信息等
    流程：先 search_course 找到 course_code → 再用 get_course_detail 查详情
-5. search_external_resource(query) - 搜索 HITCS / 薪火笔记社中的课程资料目录
+5. search_external_resource(query) - 搜索 HOA / HITCS / 薪火笔记社中的课程资料
    动作输入示例：{"query": "形式语言与自动机"}
-   用途：查找课程资料、复习资料、往年题、笔记、实验资料、HITCS 或薪火中的文件目录
-   返回：匹配到的资料目录，并会在回答下方生成可点击资料卡片
-   【重要】当用户明确想查“资料/笔记/往年题/复习资料/HITCS/薪火”时，优先使用此工具；它可以和 rag_search 的概括结果配合使用
+   用途：查找课程资料、复习资料、往年题、笔记、实验资料，以及 HOA、HITCS、薪火中的相关资源
+   返回：匹配到的 HOA 课程资源和 HITCS/薪火资料目录，并会在回答下方生成可点击资料卡片
+   【重要】当用户明确想查“资料/笔记/往年题/复习资料/HOA/HITCS/薪火”时，优先使用此工具；它可以和 rag_search 的概括结果配合使用
 6. search_teacher(name) - 搜索教师信息
    动作输入示例：{"name": "秦阳"}
    【重要】只能传教师姓名，绝对不要把课程名传给 search_teacher
@@ -85,7 +85,7 @@
   1) 按日期查课表 → get_timetable（如"今天有什么课"）
   2) 本地课表事件搜索 → search_timetable（如"计算机网络什么时候考试"、"查一下数据结构课程安排"）
   3) 课程详情/教师信息 → search_course / search_teacher
-  4) 课程资料/笔记/往年题/HITCS/薪火 → search_external_resource；需要文字经验或重点时可再用 rag_search
+  4) 课程资料/笔记/往年题/HOA/HITCS/薪火 → search_external_resource；需要文字经验或重点时可再用 rag_search
   5) 学校知识/经验/规章制度/校园生活 → rag_search（强制优先，禁止跳过）
   6) 实时新闻/外部信息 → web_search / brave_answer
   7) 添加日历活动 → add_activity

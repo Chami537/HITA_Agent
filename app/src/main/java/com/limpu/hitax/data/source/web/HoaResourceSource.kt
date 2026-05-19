@@ -58,6 +58,32 @@ object HoaResourceSource {
         }
     }
 
+    fun searchCoursesSync(query: String, campus: String? = null): List<CourseResourceItem> {
+        val requestBody = JSONObject()
+        requestBody.put("keyword", query.trim())
+        requestBody.put("campus", normalizeHoaCampus(campus).orEmpty())
+
+        val response = withHeaders(Jsoup.connect("$baseUrl/v1/courses:search"))
+            .header("Content-Type", "application/json")
+            .requestBody(requestBody.toString())
+            .method(Connection.Method.POST)
+            .execute()
+
+        if (response.statusCode() >= 400) {
+            throw Exception(response.body().take(300))
+        }
+
+        val resObj = JSONObject(response.body())
+        if (!resObj.optBoolean("ok", false)) {
+            val error = resObj.optJSONObject("error")
+            throw Exception(error?.optString("message", "Unknown error") ?: "Unknown error")
+        }
+
+        val data = resObj.optJSONObject("data")
+        val resultsArr = data?.optJSONArray("results") ?: JSONArray()
+        return parseCourseItems(resultsArr)
+    }
+
     /**
      * Extract course_code from repo_name.
      * repo_name format: "campus/COURSE_CODE" or "campus/repo_name"
@@ -99,33 +125,7 @@ object HoaResourceSource {
 
                 val data = resObj.optJSONObject("data")
                 val resultsArr = data?.optJSONArray("results") ?: JSONArray()
-                val items = mutableListOf<CourseResourceItem>()
-
-                for (index in 0 until resultsArr.length()) {
-                    val obj = resultsArr.optJSONObject(index) ?: continue
-                    val org = obj.optString("org")
-                    val repo = obj.optString("repo")
-                    val repoName = if (org.isNotBlank() && repo.isNotBlank()) {
-                        "$org/$repo"
-                    } else {
-                        repo
-                    }
-
-                    // DEBUG: Log the raw object
-                    LogUtils.d("Search result item: ${obj.toString()}")
-
-                    items.add(
-                        CourseResourceItem(
-                            repoName = repoName,
-                            courseCode = obj.optString("code"),
-                            courseName = obj.optString("name"),
-                            repoType = obj.optString("repo_type", "normal"),
-                            campus = obj.optString("campus"),
-                            teachers = jsonArrayToList(obj.optJSONArray("teachers")),
-                            aliases = jsonArrayToList(obj.optJSONArray("aliases")),
-                        )
-                    )
-                }
+                val items = parseCourseItems(resultsArr)
                 result.postValue(DataState(items, DataState.STATE.SUCCESS))
             } catch (e: Exception) {
                 result.postValue(DataState(DataState.STATE.FETCH_FAILED, e.message))
@@ -170,30 +170,7 @@ object HoaResourceSource {
 
                 val data = resObj.optJSONObject("data")
                 val resultsArr = data?.optJSONArray("results") ?: JSONArray()
-                val items = mutableListOf<CourseResourceItem>()
-
-                for (index in 0 until resultsArr.length()) {
-                    val obj = resultsArr.optJSONObject(index) ?: continue
-                    val org = obj.optString("org")
-                    val repo = obj.optString("repo")
-                    val repoName = if (org.isNotBlank() && repo.isNotBlank()) {
-                        "$org/$repo"
-                    } else {
-                        repo
-                    }
-
-                    items.add(
-                        CourseResourceItem(
-                            repoName = repoName,
-                            courseCode = obj.optString("code"),
-                            courseName = obj.optString("name"),
-                            repoType = obj.optString("repo_type", "normal"),
-                            campus = obj.optString("campus"),
-                            teachers = jsonArrayToList(obj.optJSONArray("teachers")),
-                            aliases = jsonArrayToList(obj.optJSONArray("aliases")),
-                        )
-                    )
-                }
+                val items = parseCourseItems(resultsArr)
                 LogUtils.d("HoaResourceSource searchCoursesDirect success: count=${items.size}")
                 onResult(DataState(items, DataState.STATE.SUCCESS))
             } catch (e: Exception) {
@@ -201,6 +178,33 @@ object HoaResourceSource {
                 onResult(DataState(DataState.STATE.FETCH_FAILED, e.message))
             }
         }.start()
+    }
+
+    private fun parseCourseItems(resultsArr: JSONArray): List<CourseResourceItem> {
+        val items = mutableListOf<CourseResourceItem>()
+        for (index in 0 until resultsArr.length()) {
+            val obj = resultsArr.optJSONObject(index) ?: continue
+            val org = obj.optString("org")
+            val repo = obj.optString("repo")
+            val repoName = if (org.isNotBlank() && repo.isNotBlank()) {
+                "$org/$repo"
+            } else {
+                repo
+            }
+
+            items.add(
+                CourseResourceItem(
+                    repoName = repoName,
+                    courseCode = obj.optString("code"),
+                    courseName = obj.optString("name"),
+                    repoType = obj.optString("repo_type", "normal"),
+                    campus = obj.optString("campus"),
+                    teachers = jsonArrayToList(obj.optJSONArray("teachers")),
+                    aliases = jsonArrayToList(obj.optJSONArray("aliases")),
+                )
+            )
+        }
+        return items
     }
 
     fun getCourseReadme(repoName: String, campus: String? = null): LiveData<DataState<CourseReadmeData>> {

@@ -16,9 +16,11 @@ import android.widget.TextView
 import androidx.recyclerview.widget.RecyclerView
 import com.google.android.material.card.MaterialCardView
 import com.limpu.hitax.R
+import com.limpu.hitax.agent.tools.SearchExternalResourceTool
 import com.limpu.hitax.data.model.resource.AgentResourceCard
 import com.limpu.hitax.databinding.ItemAgentChatMessageBinding
 import com.limpu.hitax.ui.resource.UnifiedResourceSearchActivity
+import com.limpu.hitax.utils.ActivityUtils
 import io.noties.markwon.Markwon
 import io.noties.markwon.ext.strikethrough.StrikethroughPlugin
 import io.noties.markwon.linkify.LinkifyPlugin
@@ -257,6 +259,16 @@ class AgentChatMessageAdapter : RecyclerView.Adapter<AgentChatMessageAdapter.Mes
         outer.addView(row)
 
         outer.setOnClickListener {
+            if (card.source == SearchExternalResourceTool.SOURCE_HOA) {
+                ActivityUtils.startCourseReadmeActivity(
+                    context,
+                    card.repoName.ifBlank { card.path },
+                    card.title,
+                    card.courseCode,
+                    card.repoType.ifBlank { "normal" },
+                )
+                return@setOnClickListener
+            }
             context.startActivity(Intent(context, UnifiedResourceSearchActivity::class.java).apply {
                 putExtra("browsePath", card.path)
                 putExtra("browseSource", card.source)

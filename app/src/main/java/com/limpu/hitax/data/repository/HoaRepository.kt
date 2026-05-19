@@ -15,6 +15,10 @@ class HoaRepository @Inject constructor() {
         return HoaResourceSource.searchCourses(query, campus)
     }
 
+    fun searchCoursesSync(query: String, campus: String? = null): List<CourseResourceItem> {
+        return HoaResourceSource.searchCoursesSync(query, campus)
+    }
+
     fun getCourseReadme(repoName: String, campus: String? = null): LiveData<DataState<CourseReadmeData>> {
         return HoaResourceSource.getCourseReadme(repoName, campus)
     }

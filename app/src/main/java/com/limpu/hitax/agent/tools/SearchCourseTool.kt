@@ -1,6 +1,7 @@
 package com.limpu.hitax.agent.tools
 
 import com.limpu.hitax.agent.remote.AgentBackendClient
+import com.limpu.hitax.data.model.resource.AgentResourceCard
 
 class SearchCourseTool : ReActTool {
     override fun execute(input: ReActToolInput): String {
@@ -15,6 +16,7 @@ class SearchCourseTool : ReActTool {
 
             val results = extractResults(response.results)
             if (results.isEmpty()) return "未找到相关课程"
+            input.onResourceCards(results.take(6).mapNotNull { it.toHoaCard(keyword) })
 
             val formatted = results.take(10).map { item ->
                 val code = valueOf(item, "course_code", "code", "id")
@@ -82,5 +84,28 @@ class SearchCourseTool : ReActTool {
             is List<*> -> teachers.joinToString("/") { it.toString() }.trim('/')
             else -> valueOf(map, "teacher", "lecturer_name")
         }
+    }
+
+    private fun Map<*, *>.toHoaCard(keyword: String): AgentResourceCard? {
+        val code = valueOf(this, "course_code", "code", "id")
+        val name = valueOf(this, "course_name", "name", "title")
+        val repoName = valueOf(this, "repo_name", "repoName", "repo")
+        val repoType = valueOf(this, "repo_type", "repoType").ifBlank { "normal" }
+        if (code.isBlank() && name.isBlank() && repoName.isBlank()) return null
+        val resolvedRepoName = repoName.ifBlank { code }
+        return AgentResourceCard(
+            title = name.ifBlank { code.ifBlank { resolvedRepoName } },
+            subtitle = listOf(
+                code.takeIf { it.isNotBlank() },
+                extractTeacherSummary(this).takeIf { it.isNotBlank() },
+            ).filterNotNull().joinToString(" · "),
+            sourceTag = "HOA",
+            source = SearchExternalResourceTool.SOURCE_HOA,
+            path = resolvedRepoName,
+            query = keyword,
+            repoName = resolvedRepoName,
+            courseCode = code,
+            repoType = repoType,
+        )
     }
 }
