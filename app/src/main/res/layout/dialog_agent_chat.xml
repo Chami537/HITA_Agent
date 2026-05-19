@@ -33,7 +33,7 @@
             android:layout_height="36dp"
             android:foreground="?attr/selectableItemBackgroundBorderless"
             android:padding="6dp"
-            android:src="@android:drawable/ic_menu_close_clear_cancel"
+            android:src="@drawable/ic_baseline_close_24"
             app:tint="?attr/textColorSecondary" />
 
     </LinearLayout>
@@ -92,7 +92,7 @@
             android:layout_height="wrap_content"
             android:layout_marginStart="@dimen/space_2"
             android:contentDescription="@string/send"
-            android:src="@android:drawable/ic_menu_send"
+            android:src="@drawable/ic_baseline_send_24"
             app:backgroundTint="?attr/colorPrimary"
             app:fabCustomSize="44dp"
             app:tint="@color/white" />

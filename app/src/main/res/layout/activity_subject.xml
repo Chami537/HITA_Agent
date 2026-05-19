@@ -55,7 +55,7 @@
             android:layout_height="wrap_content"
             android:orientation="vertical">
 
-            <androidx.cardview.widget.CardView
+            <com.google.android.material.card.MaterialCardView
                 android:id="@+id/timetable_card"
                 android:layout_width="match_parent"
                 android:layout_height="match_parent"
@@ -89,7 +89,7 @@
                         android:textStyle="normal"
                         android:visibility="visible" />
 
-                    <androidx.cardview.widget.CardView
+                    <com.google.android.material.card.MaterialCardView
                         android:id="@+id/timetable_bg"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
@@ -130,18 +130,18 @@
 
                         </LinearLayout>
 
-                    </androidx.cardview.widget.CardView>
+                    </com.google.android.material.card.MaterialCardView>
 
                 </LinearLayout>
 
-            </androidx.cardview.widget.CardView>
+            </com.google.android.material.card.MaterialCardView>
 
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="match_parent"
                 android:orientation="horizontal">
 
-                <androidx.cardview.widget.CardView
+                <com.google.android.material.card.MaterialCardView
                     android:layout_width="match_parent"
                     android:layout_height="144dp"
                     android:layout_marginStart="@dimen/space_4"
@@ -193,7 +193,7 @@
 
                     </LinearLayout>
 
-                </androidx.cardview.widget.CardView>
+                </com.google.android.material.card.MaterialCardView>
 
                 <com.limpu.hitax.ui.widgets.SelectableIconCardView
                     android:id="@+id/card_type"
@@ -254,7 +254,7 @@
 
             </LinearLayout>
 
-            <androidx.cardview.widget.CardView
+            <com.google.android.material.card.MaterialCardView
                 android:id="@+id/button_course_contribute"
                 android:layout_width="match_parent"
                 android:layout_height="48dp"
@@ -276,9 +276,9 @@
                     android:textSize="14sp"
                     android:textStyle="bold" />
 
-            </androidx.cardview.widget.CardView>
+            </com.google.android.material.card.MaterialCardView>
 
-            <androidx.cardview.widget.CardView
+            <com.google.android.material.card.MaterialCardView
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginStart="@dimen/space_4"
@@ -373,9 +373,9 @@
 
                 </LinearLayout>
 
-            </androidx.cardview.widget.CardView>
+            </com.google.android.material.card.MaterialCardView>
 
-            <androidx.cardview.widget.CardView
+            <com.google.android.material.card.MaterialCardView
                 android:id="@+id/external_resource_card"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
@@ -416,9 +416,9 @@
 
                 </LinearLayout>
 
-            </androidx.cardview.widget.CardView>
+            </com.google.android.material.card.MaterialCardView>
 
-            <androidx.cardview.widget.CardView
+            <com.google.android.material.card.MaterialCardView
                 android:id="@+id/subject_card_allcourses"
                 android:layout_width="match_parent"
                 android:layout_height="match_parent"
@@ -456,7 +456,7 @@
                             android:textStyle="bold"
                             android:visibility="visible" />
 
-                        <androidx.cardview.widget.CardView
+                        <com.google.android.material.card.MaterialCardView
                             android:id="@+id/course_add"
                             android:layout_width="32dp"
                             android:layout_height="32dp"
@@ -478,7 +478,7 @@
                                 android:tintMode="src_in"
                                 app:srcCompat="@drawable/ic_baseline_add_24"
                                 app:tint="?attr/colorAccent" />
-                        </androidx.cardview.widget.CardView>
+                        </com.google.android.material.card.MaterialCardView>
 
                     </LinearLayout>
 
@@ -497,7 +497,7 @@
 
                 </LinearLayout>
 
-            </androidx.cardview.widget.CardView>
+            </com.google.android.material.card.MaterialCardView>
 
             <Button
                 android:id="@+id/delete"

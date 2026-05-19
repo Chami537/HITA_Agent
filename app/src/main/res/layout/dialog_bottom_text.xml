@@ -36,7 +36,7 @@
         android:paddingStart="@dimen/space_4"
         android:paddingEnd="@dimen/space_4">
 
-        <androidx.cardview.widget.CardView
+        <com.google.android.material.card.MaterialCardView
             android:id="@+id/cancel"
             style="@style/Widget.AppCompat.Button.Borderless.Colored"
             android:layout_width="match_parent"
@@ -57,9 +57,9 @@
                 android:text="@string/cancel"
                 android:textColor="?attr/textColorSecondary"
                 android:textSize="18sp" />
-        </androidx.cardview.widget.CardView>
+        </com.google.android.material.card.MaterialCardView>
 
-        <androidx.cardview.widget.CardView
+        <com.google.android.material.card.MaterialCardView
             android:id="@+id/confirm"
             style="@style/Widget.AppCompat.Button.Borderless.Colored"
             android:layout_width="match_parent"
@@ -80,6 +80,6 @@
                 android:text="@string/confirm"
                 android:textColor="@android:color/white"
                 android:textSize="18sp" />
-        </androidx.cardview.widget.CardView>
+        </com.google.android.material.card.MaterialCardView>
     </LinearLayout>
 </LinearLayout>

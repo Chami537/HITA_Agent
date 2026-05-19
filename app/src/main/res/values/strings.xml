@@ -1189,4 +1189,13 @@
     <string name="title_agent">助手</string>
     <string name="agent_chat_no_timetable">未选择课表</string>
     <string name="agent_chat_attach">附件</string>
+    <string name="agent_new_chat">新对话</string>
+    <string name="agent_delete_chat">删除对话</string>
+    <string name="navi_section_timetable_tools">课表工具</string>
+    <string name="navi_import_ics">导入 ICS 课表</string>
+    <string name="navi_import_ics_subtitle">从日历文件导入课程</string>
+    <string name="navi_course_reminder">课程提醒</string>
+    <string name="navi_course_reminder_subtitle">上课前10分钟提醒</string>
+    <string name="exam_import_to_timetable">导入到课表</string>
+    <string name="edit_mode_items_selected">已选择1项</string>
 </resources>

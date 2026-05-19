@@ -14,7 +14,7 @@
     android:paddingTop="36dp"
     android:focusable="true">
 
-    <androidx.cardview.widget.CardView
+    <com.google.android.material.card.MaterialCardView
         android:layout_width="72dp"
         android:layout_height="72dp"
         android:layout_gravity="center"
@@ -34,7 +34,7 @@
             android:layout_gravity="center"
             android:scaleType="fitCenter"
             android:transitionName="useravatar" />
-    </androidx.cardview.widget.CardView>
+    </com.google.android.material.card.MaterialCardView>
 
     <TextView
         android:id="@+id/nickname"

@@ -31,7 +31,7 @@
         android:layout_gravity="center|start"
         android:layout_weight="1"
         android:gravity="center|start"
-        android:text="已选择1项"
+        android:text="@string/edit_mode_items_selected"
         android:textColor="?attr/textColorPrimary"
         android:textSize="18sp" />
 

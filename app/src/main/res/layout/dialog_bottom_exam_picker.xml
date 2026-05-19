@@ -163,7 +163,7 @@
                 android:layout_marginStart="@dimen/space_6"
                 android:layout_marginEnd="@dimen/space_6"
                 android:layout_marginBottom="@dimen/space_6"
-                android:text="导入到课表"
+                android:text="@string/exam_import_to_timetable"
                 android:textSize="14sp"
                 app:cornerRadius="8dp"
                 style="@style/Widget.Material3.Button.OutlinedButton"/>

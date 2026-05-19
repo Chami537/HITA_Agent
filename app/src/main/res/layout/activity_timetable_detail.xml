@@ -242,7 +242,7 @@
                 android:textSize="22sp"
                 android:textStyle="bold" />
 
-            <androidx.cardview.widget.CardView
+            <com.google.android.material.card.MaterialCardView
                 android:layout_width="match_parent"
                 android:layout_height="match_parent"
                 android:layout_marginStart="@dimen/space_4"
@@ -266,7 +266,7 @@
                     android:overScrollMode="never">
 
                 </androidx.recyclerview.widget.RecyclerView>
-            </androidx.cardview.widget.CardView>
+            </com.google.android.material.card.MaterialCardView>
 
         </LinearLayout>
     </androidx.core.widget.NestedScrollView>

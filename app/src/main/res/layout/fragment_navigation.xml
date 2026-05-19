@@ -230,7 +230,7 @@
             android:layout_marginTop="@dimen/space_4"
             android:layout_marginEnd="@dimen/space_4"
             android:layout_marginBottom="@dimen/space_2"
-            android:text="课表工具"
+            android:text="@string/navi_section_timetable_tools"
             android:textAppearance="@style/TextAppearance.HITA.TitleMedium"
             android:textColor="?attr/colorOnSurface" />
 
@@ -336,7 +336,7 @@
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
                             android:singleLine="true"
-                            android:text="导入 ICS 课表"
+                            android:text="@string/navi_import_ics"
                             android:textAppearance="@style/TextAppearance.HITA.BodyMedium"
                             android:textColor="?attr/colorOnSurface" />
 
@@ -345,7 +345,7 @@
                             android:layout_height="wrap_content"
                             android:layout_marginTop="2dp"
                             android:singleLine="true"
-                            android:text="从日历文件导入课程"
+                            android:text="@string/navi_import_ics_subtitle"
                             android:textAppearance="@style/TextAppearance.HITA.BodySmall"
                             android:textColor="?attr/colorOnSurfaceVariant" />
                     </LinearLayout>
@@ -750,7 +750,7 @@
             android:layout_marginTop="@dimen/space_4"
             android:layout_marginEnd="@dimen/space_4"
             android:layout_marginBottom="@dimen/space_2"
-            android:text="设置"
+            android:text="@string/main_drawer_menu_settings"
             android:textAppearance="@style/TextAppearance.HITA.TitleMedium"
             android:textColor="?attr/colorOnSurface" />
 
@@ -803,7 +803,7 @@
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
                             android:singleLine="true"
-                            android:text="课程提醒"
+                            android:text="@string/navi_course_reminder"
                             android:textAppearance="@style/TextAppearance.HITA.BodyMedium"
                             android:textColor="?attr/colorOnSurface" />
 
@@ -813,7 +813,7 @@
                             android:layout_height="wrap_content"
                             android:layout_marginTop="2dp"
                             android:singleLine="true"
-                            android:text="上课前10分钟提醒"
+                            android:text="@string/navi_course_reminder_subtitle"
                             android:textAppearance="@style/TextAppearance.HITA.BodySmall"
                             android:textColor="?attr/colorOnSurfaceVariant" />
                     </LinearLayout>

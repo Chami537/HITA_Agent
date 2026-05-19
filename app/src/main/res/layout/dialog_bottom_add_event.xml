@@ -46,7 +46,7 @@
                 android:orientation="horizontal"
                 android:paddingEnd="@dimen/space_6">
 
-                <androidx.cardview.widget.CardView
+                <com.google.android.material.card.MaterialCardView
                     android:id="@+id/mode_batch"
                     android:layout_width="wrap_content"
                     android:layout_height="34dp"
@@ -71,9 +71,9 @@
                         android:singleLine="true"
                         android:text="@string/ade_mode_batch"
                         android:textColor="?attr/colorControlNormal" />
-                </androidx.cardview.widget.CardView>
+                </com.google.android.material.card.MaterialCardView>
 
-                <androidx.cardview.widget.CardView
+                <com.google.android.material.card.MaterialCardView
                     android:id="@+id/mode_free"
                     android:layout_width="wrap_content"
                     android:layout_height="34dp"
@@ -98,10 +98,10 @@
                         android:singleLine="true"
                         android:text="@string/ade_mode_free"
                         android:textColor="?attr/colorControlNormal" />
-                </androidx.cardview.widget.CardView>
+                </com.google.android.material.card.MaterialCardView>
 
 
-                <androidx.cardview.widget.CardView
+                <com.google.android.material.card.MaterialCardView
                     android:id="@+id/pick_timetable"
                     android:layout_width="match_parent"
                     android:layout_height="34dp"
@@ -148,7 +148,7 @@
                             android:text="@string/ade_pick_timetable"
                             android:textColor="?attr/colorControlNormal" />
                     </LinearLayout>
-                </androidx.cardview.widget.CardView>
+                </com.google.android.material.card.MaterialCardView>
 
 
             </LinearLayout>
@@ -168,7 +168,7 @@
                 android:paddingEnd="@dimen/space_6">
 
 
-                <androidx.cardview.widget.CardView
+                <com.google.android.material.card.MaterialCardView
                     android:id="@+id/pick_date"
                     android:layout_width="wrap_content"
                     android:layout_height="34dp"
@@ -212,9 +212,9 @@
                             android:text="@string/ade_set_date"
                             android:textColor="?attr/colorControlNormal" />
                     </LinearLayout>
-                </androidx.cardview.widget.CardView>
+                </com.google.android.material.card.MaterialCardView>
 
-                <androidx.cardview.widget.CardView
+                <com.google.android.material.card.MaterialCardView
                     android:id="@+id/pick_time"
                     android:layout_width="wrap_content"
                     android:layout_height="34dp"
@@ -259,9 +259,9 @@
                             android:text="@string/ade_pick_time"
                             android:textColor="?attr/colorControlNormal" />
                     </LinearLayout>
-                </androidx.cardview.widget.CardView>
+                </com.google.android.material.card.MaterialCardView>
 
-                <androidx.cardview.widget.CardView
+                <com.google.android.material.card.MaterialCardView
                     android:id="@+id/pick_subject"
                     android:layout_width="wrap_content"
                     android:layout_height="34dp"
@@ -308,7 +308,7 @@
                             android:text="@string/ade_pick_subject"
                             android:textColor="?attr/textColorSecondary" />
                     </LinearLayout>
-                </androidx.cardview.widget.CardView>
+                </com.google.android.material.card.MaterialCardView>
             </LinearLayout>
         </HorizontalScrollView>
 
@@ -326,7 +326,7 @@
                 android:paddingEnd="@dimen/space_6">
 
 
-                <androidx.cardview.widget.CardView
+                <com.google.android.material.card.MaterialCardView
                     android:id="@+id/pick_location"
                     android:layout_width="wrap_content"
                     android:layout_height="34dp"
@@ -389,9 +389,9 @@
                             app:theme="@style/button_ripple_accent"
                             app:tint="?attr/colorAccent" />
                     </LinearLayout>
-                </androidx.cardview.widget.CardView>
+                </com.google.android.material.card.MaterialCardView>
 
-                <androidx.cardview.widget.CardView
+                <com.google.android.material.card.MaterialCardView
                     android:id="@+id/pick_teacher"
                     android:layout_width="match_parent"
                     android:layout_height="34dp"
@@ -456,7 +456,7 @@
                             app:tint="?attr/colorAccent" />
 
                     </LinearLayout>
-                </androidx.cardview.widget.CardView>
+                </com.google.android.material.card.MaterialCardView>
 
 
             </LinearLayout>
