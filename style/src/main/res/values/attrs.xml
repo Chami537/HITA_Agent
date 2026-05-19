@@ -9,5 +9,6 @@
     <attr name="colorControlDisabled" format="color" />
     <attr name="colorPrimaryDisabled" format="color"/>
     <attr name="colorPrimaryLight" format="color"/>
+    <attr name="backgroundIconColorBottom" format="color" />
 </resources>
 
