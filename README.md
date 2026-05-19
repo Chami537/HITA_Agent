@@ -1,6 +1,6 @@
 # HITA 课表（维护分支）
 
-[App 下载（Releases）](https://github.com/LiPu-jpg/HITA_Agent/releases/latest)
+[App 下载（Releases）](https://github.com/HIT-A/HITA_Android/releases/latest)
 
 ## 项目背景
 项目最初来自哈尔滨工业大学（深圳）2018 级本科生大一年度立项，原名 HITSZ 助手，重构版改名为 HITA 课表，。
