@@ -2,7 +2,12 @@ package com.limpu.hitax.ui.main.timeline
 
 import android.annotation.SuppressLint
 import android.content.Context
+import android.graphics.Typeface
+import android.text.SpannableStringBuilder
+import android.text.Spanned
 import android.text.TextUtils
+import android.text.style.StyleSpan
+import android.util.TypedValue
 import android.view.HapticFeedbackConstants
 import android.view.View
 import android.view.ViewGroup
@@ -20,6 +25,7 @@ import com.limpu.hitax.data.model.timetable.EventItem
 import com.limpu.hitax.data.model.timetable.TimeInDay
 import com.limpu.style.base.BaseListAdapterClassic
 import com.limpu.hitax.utils.MaterialCircleAnimator
+import com.limpu.hitax.utils.SpecialEventReminderUtils
 import com.limpu.hitax.utils.TextTools
 import com.limpu.hitax.utils.TimeTools
 import com.limpu.hitax.utils.LogUtils
@@ -36,6 +42,7 @@ class TimelineListAdapter(
 
     private var nowEvent: EventItem? = null
     private var nextEvent: EventItem? = null
+    var upcomingExamEvents: List<EventItem> = emptyList()
     private var nowProgress: Float = 0f
 
 
@@ -50,6 +57,7 @@ class TimelineListAdapter(
         var changedNext = false
         for (i in todayEvents.indices.reversed()) {
             val ei: EventItem = todayEvents[i]
+            if (SpecialEventReminderUtils.isExamEvent(ei)) continue
             if (ei.containsTimeStamp(System.currentTimeMillis())) {
                 nowEvent = ei
                 changedNow = true
@@ -73,6 +81,31 @@ class TimelineListAdapter(
             }
         }
         return result
+    }
+
+    private fun getColorAttr(attr: Int): Int {
+        val typedValue = TypedValue()
+        mContext.theme.resolveAttribute(attr, typedValue, true)
+        return typedValue.data
+    }
+
+    private fun formatExamReminderText(exams: List<EventItem>): SpannableStringBuilder {
+        val builder = SpannableStringBuilder()
+        exams.forEachIndexed { index, exam ->
+            if (index > 0) builder.append('\n')
+            val countdown = SpecialEventReminderUtils.formatExamCountdown(exam)
+            val start = builder.length
+            builder.append(countdown)
+            builder.setSpan(
+                StyleSpan(Typeface.BOLD),
+                start,
+                builder.length,
+                Spanned.SPAN_EXCLUSIVE_EXCLUSIVE
+            )
+            builder.append("  ")
+            builder.append(SpecialEventReminderUtils.formatExamName(exam))
+        }
+        return builder
     }
 
     override fun notifyItemChangedSmooth(newL: List<EventItem>) {
@@ -139,20 +172,30 @@ class TimelineListAdapter(
                 // else timelineHolder.timeline.setVisibility(View.VISIBLE);
             }
             if (position >= mBeans.size || position < 0) return
-            timelineHolder.tv_name.text = mBeans[position].name
-            if (timelineHolder.tv_time != null) timelineHolder.tv_time.setText(
-                    TextTools.getChatTimeText(mContext, mBeans[position].from)
-                            + "-" + TextTools.getChatTimeText(mContext, mBeans[position].to)
-            )
+            val event = mBeans[position]
+            val isUpcomingExamReminder = SpecialEventReminderUtils.isExamEvent(event) &&
+                    event.from.time > System.currentTimeMillis()
+            timelineHolder.tv_name.text = event.name
+            timelineHolder.examTag?.visibility = if (isUpcomingExamReminder) View.VISIBLE else View.GONE
+            val primaryTextColor = if (isUpcomingExamReminder) getColorAttr(R.attr.colorPrimary) else getColorAttr(R.attr.textColorPrimary)
+            val secondaryTextColor = if (isUpcomingExamReminder) getColorAttr(R.attr.colorPrimary) else getColorAttr(R.attr.textColorSecondary)
+            timelineHolder.tv_name.setTextColor(primaryTextColor)
+            if (timelineHolder.tv_time != null) timelineHolder.tv_time.text = if (isUpcomingExamReminder) {
+                SpecialEventReminderUtils.formatExamDateTime(event)
+            } else {
+                "${TextTools.getChatTimeText(mContext, event.from)}-${TextTools.getChatTimeText(mContext, event.to)}"
+            }
+            timelineHolder.tv_time?.setTextColor(secondaryTextColor)
             if (timelineHolder.tv_duration != null) {
                 val duration: Int =
-                        (((mBeans[position].to.time - mBeans[position].from.time) / 1000).toInt())
+                        (((event.to.time - event.from.time) / 1000).toInt())
                 if (duration >= 60) timelineHolder.tv_duration!!.text =
                         (duration / 60).toString() + "h " + (if (duration % 60 == 0) "" else (duration % 60).toString() + "min") else timelineHolder.tv_duration!!.text =
                         duration.toString() + "min"
+                timelineHolder.tv_duration!!.setTextColor(secondaryTextColor)
             }
             if (timelineHolder.progressBar != null) {
-                if (mBeans[position] == nowEvent) {
+                if (event == nowEvent) {
                     timelineHolder.progressBar!!.visibility = View.VISIBLE
                     timelineHolder.progressBar!!.progress = (nowProgress * 100).toInt()
                     timelineHolder.timeline!!.setImageDrawable(
@@ -167,17 +210,18 @@ class TimelineListAdapter(
             }
             if (timelineHolder.tv_place != null) {
                 val result =
-                        if (TextUtils.isEmpty(mBeans[position].place)) mContext.getString(R.string.unknown_location) else mBeans[position].place
+                        if (TextUtils.isEmpty(event.place)) mContext.getString(R.string.unknown_location) else event.place
                 timelineHolder.tv_place!!.text = result
+                timelineHolder.tv_place!!.setTextColor(secondaryTextColor)
             }
             if (mOnItemClickListener != null) {
                 timelineHolder.itemCard.setOnClickListener { v ->
-                    mOnItemClickListener!!.onItemClick(mBeans[position], v, position)
+                    mOnItemClickListener!!.onItemClick(event, v, position)
                 }
             }
             if (mOnItemLongClickListener != null) {
                 timelineHolder.itemCard.setOnLongClickListener { v ->
-                    mOnItemLongClickListener!!.onItemLongClick(mBeans[position], v, position)
+                    mOnItemLongClickListener!!.onItemLongClick(event, v, position)
                     true
                 }
             }
@@ -242,6 +286,7 @@ class TimelineListAdapter(
         var tv_name: TextView
         var tv_duration: TextView?
         var tv_place: TextView?
+        var examTag: TextView?
         var progressBar: ProgressBar?
         var itemCard: CardView
 
@@ -252,6 +297,7 @@ class TimelineListAdapter(
         init {
             tv_name = itemView.findViewById(R.id.tl_tv_name)
             tv_duration = itemView.findViewById(R.id.tl_tv_duration)
+            examTag = itemView.findViewById(R.id.tl_tv_exam_tag)
             itemCard = itemView.findViewById(R.id.tl_card)
             progressBar = itemView.findViewById(R.id.event_progressbar)
             tv_place = itemView.findViewById(R.id.tl_tv_place)
@@ -282,6 +328,9 @@ class TimelineListAdapter(
         var head_card: CardView
         private var head_counting_time: TextView
         private var head_counting_name: TextView
+        private var head_exam: LinearLayout
+        private var head_exam_text: TextView
+        private var hasUpcomingExam = false
         var head_goQuickly_classroom: TextView
         var head_goNow: LinearLayout
         var circleProgress: ArcProgress
@@ -415,7 +464,6 @@ class TimelineListAdapter(
                 } else if (nextEvent != null) {
                     if (nextEvent!!.getFromTimeDistance() <= 15
                         && (nextEvent!!.type === EventItem.TYPE.CLASS
-                                || nextEvent!!.type == EventItem.TYPE.EXAM
                                 || nextEvent!!.type == EventItem.TYPE.OTHER)
                     ) {
                         switchHeadView(head_goNow, -1)
@@ -475,6 +523,14 @@ class TimelineListAdapter(
                 head_counting_time.setText(R.string.timeline_counting_free)
                 head_counting_image.setImageResource(R.drawable.ic_empty)
             }
+            val exams = upcomingExamEvents
+            hasUpcomingExam = exams.isNotEmpty()
+            if (exams.isNotEmpty()) {
+                head_exam.visibility = View.VISIBLE
+                head_exam_text.text = formatExamReminderText(exams)
+            } else {
+                head_exam.visibility = View.GONE
+            }
             head_title.text = titleToSet
             head_subtitle.text = subtitltToSet
         }
@@ -507,6 +563,8 @@ class TimelineListAdapter(
             head_counting_name = v.findViewById(R.id.tl_head_counting_name)
             head_counting_image = v.findViewById(R.id.tl_head_counting_image)
             head_counting_time = v.findViewById(R.id.tl_head_counting_time)
+            head_exam = v.findViewById(R.id.head_exam)
+            head_exam_text = v.findViewById(R.id.tl_head_exam_text)
             head_goQuickly_classroom = v.findViewById(R.id.tl_head_gonow_classroom)
             bt_bar_timetable.setOnClickListener { view ->
                 view.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)

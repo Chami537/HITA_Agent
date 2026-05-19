@@ -65,6 +65,36 @@
 
         </LinearLayout>
 
+        <LinearLayout
+            android:id="@+id/exam_reminder"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            android:paddingStart="@dimen/space_4"
+            android:paddingEnd="@dimen/space_4"
+            android:paddingBottom="@dimen/space_2"
+            android:visibility="gone">
+
+            <TextView
+                android:id="@+id/exam_reminder_time"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginEnd="@dimen/space_2"
+                android:singleLine="true"
+                android:text="@string/timeline_exam_reminder_tag"
+                android:textSize="13sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/exam_reminder_name"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:ellipsize="end"
+                android:maxLines="4"
+                android:textSize="13sp" />
+        </LinearLayout>
 
         <ListView
             android:id="@+id/list"

@@ -100,7 +100,7 @@
                 android:padding="@dimen/space_4"
                 android:tintMode="src_over"
                 app:srcCompat="@drawable/element_round_white_fade"
-                app:theme="@style/button_ripple_accent"
+                android:theme="@style/button_ripple_accent"
                 app:tint="?attr/colorPrimary" />
 
             <CheckBox

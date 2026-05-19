@@ -97,7 +97,7 @@
                 android:layout_height="?attr/actionBarSize"
                 android:layout_marginTop="@dimen/space_6"
                 app:layout_collapseMode="pin"
-                app:theme="@style/ToolBarTheme_Light" />
+                android:theme="@style/ToolBarTheme_Light" />
 
         </com.google.android.material.appbar.CollapsingToolbarLayout>
     </com.google.android.material.appbar.AppBarLayout>

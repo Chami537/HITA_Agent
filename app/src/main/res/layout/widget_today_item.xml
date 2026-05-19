@@ -73,7 +73,7 @@
         android:paddingTop="@dimen/space_1"
         android:paddingEnd="@dimen/space_2"
         android:paddingBottom="@dimen/space_1"
-        app:theme="@style/button_ripple_accent_large">
+        android:theme="@style/button_ripple_accent_large">
 
         <ImageView
             android:id="@+id/loc_ic"

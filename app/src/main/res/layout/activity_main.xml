@@ -241,23 +241,22 @@
             android:overScrollMode="never"
             app:layout_behavior="com.google.android.material.appbar.AppBarLayout$ScrollingViewBehavior" />
 
-        <me.ibrahimsn.lib.SmoothBottomBar
+        <com.google.android.material.bottomnavigation.BottomNavigationView
             android:id="@+id/nav_view"
             android:layout_width="match_parent"
-            android:layout_height="64dp"
+            android:layout_height="72dp"
             android:layout_gravity="bottom"
-            app:backgroundColor="?attr/backgroundColorBottom"
-            app:duration="180"
-            app:iconSize="21dp"
-            app:iconTint="?attr/colorPrimaryDisabled"
-            app:iconTintActive="?attr/colorPrimary"
-            app:indicatorColor="?attr/backgroundIconColorBottom"
-            app:indicatorRadius="24dp"
-            app:itemPadding="8dp"
+            android:background="?attr/backgroundColorBottom"
+            app:itemActiveIndicatorStyle="@style/Widget.HITA.BottomNavigation.ActiveIndicator"
+            app:itemIconSize="24dp"
+            app:itemIconTint="@color/bottom_nav_item_color"
+            app:itemRippleColor="?attr/backgroundIconColorBottom"
+            app:itemTextAppearanceActive="@style/TextAppearance.HITA.BottomNavigation"
+            app:itemTextAppearanceInactive="@style/TextAppearance.HITA.BottomNavigation"
+            app:itemTextColor="@color/bottom_nav_item_color"
+            app:labelVisibilityMode="labeled"
             app:menu="@menu/main_bottom_nav_menu"
-            app:sideMargins="24dp"
-            app:textColor="?attr/colorPrimary"
-            app:textSize="12sp" />
+            app:elevation="0dp" />
 
         <!--        app:itemFontFamily=""-->
 

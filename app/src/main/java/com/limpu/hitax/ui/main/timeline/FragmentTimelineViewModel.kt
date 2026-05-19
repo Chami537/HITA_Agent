@@ -30,6 +30,10 @@ class FragmentTimelineViewModel @Inject constructor(
         return@switchMap timetableRepository.getEventsDuring(from,to)
     }
 
+    val upcomingExamLiveData: LiveData<List<EventItem>> = todayEventsController.switchMap {
+        return@switchMap timetableRepository.getUpcomingExamsWithinReminderWindow(System.currentTimeMillis())
+    }
+
     val weekEventsLiveData:LiveData<List<EventItem>> = todayEventsController.switchMap{
         return@switchMap timetableRepository.getEventsAfter(System.currentTimeMillis(),4)
     }

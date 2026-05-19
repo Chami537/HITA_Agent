@@ -116,8 +116,6 @@ dependencies {
 
     implementation 'com.cncoderx.wheelview:library:1.2.2'//滚轮选择器
 
-    implementation 'com.github.ibrahimsn98:SmoothBottomBar:1.7.6'//底部导航
-
     implementation 'org.mnode.ical4j:ical4j:1.0.2'
 
     //文档解析库 - PDF本地解析，Office使用4.x版本兼容Android

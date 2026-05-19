@@ -23,8 +23,14 @@ interface EventItemDao {
     @Query("SELECT * FROM events WHERE `from` >= :fromT order by `from` asc LIMIT :limit")
     fun getEventsAfter(fromT: Long, limit: Int): LiveData<List<EventItem>>
 
+    @Query("SELECT * FROM events WHERE `from` >= :fromT AND `from` < :toT AND (type is 'EXAM' OR name LIKE '[考试]%') order by `from` asc")
+    fun getExamsDuring(fromT: Long, toT: Long): LiveData<List<EventItem>>
+
     @Query("SELECT * FROM events WHERE `from` >= :fromT AND `from` <= :toT AND `to` >= :fromT AND `to` <= :toT")
     fun getEventsDuringSync(fromT: Long, toT: Long): List<EventItem>
+
+    @Query("SELECT * FROM events WHERE `from` >= :fromT AND `from` < :toT AND (type is 'EXAM' OR name LIKE '[考试]%') order by `from` asc")
+    fun getExamsDuringSync(fromT: Long, toT: Long): List<EventItem>
 
     @Query("SELECT * FROM events WHERE `from` >= :fromT AND `from` <= :toT AND `to` >= :fromT AND `to` <= :toT")
     fun getEventsDurin(fromT: Long, toT: Long): LiveData<List<EventItem>>

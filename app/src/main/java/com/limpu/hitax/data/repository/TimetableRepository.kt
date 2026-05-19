@@ -42,6 +42,10 @@ import java.io.InputStream
 
 
 class TimetableRepository @Inject constructor(val application: Application) {
+    companion object {
+        private const val EXAM_REMINDER_DAYS = 30
+    }
+
     private val manualEventFallbackColor by lazy {
         ContextCompat.getColor(application, R.color.subject8)
     }
@@ -64,6 +68,18 @@ class TimetableRepository @Inject constructor(val application: Application) {
         return eventItemDao.getEventsAfter(from,limit)
     }
 
+    fun getUpcomingExamsWithinReminderWindow(from: Long): LiveData<List<EventItem>> {
+        return eventItemDao.getExamsDuring(from, from + EXAM_REMINDER_DAYS * 24L * 60L * 60L * 1000L)
+    }
+
+    @WorkerThread
+    fun getUpcomingExamsWithinReminderWindowSync(from: Long): List<EventItem> {
+        return eventItemDao.getExamsDuringSync(
+            from,
+            from + EXAM_REMINDER_DAYS * 24L * 60L * 60L * 1000L
+        )
+    }
+
 
     /**
      * 获取今日事件
@@ -78,6 +94,18 @@ class TimetableRepository @Inject constructor(val application: Application) {
         val to = now.timeInMillis
         return eventItemDao.getEventsDuringSync(from, to)
             .sortedBy { it.from.time }
+    }
+
+    @WorkerThread
+    fun getTodayEventsWithUpcomingExamSync(): List<EventItem> {
+        return appendUpcomingExam(getTodayEventsSync(), System.currentTimeMillis())
+    }
+
+    fun appendUpcomingExam(todayEvents: List<EventItem>, now: Long): List<EventItem> {
+        val exams = getUpcomingExamsWithinReminderWindowSync(now)
+        if (exams.isEmpty()) return todayEvents
+        val todayEventIds = todayEvents.mapTo(mutableSetOf()) { it.id }
+        return (todayEvents + exams.filter { it.id !in todayEventIds }).sortedBy { it.from.time }
     }
     /**
      * 获取[from,to)内的事件，包含颜色

@@ -34,12 +34,13 @@ class TodayWidget : AppWidgetProvider() {
             TimetableRepository(context.applicationContext as Application)
         goAsync{
             // 确保数据库操作在后台线程执行
-            val events = withContext(Dispatchers.IO) {
-                timetableRepo.getTodayEventsSync()
+            val (events, upcomingExams) = withContext(Dispatchers.IO) {
+                timetableRepo.getTodayEventsSync() to
+                        timetableRepo.getUpcomingExamsWithinReminderWindowSync(System.currentTimeMillis())
             }
             for (appWidgetId in appWidgetIds) {
                 LogUtils.d("UPDATE:$appWidgetId")
-                setUpOneWidget(context, events, appWidgetManager, appWidgetId,false)
+                setUpOneWidget(context, events, upcomingExams, appWidgetManager, appWidgetId,false)
             }
         }
         super.onUpdate(context, appWidgetManager, appWidgetIds)
@@ -69,12 +70,13 @@ class TodayWidget : AppWidgetProvider() {
                     TimetableRepository(context.applicationContext as Application)
                 goAsync {
                     // 确保数据库操作在后台线程执行
-                    val events = withContext(Dispatchers.IO) {
-                        timetableRepo.getTodayEventsSync()
+                    val (events, upcomingExams) = withContext(Dispatchers.IO) {
+                        timetableRepo.getTodayEventsSync() to
+                                timetableRepo.getUpcomingExamsWithinReminderWindowSync(System.currentTimeMillis())
                     }
                     for (appWidgetId in mgr.getAppWidgetIds(cn)) {
                         LogUtils.d("refressh$appWidgetId")
-                        setUpOneWidget(context, events, mgr, appWidgetId,false)
+                        setUpOneWidget(context, events, upcomingExams, mgr, appWidgetId,false)
                     }
                 }
 
@@ -94,4 +96,3 @@ class TodayWidget : AppWidgetProvider() {
 
 
 }
-

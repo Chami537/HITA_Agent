@@ -34,12 +34,9 @@ internal class ListRemoteViewsFactory(val mContext: Context, intent: Intent) :
 
         // 设置 第position位的“视图”的数据
         val event = mBeans[position]
+        val timeText = TimeTools.printTime(event.from.time) + "-" + TimeTools.printTime(event.to.time)
         rv.setTextViewText(R.id.name, event.name)
-        rv.setTextViewText(
-            R.id.time, TimeTools.printTime(event.from.time) + "-" + TimeTools.printTime(
-                event.to.time
-            )
-        )
+        rv.setTextViewText(R.id.time, timeText)
         val place = event.place?.trim().orEmpty()
         val result =
             if (TextUtils.isEmpty(place)) mContext.getString(R.string.unknown_location_widget) else place

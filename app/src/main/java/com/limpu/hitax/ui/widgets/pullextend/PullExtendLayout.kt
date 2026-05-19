@@ -2,7 +2,6 @@ package com.limpu.hitax.ui.widgets.pullextend
 
 import android.content.Context
 import android.util.AttributeSet
-import android.util.Log
 import android.view.MotionEvent
 import android.view.View
 import android.view.animation.DecelerateInterpolator
@@ -211,7 +210,6 @@ open class PullExtendLayout @JvmOverloads constructor(
             mPullDown = false
             pullFooterLayout(-dyUnconsumed.toFloat())
         }
-        Log.e("onNestedScroll","$dyUnconsumed ,$dyConsumed");
     }
 
     override fun getHeaderExtendLayout(): ExtendLayout {
@@ -306,11 +304,9 @@ open class PullExtendLayout @JvmOverloads constructor(
     private fun resetHeaderLayout() {
         val scrollY = abs(scrollYValue)
         if (scrollY < mHeaderHeight/2) {
-            Log.d("xxx", "resetHeaderLayout,scrollY < mHeaderHeight,收起来");
             smoothScrollTo(0)
             isHeadExpanded = false
         } else if(!isHeadExpanded){
-            Log.d("xxx", "resetHeaderLayout,scrollY >= mHeaderHeight，展开");
             isHeadExpanded = true
             smoothScrollTo(-mHeaderListHeight)
         }

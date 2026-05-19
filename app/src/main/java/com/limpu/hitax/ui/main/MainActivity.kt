@@ -45,7 +45,6 @@ import com.limpu.style.ThemeTools
 import com.limpu.style.base.BaseTabAdapter
 import com.limpu.style.widgets.PopUpText
 import dagger.hilt.android.AndroidEntryPoint
-import me.ibrahimsn.lib.OnItemSelectedListener
 import javax.inject.Inject
 
 /**
@@ -277,7 +276,12 @@ class MainActivity : HiltBaseActivity<ActivityMainBinding>(),
             }
 
             override fun onPageSelected(position: Int) {
-                binding.navView.itemActiveIndex = position
+                binding.navView.selectedItemId = when (position) {
+                    0 -> R.id.navigation_timeline
+                    1 -> R.id.navigation_timetable
+                    2 -> R.id.navigation_agent
+                    else -> R.id.navigation_navigation
+                }
                 binding.agentLayout.visibility = GONE
                 binding.timetableLayout.visibility = GONE
                 binding.navigationLayout.visibility = GONE
@@ -296,23 +300,17 @@ class MainActivity : HiltBaseActivity<ActivityMainBinding>(),
 
             override fun onPageScrollStateChanged(state: Int) {}
         })
-        binding.navView.onItemSelectedListener = object : OnItemSelectedListener {
-            override fun onItemSelect(pos: Int): Boolean {
-                binding.navView.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
-                binding.pager.currentItem = pos
-                return true
+        binding.navView.setOnItemSelectedListener { item ->
+            binding.navView.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
+            binding.pager.currentItem = when (item.itemId) {
+                R.id.navigation_timeline -> 0
+                R.id.navigation_timetable -> 1
+                R.id.navigation_agent -> 2
+                R.id.navigation_navigation -> 3
+                else -> binding.pager.currentItem
             }
-
+            true
         }
-//        binding.navView.setOnNavigationItemSelectedListener { item: MenuItem ->
-//            when (item.itemId) {
-//                R.id.navigation_timeline -> binding.pager.currentItem = 0
-//                R.id.navigation_timetable -> binding.pager.currentItem = 1
-//                R.id.navigation_navigation -> binding.pager.currentItem = 2
-//            }
-//            binding.navView.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
-//            true
-//        }
         binding.drawerButton.setOnClickListener { binding.drawer.openDrawer(GravityCompat.END) }
 
         binding.timetableSetting.setOnClickListener {

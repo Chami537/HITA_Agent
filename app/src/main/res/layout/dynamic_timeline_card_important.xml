@@ -65,6 +65,24 @@
                     android:transitionName="course_name" />
 
                 <TextView
+                    android:id="@+id/tl_tv_exam_tag"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_gravity="start"
+                    android:layout_marginStart="@dimen/space_4"
+                    android:layout_marginBottom="@dimen/space_2"
+                    android:background="@drawable/element_rounded_button_bg_primary_lighter"
+                    android:fontFamily="sans-serif-black"
+                    android:paddingStart="@dimen/space_2"
+                    android:paddingTop="@dimen/space_1"
+                    android:paddingEnd="@dimen/space_2"
+                    android:paddingBottom="@dimen/space_1"
+                    android:text="@string/timeline_exam_reminder_tag"
+                    android:textColor="?attr/colorPrimary"
+                    android:textSize="12sp"
+                    android:visibility="gone" />
+
+                <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:layout_gravity="center|start"
@@ -89,7 +107,7 @@
                     android:clickable="false"
                     android:orientation="horizontal"
                     android:visibility="visible"
-                    app:theme="@style/button_ripple_accent_large">
+                    android:theme="@style/button_ripple_accent_large">
 
                     <ImageView
                         android:layout_width="14dp"
@@ -135,7 +153,7 @@
                     android:paddingTop="@dimen/space_2"
                     android:paddingRight="@dimen/space_2"
                     android:paddingBottom="@dimen/space_2"
-                    app:theme="@style/button_ripple_accent_large">
+                    android:theme="@style/button_ripple_accent_large">
 
                     <ImageView
                         android:layout_width="14dp"

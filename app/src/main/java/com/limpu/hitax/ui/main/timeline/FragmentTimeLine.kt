@@ -173,6 +173,17 @@ class FragmentTimeLine : HiltBaseFragmentWithReceiver<FragmentTimelineBinding>()
             }
             topListAdapter?.notifyItemChangedSmooth(it)
         }
+
+        viewModel.upcomingExamLiveData.observe(this) {
+            listAdapter?.upcomingExamEvents = it
+            val holder: RecyclerView.ViewHolder? =
+                binding?.list?.findViewHolderForAdapterPosition(0)
+            if (holder is TimelineListAdapter.timelineHeaderHolder) {
+                holder.UpdateHeadView()
+            } else {
+                listAdapter?.notifyItemChanged(0)
+            }
+        }
     }
 
     override fun initViewBinding(): FragmentTimelineBinding {

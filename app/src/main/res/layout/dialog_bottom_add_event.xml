@@ -386,7 +386,7 @@
                             android:scaleType="centerInside"
                             android:visibility="gone"
                             app:srcCompat="@drawable/ic_baseline_cancel_24"
-                            app:theme="@style/button_ripple_accent"
+                            android:theme="@style/button_ripple_accent"
                             app:tint="?attr/colorAccent" />
                     </LinearLayout>
                 </androidx.cardview.widget.CardView>
@@ -452,7 +452,7 @@
                             android:scaleType="centerInside"
                             android:visibility="gone"
                             app:srcCompat="@drawable/ic_baseline_cancel_24"
-                            app:theme="@style/button_ripple_accent"
+                            android:theme="@style/button_ripple_accent"
                             app:tint="?attr/colorAccent" />
 
                     </LinearLayout>

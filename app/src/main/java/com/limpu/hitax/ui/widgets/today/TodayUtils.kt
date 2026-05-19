@@ -15,6 +15,7 @@ import com.limpu.hitax.ui.widgets.WidgetUtils
 import com.limpu.hitax.ui.widgets.WidgetThemeUtils
 import com.limpu.hitax.ui.widgets.today.normal.TodayWidget
 import com.limpu.hitax.ui.widgets.today.slim.TodayWidgetSlim
+import com.limpu.hitax.utils.SpecialEventReminderUtils
 import com.limpu.hitax.utils.TimeTools
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.DelicateCoroutinesApi
@@ -44,6 +45,7 @@ object TodayUtils {
     fun setUpOneWidget(
         context: Context,
         events: List<EventItem>,
+        upcomingExams: List<EventItem>,
         appWidgetManager: AppWidgetManager,
         appWidgetId: Int,
         slim: Boolean
@@ -55,6 +57,8 @@ object TodayUtils {
         )
         views.setInt(R.id.widget_root, "setBackgroundResource", palette.backgroundDrawableRes)
         views.setTextColor(R.id.tv_title, palette.primaryTextColor)
+        views.setTextColor(R.id.exam_reminder_time, palette.accentColor)
+        views.setTextColor(R.id.exam_reminder_name, palette.primaryTextColor)
         views.setInt(R.id.imageView12, "setBackgroundResource", palette.dividerDrawableRes)
         views.setInt(R.id.loading_icon, "setBackgroundResource", palette.placeholderDrawableRes)
         views.setTextColor(R.id.loading, palette.secondaryTextColor)
@@ -113,6 +117,21 @@ object TodayUtils {
         serviceIntent.putExtra("slim", slim)
         serviceIntent.data = Uri.parse(serviceIntent.toUri(Intent.URI_INTENT_SCHEME))
         views.setRemoteAdapter(R.id.list, serviceIntent)
+        if (upcomingExams.isNotEmpty()) {
+            views.setViewVisibility(R.id.exam_reminder, View.VISIBLE)
+            views.setTextViewText(
+                R.id.exam_reminder_time,
+                context.getString(R.string.timeline_exam_reminder_tag)
+            )
+            views.setTextViewText(
+                R.id.exam_reminder_name,
+                upcomingExams.joinToString("\n") {
+                    SpecialEventReminderUtils.formatExamReminderLine(it)
+                }
+            )
+        } else {
+            views.setViewVisibility(R.id.exam_reminder, View.GONE)
+        }
         if (events.isEmpty()) {
             views.setTextViewText(
                 R.id.loading,

@@ -123,7 +123,7 @@
                 android:layout_marginTop="@dimen/space_6"
                 android:minHeight="0dp"
                 app:layout_collapseMode="pin"
-                app:theme="?attr/toolbarStyle" />
+                android:theme="?attr/toolbarStyle" />
 
         </com.google.android.material.appbar.CollapsingToolbarLayout>
 
