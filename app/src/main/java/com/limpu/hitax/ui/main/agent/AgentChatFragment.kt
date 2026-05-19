@@ -4,10 +4,13 @@ import android.app.AlertDialog
 import android.net.Uri
 import android.util.Base64
 import android.view.View
+import android.view.ViewGroup
 import android.view.inputmethod.EditorInfo
 import android.widget.ArrayAdapter
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowInsetsCompat
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.fragment.app.viewModels
 import com.limpu.hitax.BuildConfig
@@ -38,6 +41,8 @@ class AgentChatFragment : HiltBaseFragment<FragmentAgentChatBinding>() {
     private var agentSession: AgentSession<TimetableAgentInput, TimetableAgentOutput>? = null
     private lateinit var messageAdapter: AgentChatMessageAdapter
     private var sessionList: List<ChatSession> = emptyList()
+    private var baseInputBottomMargin = 0
+    private var baseMessageListBottomPadding = 0
 
     private val filePickerLauncher = registerForActivityResult(
         ActivityResultContracts.OpenDocument()
@@ -54,34 +59,8 @@ class AgentChatFragment : HiltBaseFragment<FragmentAgentChatBinding>() {
         binding?.messageList?.apply {
             layoutManager = LinearLayoutManager(requireContext()).apply { stackFromEnd = true }
             adapter = messageAdapter
-
-            // 只在键盘弹出/收起时自动滚动，不影响用户手动滚动
-            var previousKeyboardHeight = 0
-            addOnLayoutChangeListener { _, _, top, bottom, _, _, oldTop, _, oldBottom ->
-                val viewHeight = bottom - top
-                val oldViewHeight = oldBottom - oldTop
-                val heightDiff = viewHeight - oldViewHeight
-
-                // 只有在视图高度变化超过100px时，才认为是键盘弹出/收起
-                // 避免用户手动滚动时触发自动滚动
-                if (kotlin.math.abs(heightDiff) > 100) {
-                    val keyboardVisible = heightDiff < 0  // 高度减少 = 键盘弹出
-
-                    if (keyboardVisible && previousKeyboardHeight == 0) {
-                        // 键盘刚刚弹出，滚动到底部
-                        post {
-                            if (adapter?.itemCount ?: 0 > 0) {
-                                scrollToPosition((adapter?.itemCount ?: 1) - 1)
-                            }
-                        }
-                        previousKeyboardHeight = -heightDiff
-                    } else if (!keyboardVisible && previousKeyboardHeight > 0) {
-                        // 键盘刚刚收起
-                        previousKeyboardHeight = 0
-                    }
-                }
-            }
         }
+        setupKeyboardInsets()
 
         binding?.sendButton?.setOnClickListener { sendMessage() }
         binding?.attachButton?.setOnClickListener { openFilePicker() }
@@ -147,6 +126,36 @@ class AgentChatFragment : HiltBaseFragment<FragmentAgentChatBinding>() {
                 binding?.attachmentIndicator?.visibility = View.GONE
             }
         }
+    }
+
+    private fun setupKeyboardInsets() {
+        val root = binding?.root ?: return
+        val inputContainer = binding?.inputContainer ?: return
+        val messageList = binding?.messageList ?: return
+        val inputLayoutParams = inputContainer.layoutParams as? ViewGroup.MarginLayoutParams ?: return
+        baseInputBottomMargin = inputLayoutParams.bottomMargin
+        baseMessageListBottomPadding = messageList.paddingBottom
+
+        ViewCompat.setOnApplyWindowInsetsListener(root) { _, insets ->
+            val imeBottom = insets.getInsets(WindowInsetsCompat.Type.ime()).bottom
+            val navBottom = insets.getInsets(WindowInsetsCompat.Type.navigationBars()).bottom
+            val keyboardOffset = (imeBottom - navBottom).coerceAtLeast(0)
+
+            inputLayoutParams.bottomMargin = baseInputBottomMargin + keyboardOffset
+            inputContainer.layoutParams = inputLayoutParams
+            messageList.setPadding(
+                messageList.paddingLeft,
+                messageList.paddingTop,
+                messageList.paddingRight,
+                baseMessageListBottomPadding + keyboardOffset
+            )
+
+            if (keyboardOffset > 0 && messageAdapter.itemCount > 0) {
+                messageList.post { messageList.scrollToPosition(messageAdapter.itemCount - 1) }
+            }
+            insets
+        }
+        ViewCompat.requestApplyInsets(root)
     }
 
     private fun getFileName(uri: Uri): String {
