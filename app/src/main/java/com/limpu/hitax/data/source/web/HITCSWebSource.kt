@@ -114,7 +114,7 @@ object HITCSWebSource {
         return entries.sortedWith(compareByDescending<ExternalResourceEntry> { it.isDir }.thenBy { it.name })
     }
 
-    fun readMarkdownPreviewSync(path: String, maxChars: Int = 800): String {
+    fun readMarkdownPreviewSync(path: String, maxChars: Int = 5000): String {
         val rawUrl = "https://raw.githubusercontent.com/$REPO/main/${encodePath(path)}"
         val response = Jsoup.connect(rawUrl)
             .ignoreContentType(true)

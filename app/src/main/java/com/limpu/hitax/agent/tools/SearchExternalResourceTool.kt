@@ -194,6 +194,6 @@ class SearchExternalResourceTool : ReActTool {
         private const val MAX_HITCS_DETAIL_COURSES = 3
         private const val MAX_HITCS_ENTRY_COUNT = 8
         private const val MAX_HITCS_MARKDOWN_COUNT = 2
-        private const val MAX_MARKDOWN_PREVIEW_CHARS = 800
+        private const val MAX_MARKDOWN_PREVIEW_CHARS = 5000
     }
 }
