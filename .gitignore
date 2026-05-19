@@ -18,3 +18,5 @@
 local.properties
 /.idea/
 .worktrees
+keystore.properties
+app/hita-release.jks
