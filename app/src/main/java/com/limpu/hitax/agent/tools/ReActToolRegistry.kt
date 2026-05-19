@@ -15,6 +15,7 @@ class ReActToolRegistry {
             register("add_activity", AddActivityTool())
             register("search_course", SearchCourseTool())
             register("get_course_detail", GetCourseDetailTool())
+            register("search_external_resource", SearchExternalResourceTool())
             register("search_teacher", SearchTeacherTool())
             register("web_search", WebSearchTool())
             register("brave_answer", BraveAnswerTool())

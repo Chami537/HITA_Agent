@@ -1,23 +1,17 @@
 package com.limpu.hitax.agent.llm
 
 import android.app.Application
-import com.limpu.hitax.utils.LogUtils
-import com.limpu.hitax.utils.AppConstants
 import com.limpu.hitax.agent.core.AgentProvider
 import com.limpu.hitax.agent.core.AgentTraceEvent
-import com.limpu.hitax.BuildConfig
 import com.limpu.hitax.agent.tools.ReActToolInput
 import com.limpu.hitax.agent.tools.ReActToolRegistry
 import com.limpu.hitax.agent.timetable.TimetableAgentInput
 import com.limpu.hitax.agent.timetable.TimetableAgentOutput
+import com.limpu.hitax.data.model.resource.AgentResourceCard
+import com.limpu.hitax.utils.LogUtils
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
-import java.text.SimpleDateFormat
-import java.util.Calendar
-import java.util.Date
-import java.util.Locale
-import java.util.TimeZone
 
 object LlmChatService {
 
@@ -49,17 +43,24 @@ object LlmChatService {
                 // Use localReAct() below instead.
                 // val result = AgentBackendClient.aiReactSync(contextMessage)
                 // if (result == null) { onResult(...); return@withContext }
-                val (answer, thinking) = localReAct(
+                val resourceCards = mutableListOf<AgentResourceCard>()
+                val reactResult = localReAct(
                     contextMessage = contextMessage,
                     userMessage = userMessage,
-                    history = history,
                     application = application,
                     timetableId = timetableId,
                     agentProvider = agentProvider,
                     onTrace = onTrace,
-                ) ?: return@withContext emitResultToMain(onResult, LlmChatResult.Error(error = "本地 AI 推理失败"))
+                    onResourceCards = { cards ->
+                        resourceCards.addUnique(cards)
+                    },
+                )
+                if (reactResult == null) {
+                    return@withContext emitResultToMain(onResult, LlmChatResult.Error(error = "本地 AI 推理失败"))
+                }
+                val (answer, thinking) = reactResult
 
-                emitResultToMain(onResult, LlmChatResult.Success(text = answer, thinking = thinking))
+                emitResultToMain(onResult, LlmChatResult.Success(text = answer, thinking = thinking, resourceCards = resourceCards))
             } catch (e: Exception) {
                 LogUtils.e( "Chat failed", e)
                 emitResultToMain(onResult, LlmChatResult.Error(error = e.message ?: "调用失败"))
@@ -70,11 +71,11 @@ object LlmChatService {
     private suspend fun localReAct(
         contextMessage: String,
         userMessage: String,
-        history: List<ChatMessage>,
         application: Application,
         timetableId: String?,
         agentProvider: AgentProvider<TimetableAgentInput, TimetableAgentOutput>,
         onTrace: (AgentTraceEvent) -> Unit,
+        onResourceCards: (List<AgentResourceCard>) -> Unit,
     ): Pair<String, String>? {
         val messages = mutableListOf(
             ChatMessage(role = "system", content = contextMessage),
@@ -167,6 +168,7 @@ object LlmChatService {
                     timetableId = timetableId,
                     agentProvider = agentProvider,
                     onTrace = onTrace,
+                    onResourceCards = onResourceCards,
                 ))
                 ?: "未知工具: ${parsed.action}"
             emitTraceToMain(onTrace, AgentTraceEvent(stage = "react_step", message = "观察: ${observation.take(100)}", payload = observation.take(500)))
@@ -209,6 +211,17 @@ object LlmChatService {
         return ParsedStep(thought = thought, action = action, actionInput = actionInput)
     }
 }
+
+private fun MutableList<AgentResourceCard>.addUnique(newCards: List<AgentResourceCard>) {
+    val existingKeys = map { "${it.source}|${it.path}|${it.title}" }.toMutableSet()
+    newCards.forEach { card ->
+        val key = "${card.source}|${card.path}|${card.title}"
+        if (existingKeys.add(key)) {
+            add(card)
+        }
+    }
+}
+
 private suspend fun localLlmGenerate(prompt: String): String? {
     val request = ChatCompletionRequest(
         model = LlmClient.MODEL,
@@ -228,7 +241,11 @@ private suspend fun localLlmGenerate(prompt: String): String? {
 }
 
 sealed class LlmChatResult {
-    data class Success(val text: String, val thinking: String? = null) : LlmChatResult()
+    data class Success(
+        val text: String,
+        val thinking: String? = null,
+        val resourceCards: List<AgentResourceCard> = emptyList(),
+    ) : LlmChatResult()
     data class Error(val error: String) : LlmChatResult()
 }
 

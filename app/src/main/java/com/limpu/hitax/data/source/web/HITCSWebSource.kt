@@ -41,18 +41,7 @@ object HITCSWebSource {
         val result = MutableLiveData<DataState<List<ExternalCourseItem>>>()
         Thread {
             try {
-                val courses = ensureCourseCache()
-                val keyword = query.trim().lowercase()
-                val matched = courses.filter { (_, courseName, _) ->
-                    courseName.lowercase().contains(keyword)
-                }.map { (category, courseName, path) ->
-                    ExternalCourseItem(
-                        courseName = courseName,
-                        category = category,
-                        source = ResourceSource.HITCS,
-                        path = path,
-                    )
-                }
+                val matched = searchCoursesSync(query)
                 result.postValue(DataState(matched, DataState.STATE.SUCCESS))
             } catch (e: Exception) {
                 LogUtils.e("HITCS search failed: ${e.message}")
@@ -60,6 +49,21 @@ object HITCSWebSource {
             }
         }.start()
         return result
+    }
+
+    fun searchCoursesSync(query: String): List<ExternalCourseItem> {
+        val courses = ensureCourseCache()
+        val keyword = query.trim().lowercase()
+        return courses.filter { (_, courseName, _) ->
+            keyword.isBlank() || courseName.lowercase().contains(keyword)
+        }.map { (category, courseName, path) ->
+            ExternalCourseItem(
+                courseName = courseName,
+                category = category,
+                source = ResourceSource.HITCS,
+                path = path,
+            )
+        }
     }
 
     fun listDirectory(path: String): LiveData<DataState<List<ExternalResourceEntry>>> {

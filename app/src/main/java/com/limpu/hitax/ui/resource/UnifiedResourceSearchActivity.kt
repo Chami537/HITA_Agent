@@ -123,7 +123,22 @@ class UnifiedResourceSearchActivity :
         }
 
         val initialQuery = intent.getStringExtra("query")
-        if (!initialQuery.isNullOrBlank()) {
+        val browsePath = intent.getStringExtra("browsePath")
+        val browseSource = intent.getStringExtra("browseSource")?.let { raw ->
+            runCatching { ResourceSource.valueOf(raw) }.getOrNull()
+        }
+        val browseTitle = intent.getStringExtra("browseTitle")
+        if (!browsePath.isNullOrBlank() && browseSource != null) {
+            val title = browseTitle?.takeIf { it.isNotBlank() } ?: browsePath.substringAfterLast("/")
+            enterBrowseMode(
+                UnifiedResourceItem.ExternalCourse(
+                    courseName = title,
+                    category = "",
+                    source = browseSource,
+                    path = browsePath,
+                )
+            )
+        } else if (!initialQuery.isNullOrBlank()) {
             val normalized = CourseCodeUtils.normalize(initialQuery) ?: initialQuery
             binding.searchInput.setText(normalized)
             binding.searchInput.setSelection(normalized.length)

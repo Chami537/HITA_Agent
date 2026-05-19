@@ -5,6 +5,7 @@ import com.limpu.hitax.agent.core.AgentProvider
 import com.limpu.hitax.agent.core.AgentTraceEvent
 import com.limpu.hitax.agent.timetable.TimetableAgentInput
 import com.limpu.hitax.agent.timetable.TimetableAgentOutput
+import com.limpu.hitax.data.model.resource.AgentResourceCard
 
 data class ReActToolInput(
     val actionInput: String,
@@ -13,6 +14,7 @@ data class ReActToolInput(
     val timetableId: String?,
     val agentProvider: AgentProvider<TimetableAgentInput, TimetableAgentOutput>,
     val onTrace: (AgentTraceEvent) -> Unit,
+    val onResourceCards: (List<AgentResourceCard>) -> Unit = {},
 )
 
 fun interface ReActTool {

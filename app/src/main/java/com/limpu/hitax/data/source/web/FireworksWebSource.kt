@@ -27,20 +27,7 @@ object FireworksWebSource {
         val result = MutableLiveData<DataState<List<ExternalCourseItem>>>()
         Thread {
             try {
-                val courses = ensureCourseCache()
-                val keyword = query.trim().lowercase()
-                val matched = courses.filter { (courseName, _) ->
-                    courseName.lowercase().contains(keyword)
-                }.map { (courseName, path) ->
-                    val parts = path.split("/")
-                    val category = parts.firstOrNull() ?: ""
-                    ExternalCourseItem(
-                        courseName = courseName,
-                        category = category,
-                        source = ResourceSource.FIREWORKS,
-                        path = path,
-                    )
-                }
+                val matched = searchCoursesSync(query)
                 LogUtils.d("Fireworks: matched ${matched.size} courses for '$query'")
                 result.postValue(DataState(matched, DataState.STATE.SUCCESS))
             } catch (e: Exception) {
@@ -49,6 +36,23 @@ object FireworksWebSource {
             }
         }.start()
         return result
+    }
+
+    fun searchCoursesSync(query: String): List<ExternalCourseItem> {
+        val courses = ensureCourseCache()
+        val keyword = query.trim().lowercase()
+        return courses.filter { (courseName, _) ->
+            keyword.isBlank() || courseName.lowercase().contains(keyword)
+        }.map { (courseName, path) ->
+            val parts = path.split("/")
+            val category = parts.firstOrNull() ?: ""
+            ExternalCourseItem(
+                courseName = courseName,
+                category = category,
+                source = ResourceSource.FIREWORKS,
+                path = path,
+            )
+        }
     }
 
     /**

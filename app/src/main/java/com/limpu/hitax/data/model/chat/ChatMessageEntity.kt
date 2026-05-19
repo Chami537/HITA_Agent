@@ -24,5 +24,6 @@ data class ChatMessageEntity(
     val sessionId: String,
     val role: String,
     val text: String,
+    val resourceCardsJson: String = "",
     val timestampMs: Long = System.currentTimeMillis(),
 )

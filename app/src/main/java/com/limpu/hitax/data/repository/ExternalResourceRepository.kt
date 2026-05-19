@@ -8,6 +8,7 @@ import com.limpu.hitax.data.model.resource.ExternalResourceEntry
 import com.limpu.hitax.data.model.resource.ResourceSource
 import com.limpu.hitax.data.source.web.FireworksWebSource
 import com.limpu.hitax.data.source.web.HITCSWebSource
+import com.limpu.hitax.utils.LogUtils
 import javax.inject.Inject
 
 class ExternalResourceRepository @Inject constructor() {
@@ -60,6 +61,21 @@ class ExternalResourceRepository @Inject constructor() {
         }
 
         return mediator
+    }
+
+    fun searchCoursesSync(query: String): List<ExternalCourseItem> {
+        val merged = mutableListOf<ExternalCourseItem>()
+        try {
+            merged.addAll(HITCSWebSource.searchCoursesSync(query))
+        } catch (e: Exception) {
+            LogUtils.w("HITCS sync search failed: ${e.message}")
+        }
+        try {
+            merged.addAll(FireworksWebSource.searchCoursesSync(query))
+        } catch (e: Exception) {
+            LogUtils.w("Fireworks sync search failed: ${e.message}")
+        }
+        return merged.sortedBy { it.courseName }
     }
 
     fun listDirectory(

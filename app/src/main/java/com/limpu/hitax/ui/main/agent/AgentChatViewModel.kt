@@ -13,6 +13,7 @@ import com.limpu.hitax.agent.llm.ChatMessage
 import com.limpu.hitax.agent.llm.LlmChatResult
 import com.limpu.hitax.agent.llm.LlmChatService
 import com.limpu.hitax.agent.llm.chatWithAttachment
+import com.limpu.hitax.agent.tools.AgentResourceCardCollector
 import com.limpu.hitax.agent.timetable.TimetableAgentInput
 import com.limpu.hitax.agent.timetable.TimetableAgentOutput
 import com.limpu.hitax.data.AppDatabase
@@ -103,6 +104,7 @@ class AgentChatViewModel @Inject constructor(
                     sessionId = sid,
                     role = message.role.name,
                     text = message.text,
+                    resourceCardsJson = AgentResourceCardCollector.toJson(message.resourceCards),
                     timestampMs = message.timestampMs,
                 )
             )
@@ -169,6 +171,7 @@ class AgentChatViewModel @Inject constructor(
                     sessionId = sid,
                     role = finalMessage.role.name,
                     text = finalMessage.text,
+                    resourceCardsJson = AgentResourceCardCollector.toJson(finalMessage.resourceCards),
                     timestampMs = finalMessage.timestampMs,
                 )
             )
@@ -223,6 +226,7 @@ class AgentChatViewModel @Inject constructor(
                 AgentChatMessage(
                     role = AgentChatMessage.Role.valueOf(e.role),
                     text = e.text,
+                    resourceCards = AgentResourceCardCollector.fromJson(e.resourceCardsJson),
                     timestampMs = e.timestampMs,
                 )
             }
@@ -303,6 +307,7 @@ class AgentChatViewModel @Inject constructor(
                             when {
                                 action.contains("get_timetable") -> "正在查询课表…"
                                 action.contains("search_timetable") -> "正在搜索课表事件…"
+                                action.contains("search_external_resource") -> "正在搜索课程资料…"
                                 action.contains("search_course") -> "正在搜索课程信息…"
                                 action.contains("get_course_detail") -> "正在获取课程详情…"
                                 action.contains("search_teacher") -> "正在搜索教师信息…"
@@ -331,22 +336,12 @@ class AgentChatViewModel @Inject constructor(
                     when (result) {
                         is LlmChatResult.Success -> {
                             history.add(ChatMessage(role = "assistant", content = result.text))
-                            ioExecutor.execute {
-                                messageDao.save(
-                                    ChatMessageEntity(
-                                        sessionId = sid,
-                                        role = AgentChatMessage.Role.ASSISTANT.name,
-                                        text = result.text,
-                                        timestampMs = System.currentTimeMillis(),
-                                    )
-                                )
-                                sessionDao.updateTitle(sid, deriveTitle(), System.currentTimeMillis())
-                            }
                             if (currentSessionId == sid) {
                                 replacePlaceholder(AgentChatMessage(
                                     role = AgentChatMessage.Role.ASSISTANT,
                                     text = result.text,
                                     thinking = result.thinking,
+                                    resourceCards = result.resourceCards,
                                 ), targetSessionId = sid)
                                 setStatus("完成")
                             }
@@ -399,6 +394,7 @@ class AgentChatViewModel @Inject constructor(
                             val action = trace.message.substringAfter("→ ", "").trim()
                             when {
                                 action.contains("get_timetable") -> "正在查询课表…"
+                                action.contains("search_external_resource") -> "正在搜索课程资料…"
                                 action.contains("search_course") -> "正在搜索课程信息…"
                                 action.contains("get_course_detail") -> "正在获取课程详情…"
                                 action.contains("search_teacher") -> "正在搜索教师信息…"
@@ -425,22 +421,12 @@ class AgentChatViewModel @Inject constructor(
                             if (!history.any { it.role == "assistant" && it.content == result.text }) {
                                 history.add(ChatMessage(role = "assistant", content = result.text))
                             }
-                            ioExecutor.execute {
-                                messageDao.save(
-                                    ChatMessageEntity(
-                                        sessionId = sid,
-                                        role = AgentChatMessage.Role.ASSISTANT.name,
-                                        text = result.text,
-                                        timestampMs = System.currentTimeMillis(),
-                                    )
-                                )
-                                sessionDao.updateTitle(sid, deriveTitle(), System.currentTimeMillis())
-                            }
                             if (currentSessionId == sid) {
                                 replacePlaceholder(AgentChatMessage(
                                     role = AgentChatMessage.Role.ASSISTANT,
                                     text = result.text,
-                                    thinking = result.thinking
+                                    thinking = result.thinking,
+                                    resourceCards = result.resourceCards,
                                 ), targetSessionId = sid)
                             }
                         }
