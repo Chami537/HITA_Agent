@@ -3,7 +3,6 @@ package com.limpu.hitax.ui.main
 import android.app.Activity
 import android.content.Intent
 import android.graphics.Color
-import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import com.limpu.hitax.utils.LogUtils
@@ -31,7 +30,6 @@ import com.limpu.hitax.ui.about.UserAgreementDialog
 import com.limpu.hitax.ui.base.HiltBaseActivity
 import com.limpu.hitax.ui.eas.login.PopUpLoginEAS
 import com.limpu.hitax.ui.event.add.PopupAddEvent
-import com.limpu.hitax.ui.main.agent.AgentChatDialog
 import com.limpu.hitax.ui.main.agent.AgentChatFragment
 import com.limpu.hitax.ui.main.navigation.NavigationFragment
 import com.limpu.hitax.ui.main.timeline.FragmentTimeLine
@@ -78,67 +76,6 @@ class MainActivity : HiltBaseActivity<ActivityMainBinding>(),
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setSupportActionBar(binding.toolbar)
-
-        // AndroidBug5497Workaround: 修复沉浸式模式下 adjustResize 失效的问题
-        AndroidBug5497Workaround.assistActivity(this)
-    }
-
-    // 内部类：AndroidBug5497Workaround 解决方案
-    class AndroidBug5497Workaround private constructor(private val activity: Activity) {
-
-        private var childContent: View? = null
-        private var usableHeightPrevious = 0
-        private val resizeThresholdPx = 24
-
-        fun assistActivity() {
-            val content = activity.findViewById<View>(android.R.id.content) as ViewGroup
-            childContent = content.getChildAt(0)
-            childContent?.viewTreeObserver?.addOnGlobalLayoutListener { possiblyResizeChildOfContent() }
-        }
-
-        private fun possiblyResizeChildOfContent() {
-            val content = activity.findViewById<View>(android.R.id.content)
-            val usableHeightNow = content.computeUsableHeight()
-            if (usableHeightNow != usableHeightPrevious) {
-                val usableHeightSansKeyboard = childContent?.rootView?.height ?: 0
-                val heightDifference = usableHeightSansKeyboard - usableHeightNow
-                if (heightDifference > (usableHeightSansKeyboard / 4)) {
-                    // keyboard probably just became visible. If adjustResize already resized the
-                    // activity content, adding keyboard-height padding again pushes Agent input too high.
-                    val pager = activity.findViewById<View>(R.id.pager)
-                    val contentHeight = childContent?.height ?: 0
-                    val alreadyResized = contentHeight <= usableHeightNow + resizeThresholdPx
-                    pager?.setPadding(
-                        pager.paddingLeft,
-                        pager.paddingTop,
-                        pager.paddingRight,
-                        if (alreadyResized) 0 else heightDifference
-                    )
-                } else {
-                    // keyboard probably just became hidden
-                    val pager = activity.findViewById<View>(R.id.pager)
-                    pager?.setPadding(
-                        pager.paddingLeft,
-                        pager.paddingTop,
-                        pager.paddingRight,
-                        0 // 移除底部padding
-                    )
-                }
-                usableHeightPrevious = usableHeightNow
-            }
-        }
-
-        private fun View.computeUsableHeight(): Int {
-            val r = android.graphics.Rect()
-            getWindowVisibleDisplayFrame(r)
-            return r.bottom - r.top
-        }
-
-        companion object {
-            fun assistActivity(activity: Activity) {
-                AndroidBug5497Workaround(activity).assistActivity()
-            }
-        }
     }
 
 
