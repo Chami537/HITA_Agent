@@ -1,6 +1,7 @@
 package com.limpu.hitax.ui.main.agent
 
 import android.app.AlertDialog
+import android.graphics.Rect
 import android.net.Uri
 import android.util.Base64
 import android.view.View
@@ -135,10 +136,42 @@ class AgentChatFragment : HiltBaseFragment<FragmentAgentChatBinding>() {
         val inputLayoutParams = inputContainer.layoutParams as? ViewGroup.MarginLayoutParams ?: return
         baseInputBottomMargin = inputLayoutParams.bottomMargin
         baseMessageListBottomPadding = messageList.paddingBottom
+        LogUtils.d(
+            "setupKeyboardInsets root=${root.width}x${root.height} inputBottom=$baseInputBottomMargin listBottomPadding=$baseMessageListBottomPadding",
+            tag = "AgentKeyboard"
+        )
+
+        binding?.inputField?.setOnFocusChangeListener { _, hasFocus ->
+            LogUtils.d(
+                "input focus=$hasFocus rootH=${root.height} inputY=${inputContainer.y} inputH=${inputContainer.height}",
+                tag = "AgentKeyboard"
+            )
+            if (hasFocus) {
+                ViewCompat.requestApplyInsets(root)
+            }
+        }
+
+        var lastVisibleHeight = -1
+        root.viewTreeObserver.addOnGlobalLayoutListener {
+            val visibleFrame = Rect()
+            root.getWindowVisibleDisplayFrame(visibleFrame)
+            val visibleHeight = visibleFrame.height()
+            if (visibleHeight != lastVisibleHeight) {
+                val rootHeight = root.rootView.height
+                val heightDiff = rootHeight - visibleHeight
+                LogUtils.d(
+                    "globalLayout rootH=$rootHeight visibleH=$visibleHeight diff=$heightDiff frameBottom=${visibleFrame.bottom} inputBottom=${inputLayoutParams.bottomMargin}",
+                    tag = "AgentKeyboard"
+                )
+                lastVisibleHeight = visibleHeight
+            }
+        }
 
         ViewCompat.setOnApplyWindowInsetsListener(root) { _, insets ->
             val imeBottom = insets.getInsets(WindowInsetsCompat.Type.ime()).bottom
             val navBottom = insets.getInsets(WindowInsetsCompat.Type.navigationBars()).bottom
+            val systemBottom = insets.getInsets(WindowInsetsCompat.Type.systemBars()).bottom
+            val imeVisible = insets.isVisible(WindowInsetsCompat.Type.ime())
             val keyboardOffset = (imeBottom - navBottom).coerceAtLeast(0)
 
             inputLayoutParams.bottomMargin = baseInputBottomMargin + keyboardOffset
@@ -150,6 +183,10 @@ class AgentChatFragment : HiltBaseFragment<FragmentAgentChatBinding>() {
                 baseMessageListBottomPadding + keyboardOffset
             )
 
+            LogUtils.d(
+                "insets imeVisible=$imeVisible imeBottom=$imeBottom navBottom=$navBottom systemBottom=$systemBottom offset=$keyboardOffset margin=${inputLayoutParams.bottomMargin} listPadding=${messageList.paddingBottom} rootH=${root.height}",
+                tag = "AgentKeyboard"
+            )
             if (keyboardOffset > 0 && messageAdapter.itemCount > 0) {
                 messageList.post { messageList.scrollToPosition(messageAdapter.itemCount - 1) }
             }
