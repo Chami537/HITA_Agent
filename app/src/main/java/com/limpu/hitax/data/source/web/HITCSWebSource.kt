@@ -70,39 +70,7 @@ object HITCSWebSource {
         val result = MutableLiveData<DataState<List<ExternalResourceEntry>>>()
         Thread {
             try {
-                val url = "$API_BASE/contents/${encodePath(path)}"
-                val response = withHeaders(Jsoup.connect(url))
-                    .method(Connection.Method.GET)
-                    .execute()
-
-                if (response.statusCode() >= 400) {
-                    result.postValue(DataState(DataState.STATE.FETCH_FAILED, "HTTP ${response.statusCode()}"))
-                    return@Thread
-                }
-
-                val arr = JSONArray(response.body())
-                val entries = mutableListOf<ExternalResourceEntry>()
-                for (i in 0 until arr.length()) {
-                    val obj = arr.optJSONObject(i) ?: continue
-                    val rawDownloadUrl = obj.optString("download_url", "")
-                    // Wrap raw.githubusercontent.com URLs with proxy for CN mobile
-                    val proxiedUrl = if (rawDownloadUrl.startsWith("https://raw.githubusercontent.com")) {
-                        "$RAW_PROXY$rawDownloadUrl"
-                    } else {
-                        rawDownloadUrl
-                    }
-                    entries.add(
-                        ExternalResourceEntry(
-                            name = obj.optString("name", ""),
-                            isDir = obj.optString("type") == "dir",
-                            path = obj.optString("path", ""),
-                            size = obj.optLong("size", 0),
-                            downloadUrl = proxiedUrl,
-                            source = ResourceSource.HITCS,
-                        )
-                    )
-                }
-                entries.sortWith(compareByDescending<ExternalResourceEntry> { it.isDir }.thenBy { it.name })
+                val entries = listDirectorySync(path)
                 result.postValue(DataState(entries, DataState.STATE.SUCCESS))
             } catch (e: Exception) {
                 LogUtils.e("HITCS listDirectory failed: ${e.message}")
@@ -110,6 +78,56 @@ object HITCSWebSource {
             }
         }.start()
         return result
+    }
+
+    fun listDirectorySync(path: String): List<ExternalResourceEntry> {
+        val url = "$API_BASE/contents/${encodePath(path)}"
+        val response = withHeaders(Jsoup.connect(url))
+            .method(Connection.Method.GET)
+            .execute()
+
+        if (response.statusCode() >= 400) {
+            throw Exception("HTTP ${response.statusCode()}")
+        }
+
+        val arr = JSONArray(response.body())
+        val entries = mutableListOf<ExternalResourceEntry>()
+        for (i in 0 until arr.length()) {
+            val obj = arr.optJSONObject(i) ?: continue
+            val rawDownloadUrl = obj.optString("download_url", "")
+            val proxiedUrl = if (rawDownloadUrl.startsWith("https://raw.githubusercontent.com")) {
+                "$RAW_PROXY$rawDownloadUrl"
+            } else {
+                rawDownloadUrl
+            }
+            entries.add(
+                ExternalResourceEntry(
+                    name = obj.optString("name", ""),
+                    isDir = obj.optString("type") == "dir",
+                    path = obj.optString("path", ""),
+                    size = obj.optLong("size", 0),
+                    downloadUrl = proxiedUrl,
+                    source = ResourceSource.HITCS,
+                )
+            )
+        }
+        return entries.sortedWith(compareByDescending<ExternalResourceEntry> { it.isDir }.thenBy { it.name })
+    }
+
+    fun readMarkdownPreviewSync(path: String, maxChars: Int = 800): String {
+        val rawUrl = "https://raw.githubusercontent.com/$REPO/main/${encodePath(path)}"
+        val response = Jsoup.connect(rawUrl)
+            .ignoreContentType(true)
+            .ignoreHttpErrors(true)
+            .timeout(TIMEOUT)
+            .header("User-Agent", "HITA_L/${BuildConfig.VERSION_NAME}")
+            .method(Connection.Method.GET)
+            .execute()
+
+        if (response.statusCode() >= 400) {
+            throw Exception("HTTP ${response.statusCode()}")
+        }
+        return response.body().trim().take(maxChars)
     }
 
     @Synchronized

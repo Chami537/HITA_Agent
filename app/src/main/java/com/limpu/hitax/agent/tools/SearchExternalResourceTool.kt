@@ -3,9 +3,11 @@ package com.limpu.hitax.agent.tools
 import com.limpu.hitax.data.model.resource.AgentResourceCard
 import com.limpu.hitax.data.model.resource.CourseResourceItem
 import com.limpu.hitax.data.model.resource.ExternalCourseItem
+import com.limpu.hitax.data.model.resource.ExternalResourceEntry
 import com.limpu.hitax.data.model.resource.ResourceSource
 import com.limpu.hitax.data.repository.ExternalResourceRepository
 import com.limpu.hitax.data.repository.HoaRepository
+import com.limpu.hitax.data.source.web.HITCSWebSource
 
 class SearchExternalResourceTool : ReActTool {
     override fun execute(input: ReActToolInput): String {
@@ -32,12 +34,17 @@ class SearchExternalResourceTool : ReActTool {
                 add(formatExternalResult(item))
             }
         }
+        val hitcsDetails = buildHitcsDetails(externalResults)
 
         return buildString {
             append("在 HOA/深圳资源找到 ${hoaResults.size} 个课程资源，在 HITCS/薪火找到 ${externalResults.size} 个资料目录。")
             if (formatted.isNotEmpty()) {
                 append("\n")
                 append(formatted.mapIndexed { index, value -> "${index + 1}. $value" }.joinToString("\n"))
+            }
+            if (hitcsDetails.isNotBlank()) {
+                append("\n\nHITCS 命中目录内容预览：\n")
+                append(hitcsDetails)
             }
             append("\n\n已在回答下方生成可点击资料卡片。")
         }
@@ -123,9 +130,70 @@ class SearchExternalResourceTool : ReActTool {
         }
     }
 
+    private fun buildHitcsDetails(results: List<ExternalCourseItem>): String {
+        val hitcsResults = results.filter { it.source == ResourceSource.HITCS }.take(MAX_HITCS_DETAIL_COURSES)
+        if (hitcsResults.isEmpty()) return ""
+
+        return hitcsResults.mapNotNull { course ->
+            runCatching {
+                val entries = HITCSWebSource.listDirectorySync(course.path)
+                formatHitcsDirectoryPreview(course, entries)
+            }.getOrNull()
+        }.joinToString("\n\n")
+    }
+
+    private fun formatHitcsDirectoryPreview(
+        course: ExternalCourseItem,
+        entries: List<ExternalResourceEntry>,
+    ): String {
+        val directories = entries.filter { it.isDir }.take(MAX_HITCS_ENTRY_COUNT)
+        val files = entries.filterNot { it.isDir }.take(MAX_HITCS_ENTRY_COUNT)
+        val markdownFiles = entries.filter {
+            !it.isDir && it.name.endsWith(".md", ignoreCase = true)
+        }.take(MAX_HITCS_MARKDOWN_COUNT)
+
+        return buildString {
+            append("• ")
+            append(course.courseName)
+            append("（")
+            append(course.path)
+            append("）")
+            if (directories.isNotEmpty()) {
+                append("\n  文件夹: ")
+                append(directories.joinToString("、") { it.name })
+            }
+            if (files.isNotEmpty()) {
+                append("\n  文件: ")
+                append(files.joinToString("、") { it.name })
+            }
+            markdownFiles.forEach { file ->
+                val preview = runCatching {
+                    HITCSWebSource.readMarkdownPreviewSync(file.path, MAX_MARKDOWN_PREVIEW_CHARS)
+                }.getOrNull()?.cleanMarkdownPreview().orEmpty()
+                if (preview.isNotBlank()) {
+                    append("\n  Markdown 摘要 ${file.name}: ")
+                    append(preview)
+                }
+            }
+        }
+    }
+
+    private fun String.cleanMarkdownPreview(): String {
+        return lines()
+            .map { it.trim() }
+            .filter { it.isNotBlank() }
+            .joinToString(" ")
+            .replace(Regex("\\s+"), " ")
+            .take(MAX_MARKDOWN_PREVIEW_CHARS)
+    }
+
     companion object {
         const val SOURCE_HOA = "HOA"
         private const val MAX_CARD_COUNT_PER_SOURCE = 4
         private const val MAX_TOTAL_CARD_COUNT = 10
+        private const val MAX_HITCS_DETAIL_COURSES = 3
+        private const val MAX_HITCS_ENTRY_COUNT = 8
+        private const val MAX_HITCS_MARKDOWN_COUNT = 2
+        private const val MAX_MARKDOWN_PREVIEW_CHARS = 800
     }
 }
