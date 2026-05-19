@@ -167,17 +167,18 @@ class AgentChatFragment : HiltBaseFragment<FragmentAgentChatBinding>() {
             }
         }
 
-        var stableNavBottom = 0
         ViewCompat.setOnApplyWindowInsetsListener(root) { _, insets ->
             val imeBottom = insets.getInsets(WindowInsetsCompat.Type.ime()).bottom
             val navBottom = insets.getInsets(WindowInsetsCompat.Type.navigationBars()).bottom
             val systemBottom = insets.getInsets(WindowInsetsCompat.Type.systemBars()).bottom
             val imeVisible = insets.isVisible(WindowInsetsCompat.Type.ime())
-            if (!imeVisible) {
-                stableNavBottom = navBottom
-            }
+            val rootLocation = IntArray(2)
+            root.getLocationOnScreen(rootLocation)
+            val rootBottomOnScreen = rootLocation[1] + root.height
+            val visibleFrame = Rect()
+            root.getWindowVisibleDisplayFrame(visibleFrame)
             val keyboardOffset = if (imeVisible) {
-                (imeBottom - stableNavBottom).coerceAtLeast(0)
+                (rootBottomOnScreen - visibleFrame.bottom).coerceAtLeast(0)
             } else {
                 0
             }
@@ -192,7 +193,7 @@ class AgentChatFragment : HiltBaseFragment<FragmentAgentChatBinding>() {
             )
 
             LogUtils.d(
-                "insets imeVisible=$imeVisible imeBottom=$imeBottom navBottom=$navBottom stableNavBottom=$stableNavBottom systemBottom=$systemBottom offset=$keyboardOffset margin=${inputLayoutParams.bottomMargin} listPadding=${messageList.paddingBottom} rootH=${root.height}",
+                "insets imeVisible=$imeVisible imeBottom=$imeBottom navBottom=$navBottom systemBottom=$systemBottom rootBottom=$rootBottomOnScreen visibleBottom=${visibleFrame.bottom} offset=$keyboardOffset margin=${inputLayoutParams.bottomMargin} listPadding=${messageList.paddingBottom} rootH=${root.height}",
                 tag = "AgentKeyboard"
             )
             if (keyboardOffset > 0 && messageAdapter.itemCount > 0) {
