@@ -8,17 +8,11 @@ import com.limpu.hitax.data.model.resource.ExternalCourseItem
 import com.limpu.hitax.data.model.resource.ExternalResourceEntry
 import com.limpu.hitax.data.model.resource.ResourceSource
 import com.limpu.hitax.utils.LogUtils
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.launch
 import org.jsoup.Jsoup
 
 object FireworksWebSource {
     private const val SITE_URL = "https://fireworks.jwyihao.top"
     private const val TIMEOUT = 30000
-
-    private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
 
     @Volatile
     private var courseCache: List<Pair<String, String>>? = null // (courseName, path)
@@ -31,7 +25,7 @@ object FireworksWebSource {
     fun searchCourses(query: String): LiveData<DataState<List<ExternalCourseItem>>> {
         LogUtils.d("Fireworks: searchCourses called with query='$query'")
         val result = MutableLiveData<DataState<List<ExternalCourseItem>>>()
-        scope.launch {
+        Thread {
             try {
                 val matched = searchCoursesSync(query)
                 LogUtils.d("Fireworks: matched ${matched.size} courses for '$query'")
@@ -40,7 +34,7 @@ object FireworksWebSource {
                 LogUtils.e("Fireworks search failed: ${e.message}")
                 result.postValue(DataState(DataState.STATE.FETCH_FAILED, e.message))
             }
-        }
+        }.start()
         return result
     }
 
@@ -67,7 +61,7 @@ object FireworksWebSource {
      */
     fun listDirectory(path: String): LiveData<DataState<List<ExternalResourceEntry>>> {
         val result = MutableLiveData<DataState<List<ExternalResourceEntry>>>()
-        scope.launch {
+        Thread {
             val encodedPath = path.split("/").joinToString("/") { segment ->
                 java.net.URLEncoder.encode(segment, "UTF-8").replace("+", "%20")
             }
@@ -83,7 +77,7 @@ object FireworksWebSource {
                 )
             )
             result.postValue(DataState(entries, DataState.STATE.SUCCESS))
-        }
+        }.start()
         return result
     }
 

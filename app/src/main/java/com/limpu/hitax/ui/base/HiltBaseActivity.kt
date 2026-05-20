@@ -1,5 +1,8 @@
 package com.limpu.hitax.ui.base
 
+import android.app.Activity
+import android.content.Context
+import android.content.Intent
 import android.content.res.Configuration
 import android.graphics.Color
 import android.os.Build
@@ -15,7 +18,7 @@ import androidx.appcompat.app.AppCompatDelegate
 import androidx.appcompat.widget.Toolbar
 import androidx.core.graphics.ColorUtils
 import androidx.viewbinding.ViewBinding
-import com.limpu.style.R
+import com.limpu.hitax.R
 import com.limpu.style.ThemeTools
 
 @Suppress("DEPRECATION")
@@ -141,5 +144,17 @@ abstract class HiltBaseActivity<V : ViewBinding> : AppCompatActivity() {
     @Suppress("UNCHECKED_CAST")
     fun <T : HiltBaseActivity<V>> getThis(): T {
         return this as T
+    }
+
+    companion object {
+        fun startWithCrossFade(from: Context, intent: Intent) {
+            from.startActivity(intent)
+            if (from is Activity) {
+                from.overridePendingTransition(
+                    R.anim.fade_in_long,
+                    R.anim.fade_out_quick
+                )
+            }
+        }
     }
 }

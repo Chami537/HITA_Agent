@@ -28,6 +28,7 @@ import com.limpu.hitax.ui.resource.CourseReadmeActivity
 import com.limpu.hitax.ui.resource.InternalWebActivity
 import com.limpu.hitax.ui.resource.UnifiedResourceSearchActivity
 import com.limpu.hitax.ui.news.NewsDetailActivity
+import com.limpu.hitax.ui.base.HiltBaseActivity
 import com.limpu.hitax.ui.profile.ProfileActivity
 import com.limpu.hitax.ui.search.SearchActivity
 import com.limpu.hitax.ui.subject.SubjectActivity
@@ -49,7 +50,7 @@ object ActivityUtils {
         i.putExtra("id", id)
         i.putExtra("url", url)
         i.putExtra("name", name)
-        from.startActivity(i)
+        HiltBaseActivity.startWithCrossFade(from, i)
     }
 
 
@@ -62,13 +63,12 @@ object ActivityUtils {
         val i = Intent(from, SearchActivity::class.java)
         i.putExtra("keyword", text)
         i.putExtra("type", type.name)
-        from.startActivity(i)
-
+        HiltBaseActivity.startWithCrossFade(from, i)
     }
 
     fun startSearchActivity(from: Context) {
         val i = Intent(from, SearchActivity::class.java)
-        from.startActivity(i)
+        HiltBaseActivity.startWithCrossFade(from, i)
     }
 
     fun startSearchActivity(from: Activity,transition: View) {
@@ -79,13 +79,13 @@ object ActivityUtils {
     }
     fun startMyProfileActivity(from: Context) {
         val i = Intent(from, MyProfileActivity::class.java)
-        from.startActivity(i)
+        HiltBaseActivity.startWithCrossFade(from, i)
     }
 
     fun startImportTimetableActivity(from: Context, autoImport: Boolean = false) {
         val i = Intent(from, ImportTimetableActivity::class.java)
         i.putExtra("autoImport", autoImport)
-        from.startActivity(i)
+        HiltBaseActivity.startWithCrossFade(from, i)
     }
 
     fun startWelcomeActivity(from: Context, easRepository: EASRepository) {
@@ -137,7 +137,7 @@ object ActivityUtils {
                 directTo?.let {
                     LogUtils.d("User already logged in, starting direct activity: ${directTo.simpleName}")
                     val i = Intent(activity, directTo)
-                    activity.startActivity(i)
+                    HiltBaseActivity.startWithCrossFade(activity, i)
                     return
                 }
             }
@@ -294,19 +294,19 @@ object ActivityUtils {
 
     fun <T : Activity> startActivity(from: Context, activity: Class<T>) {
         val i = Intent(from, activity)
-        from.startActivity(i)
+        HiltBaseActivity.startWithCrossFade(from, i)
     }
 
     fun startTimetableManager(from: Context) {
         val i = Intent(from, TimetableManagerActivity::class.java)
-        from.startActivity(i)
+        HiltBaseActivity.startWithCrossFade(from, i)
     }
 
 
     fun startSubjectActivity(from: Context, id: String) {
         val i = Intent(from, SubjectActivity::class.java)
         i.putExtra("subjectId", id)
-        from.startActivity(i)
+        HiltBaseActivity.startWithCrossFade(from, i)
     }
 
     fun startCourseResourceSearchActivity(
@@ -317,7 +317,7 @@ object ActivityUtils {
         val i = Intent(from, UnifiedResourceSearchActivity::class.java)
         i.putExtra("query", query)
         i.putExtra("mode", mode.name)
-        from.startActivity(i)
+        HiltBaseActivity.startWithCrossFade(from, i)
     }
 
     fun startCourseReadmeActivity(
@@ -332,7 +332,7 @@ object ActivityUtils {
         i.putExtra("courseName", courseName)
         i.putExtra("courseCode", courseCode)
         i.putExtra("repoType", repoType)
-        from.startActivity(i)
+        HiltBaseActivity.startWithCrossFade(from, i)
     }
 
     fun startCourseContributionActivity(
@@ -347,14 +347,14 @@ object ActivityUtils {
         i.putExtra("courseName", courseName)
         i.putExtra("courseCode", courseCode)
         i.putExtra("repoType", repoType)
-        from.startActivity(i)
+        HiltBaseActivity.startWithCrossFade(from, i)
     }
 
     fun startInternalWebActivity(from: Context, title: String, url: String) {
         val i = Intent(from, InternalWebActivity::class.java)
         i.putExtra("title", title)
         i.putExtra("url", url)
-        from.startActivity(i)
+        HiltBaseActivity.startWithCrossFade(from, i)
     }
 
     fun startTeacherHomepageSearch(from: Context, teacherName: String) {
@@ -370,7 +370,7 @@ object ActivityUtils {
     fun startTimetableDetailActivity(from: Context, id: String) {
         val i = Intent(from, TimetableDetailActivity::class.java)
         i.putExtra("id", id)
-        from.startActivity(i)
+        HiltBaseActivity.startWithCrossFade(from, i)
     }
 
     fun startProfileActivity(from: Context, userId: String?, imageView: ImageView?=null) {
@@ -380,7 +380,7 @@ object ActivityUtils {
             val op = ActivityOptionsCompat.makeSceneTransitionAnimation(from as Activity,it,"useravatar")
             from.startActivity(i,op.toBundle())
         }?:run {
-            from.startActivity(i)
+            HiltBaseActivity.startWithCrossFade(from, i)
         }
     }
 
@@ -475,6 +475,6 @@ object ActivityUtils {
         i.putExtra("link", url)
         i.putExtra("title", title)
         i.putExtra("mode", "hitsz_news")
-        from.startActivity(i)
+        HiltBaseActivity.startWithCrossFade(from, i)
     }
 }

@@ -144,10 +144,10 @@ class UnifiedResourceSearchActivity :
             binding.searchInput.setText(normalized)
             binding.searchInput.setSelection(normalized.length)
             binding.swipeRefresh.isRefreshing = true
-            viewModel.search(normalized)
+            binding.swipeRefresh.post { viewModel.search(normalized) }
         } else {
             binding.swipeRefresh.isRefreshing = true
-            viewModel.search("")
+            binding.swipeRefresh.post { viewModel.search("") }
         }
         onBackPressedDispatcher.addCallback(this, onBackPressedCallback)
     }
