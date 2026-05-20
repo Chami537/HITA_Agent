@@ -1,5 +1,6 @@
 package com.limpu.hitax.agent.llm
 
+import com.limpu.hitax.BuildConfig
 import okhttp3.OkHttpClient
 import retrofit2.Call
 import retrofit2.Retrofit
@@ -75,7 +76,6 @@ data class ZhipuUsage(
 
 object LlmClient {
     private const val BASE_URL = "https://api.minimaxi.com/"
-    private const val API_KEY = "Bearer sk-cp-xqBXPT7PTX8CG_IMl3xnbrrVi50i1wEjBQ8AACpgDhR3wpD6BJeTsYrBt2J9CJSMy9weFfPUQHJ6DWYMXqvD6Whvszor2IZhc_jACOJXGx3QbcygaiIFgLo"
 
     val MODEL = "MiniMax-M2.7"
 
@@ -94,12 +94,11 @@ object LlmClient {
             .create(MiniMaxApiService::class.java)
     }
 
-    fun authHeader(): String = API_KEY
+    fun authHeader(): String = BuildConfig.MINIMAX_API_KEY
 }
 
 object ZhipuClient {
     private const val BASE_URL = "https://open.bigmodel.cn/"
-    private const val API_KEY = "f95bd58458c946f4962b74a6ac3d403f.tPY9sl1T2xtqdVpP"
 
     val MODEL = "glm-4.6v-flash"
 
@@ -118,5 +117,5 @@ object ZhipuClient {
             .create(ZhipuApiService::class.java)
     }
 
-    fun authHeader(): String = "Bearer $API_KEY"
+    fun authHeader(): String = "Bearer ${BuildConfig.ZHIPU_API_KEY}"
 }

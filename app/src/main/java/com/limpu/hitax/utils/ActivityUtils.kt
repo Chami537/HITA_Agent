@@ -457,11 +457,11 @@ object ActivityUtils {
                         }
                     }
                     cursor.close()
-                } catch (_: Exception) { }
+                } catch (e: Exception) { LogUtils.w("Failed to close download cursor") }
 
                 try {
                     context.unregisterReceiver(this)
-                } catch (_: Exception) { }
+                } catch (e: Exception) { LogUtils.w("Failed to unregister download receiver") }
             }
         }
         val filter = IntentFilter(DownloadManager.ACTION_DOWNLOAD_COMPLETE)

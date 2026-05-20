@@ -51,6 +51,8 @@ android {
         buildConfigField "long", "UPDATE_VERSION_CODE", "${appVersionCodeValue}L"
         buildConfigField "String", "UPDATE_LOG", '""'
         buildConfigField "boolean", "UPDATE_ALLOW_PRERELEASE", "true"
+        buildConfigField "String", "MINIMAX_API_KEY", "\"${keystoreProperties.getProperty('minimaxApiKey', '')}\""
+        buildConfigField "String", "ZHIPU_API_KEY", "\"${keystoreProperties.getProperty('zhipuApiKey', '')}\""
     }
 
     buildFeatures {

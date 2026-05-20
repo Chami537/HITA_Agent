@@ -1588,7 +1588,7 @@ class EASWebSource internal constructor(
                                         slots[pos] = TimePeriodInDay(from, to)
                                     }
                                 }
-                            } catch (_: Exception) { }
+                            } catch (_: Exception) { LogUtils.w("Failed to parse slot structure") }
                         }
                         if (slots.any { it != null }) break
                     }

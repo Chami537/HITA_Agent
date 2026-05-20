@@ -43,7 +43,6 @@ import com.limpu.hitax.databinding.ItemExternalResourceEntryBinding
 import com.limpu.hitax.databinding.ItemUnifiedResourceBinding
 import com.limpu.hitax.ui.base.HiltBaseActivity
 import com.limpu.hitax.ui.event.add.PopupAddEvent
-import com.limpu.hitax.ui.resource.ExternalResourceSearchActivity
 import com.limpu.hitax.ui.resource.MarkdownViewerActivity
 import com.limpu.hitax.utils.ActivityUtils
 import com.limpu.hitax.utils.CourseCodeUtils

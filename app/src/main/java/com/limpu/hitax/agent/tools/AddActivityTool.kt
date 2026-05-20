@@ -136,7 +136,7 @@ class AddActivityTool : ReActTool {
         for (fmt in isoFormats) {
             try {
                 return fmt.parse(trimmed)?.time
-            } catch (_: Exception) {}
+            } catch (_: Exception) { LogUtils.w("Failed to parse date format: $trimmed") }
         }
         return null
     }

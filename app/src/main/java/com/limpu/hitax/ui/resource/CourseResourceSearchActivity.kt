@@ -132,7 +132,7 @@ class CourseResourceSearchActivity :
     override fun onOptionsItemSelected(item: MenuItem): Boolean {
         return when (item.itemId) {
             R.id.action_external_resource -> {
-                startActivity(Intent(this, ExternalResourceSearchActivity::class.java))
+                startActivity(Intent(this, UnifiedResourceSearchActivity::class.java))
                 true
             }
             else -> super.onOptionsItemSelected(item)
