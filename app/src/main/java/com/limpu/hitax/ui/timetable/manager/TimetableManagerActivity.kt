@@ -5,6 +5,7 @@ import android.os.Bundle
 import android.view.HapticFeedbackConstants
 import android.view.View
 import android.widget.Toast
+import androidx.activity.OnBackPressedCallback
 import androidx.activity.viewModels
 import androidx.appcompat.app.AlertDialog
 import androidx.recyclerview.widget.GridLayoutManager
@@ -125,6 +126,7 @@ class TimetableManagerActivity :
                 .show()
         }
         bindLiveData()
+        onBackPressedDispatcher.addCallback(this, onBackPressedCallback)
     }
 
     var firstEnter = true
@@ -241,15 +243,18 @@ override fun onDelete(toDelete: Collection<Timetable>?) {
     editModeHelper?.closeEditMode()
 }
 
-    @Suppress("DEPRECATION", "OVERRIDE_DEPRECATION")
-    override fun onBackPressed() {
-        if (editModeHelper?.isEditMode == true) {
-            editModeHelper?.closeEditMode()
-            return
+    private val onBackPressedCallback = object : OnBackPressedCallback(true) {
+        override fun handleOnBackPressed() {
+            if (editModeHelper?.isEditMode == true) {
+                editModeHelper?.closeEditMode()
+            } else {
+                isEnabled = false
+                onBackPressedDispatcher.onBackPressed()
+                isEnabled = true
+            }
         }
-        super.onBackPressed()
     }
-    
+
     /**
      * 导入 ICS 文件并创建独立课表
      */

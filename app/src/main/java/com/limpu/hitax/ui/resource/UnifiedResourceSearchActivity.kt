@@ -11,6 +11,7 @@ import android.view.ViewGroup
 import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.InputMethodManager
 import android.widget.TextView
+import androidx.activity.OnBackPressedCallback
 import androidx.activity.viewModels
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
@@ -148,6 +149,7 @@ class UnifiedResourceSearchActivity :
             binding.swipeRefresh.isRefreshing = true
             viewModel.search("")
         }
+        onBackPressedDispatcher.addCallback(this, onBackPressedCallback)
     }
 
     private fun startSearch() {
@@ -225,20 +227,22 @@ class UnifiedResourceSearchActivity :
         binding.toolbar.title = getString(R.string.unified_resource_title)
     }
 
-    @Deprecated("Use OnBackPressedDispatcher in production")
-    override fun onBackPressed() {
-        if (isBrowseMode && browseStack.size > 1) {
-            browseStack.removeLast()
-            val previous = browseStack.last()
-            binding.breadcrumb.text = previous.breadcrumb
-            binding.swipeRefresh.isRefreshing = true
-            viewModel.browse(previous.path, previous.source)
-        } else if (isBrowseMode) {
-            exitBrowseMode()
-            binding.emptyText.visibility = View.GONE
-        } else {
-            @Suppress("DEPRECATION")
-            super.onBackPressed()
+    private val onBackPressedCallback = object : OnBackPressedCallback(true) {
+        override fun handleOnBackPressed() {
+            if (isBrowseMode && browseStack.size > 1) {
+                browseStack.removeLast()
+                val previous = browseStack.last()
+                binding.breadcrumb.text = previous.breadcrumb
+                binding.swipeRefresh.isRefreshing = true
+                viewModel.browse(previous.path, previous.source)
+            } else if (isBrowseMode) {
+                exitBrowseMode()
+                binding.emptyText.visibility = View.GONE
+            } else {
+                isEnabled = false
+                onBackPressedDispatcher.onBackPressed()
+                isEnabled = true
+            }
         }
     }
 

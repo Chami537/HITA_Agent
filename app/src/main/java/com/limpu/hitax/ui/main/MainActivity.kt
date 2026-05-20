@@ -13,6 +13,7 @@ import android.view.View.VISIBLE
 import android.view.ViewGroup
 import android.widget.ImageView
 import android.widget.TextView
+import androidx.activity.OnBackPressedCallback
 import androidx.activity.viewModels
 import androidx.core.view.GravityCompat
 import androidx.drawerlayout.widget.DrawerLayout.DrawerListener
@@ -281,6 +282,7 @@ class MainActivity : HiltBaseActivity<ActivityMainBinding>(),
         viewModel.loggedInUserLiveData.observe(this) {
             refreshDrawerEasInfo()
         }
+        onBackPressedDispatcher.addCallback(this, onBackPressedCallback)
     }
 
 
@@ -346,18 +348,18 @@ class MainActivity : HiltBaseActivity<ActivityMainBinding>(),
         }
     }
 
-    @Suppress("DEPRECATION", "OVERRIDE_DEPRECATION")
-    override fun onBackPressed() {
-        //super.onBackPressed();
-        if (binding.drawer.isDrawerOpen(GravityCompat.END)) {
-            binding.drawer.closeDrawer(GravityCompat.END)
-            return
+    private val onBackPressedCallback = object : OnBackPressedCallback(true) {
+        override fun handleOnBackPressed() {
+            if (binding.drawer.isDrawerOpen(GravityCompat.END)) {
+                binding.drawer.closeDrawer(GravityCompat.END)
+                return
+            }
+            //返回桌面而非退出
+            val intent = Intent(Intent.ACTION_MAIN)
+            intent.flags = Intent.FLAG_ACTIVITY_NEW_TASK
+            intent.addCategory(Intent.CATEGORY_HOME)
+            startActivity(intent)
         }
-        //返回桌面而非退出
-        val intent = Intent(Intent.ACTION_MAIN)
-        intent.flags = Intent.FLAG_ACTIVITY_NEW_TASK
-        intent.addCategory(Intent.CATEGORY_HOME)
-        startActivity(intent)
     }
 
     override fun onStop() {

@@ -8,6 +8,10 @@ import com.limpu.hitax.data.model.resource.ExternalCourseItem
 import com.limpu.hitax.data.model.resource.ExternalResourceEntry
 import com.limpu.hitax.data.model.resource.ResourceSource
 import com.limpu.hitax.utils.LogUtils
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 import org.json.JSONArray
 import org.json.JSONObject
 import org.jsoup.Connection
@@ -18,6 +22,8 @@ object HITCSWebSource {
     private const val API_BASE = "https://api.github.com/repos/$REPO"
     private const val RAW_PROXY = "https://ghproxy.net/"
     private const val TIMEOUT = 30000
+
+    private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
 
     @Volatile
     private var courseCache: List<Triple<String, String, String>>? = null
@@ -39,7 +45,7 @@ object HITCSWebSource {
     fun searchCourses(query: String): LiveData<DataState<List<ExternalCourseItem>>> {
         LogUtils.d("HITCS: searchCourses called with query='$query'")
         val result = MutableLiveData<DataState<List<ExternalCourseItem>>>()
-        Thread {
+        scope.launch {
             try {
                 val matched = searchCoursesSync(query)
                 result.postValue(DataState(matched, DataState.STATE.SUCCESS))
@@ -47,7 +53,7 @@ object HITCSWebSource {
                 LogUtils.e("HITCS search failed: ${e.message}")
                 result.postValue(DataState(DataState.STATE.FETCH_FAILED, e.message))
             }
-        }.start()
+        }
         return result
     }
 
@@ -68,7 +74,7 @@ object HITCSWebSource {
 
     fun listDirectory(path: String): LiveData<DataState<List<ExternalResourceEntry>>> {
         val result = MutableLiveData<DataState<List<ExternalResourceEntry>>>()
-        Thread {
+        scope.launch {
             try {
                 val entries = listDirectorySync(path)
                 result.postValue(DataState(entries, DataState.STATE.SUCCESS))
@@ -76,7 +82,7 @@ object HITCSWebSource {
                 LogUtils.e("HITCS listDirectory failed: ${e.message}")
                 result.postValue(DataState(DataState.STATE.FETCH_FAILED, e.message))
             }
-        }.start()
+        }
         return result
     }
 

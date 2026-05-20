@@ -16,6 +16,7 @@ import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import com.limpu.hitax.data.model.eas.EASToken
+import androidx.activity.OnBackPressedCallback
 import androidx.activity.viewModels
 import com.limpu.hitax.databinding.ActivityWebviewLoginBinding
 import com.limpu.hitax.ui.base.HiltBaseActivity
@@ -131,6 +132,7 @@ class WebViewLoginActivity : HiltBaseActivity<ActivityWebviewLoginBinding>() {
         }
         LogUtils.d( "load login url=${config.loginUrl} campus=${config.campus}")
         binding.webview.loadUrl(config.loginUrl)
+        onBackPressedDispatcher.addCallback(this, onBackPressedCallback)
     }
 
     private fun configFor(campus: EASToken.Campus): CampusWebConfig {
@@ -694,12 +696,15 @@ class WebViewLoginActivity : HiltBaseActivity<ActivityWebviewLoginBinding>() {
             .toMap()
     }
 
-    @Suppress("DEPRECATION")
-    override fun onBackPressed() {
-        if (binding.webview.canGoBack()) {
-            binding.webview.goBack()
-        } else {
-            super.onBackPressed()
+    private val onBackPressedCallback = object : OnBackPressedCallback(true) {
+        override fun handleOnBackPressed() {
+            if (binding.webview.canGoBack()) {
+                binding.webview.goBack()
+            } else {
+                isEnabled = false
+                onBackPressedDispatcher.onBackPressed()
+                isEnabled = true
+            }
         }
     }
 

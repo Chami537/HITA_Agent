@@ -15,7 +15,6 @@ import com.limpu.hitax.data.repository.TimetableRepository
 import com.limpu.hitax.data.source.preference.CourseReminderStore
 import com.limpu.hitax.ui.main.MainActivity
 import com.limpu.hitax.utils.TimeTools
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
 import java.util.Calendar
 
@@ -36,8 +35,8 @@ class CourseReminderWorker(appContext: Context, params: WorkerParameters) : Work
         val now = System.currentTimeMillis()
         val windowEnd = now + minutes * 60 * 1000
 
-        // 获取今天的事件（确保在后台线程执行）
-        val todayEvents = runBlocking(Dispatchers.IO) {
+        // doWork() 已在后台线程执行，无需 Dispatchers.IO
+        val todayEvents = runBlocking {
             timetableRepo.getTodayEventsSync()
         }
         val upcomingEvents = todayEvents.filter { event ->

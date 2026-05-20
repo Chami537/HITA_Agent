@@ -15,6 +15,7 @@ import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.appcompat.app.AlertDialog
 import androidx.core.content.ContextCompat
+import androidx.activity.OnBackPressedCallback
 import androidx.lifecycle.LiveData
 import androidx.lifecycle.Observer
 import androidx.recyclerview.widget.LinearLayoutManager
@@ -246,6 +247,7 @@ class SubjectActivity : HiltBaseActivity<ActivitySubjectBinding>(),
             }
             binding.cardTeacher.setTitle(sb.toString())
         }
+        onBackPressedDispatcher.addCallback(this, onBackPressedCallback)
     }
 
     private fun initAgentTraceList() {
@@ -1122,11 +1124,15 @@ class SubjectActivity : HiltBaseActivity<ActivitySubjectBinding>(),
         return "0.0"
     }
 
-    @Suppress("DEPRECATION", "OVERRIDE_DEPRECATION")
-    override fun onBackPressed() {
-        when (editModeHelper.isEditMode) {
-            true -> editModeHelper.closeEditMode()
-            else -> super.onBackPressed()
+    private val onBackPressedCallback = object : OnBackPressedCallback(true) {
+        override fun handleOnBackPressed() {
+            if (editModeHelper.isEditMode) {
+                editModeHelper.closeEditMode()
+            } else {
+                isEnabled = false
+                onBackPressedDispatcher.onBackPressed()
+                isEnabled = true
+            }
         }
     }
 
