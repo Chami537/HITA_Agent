@@ -32,6 +32,7 @@ class PopUpPickCourseTime(val timetable: Timetable) :
     TransparentDialog<DialogBottomPickCourseTimeBinding>() {
     enum class Mode {
         DATE_AND_PERIOD,
+        DATE_ONLY,
         PERIOD_ONLY,
     }
 
@@ -111,7 +112,7 @@ class PopUpPickCourseTime(val timetable: Timetable) :
                 binding.picktot.currentIndex + 1
             )
             r.weeks = listAdapter?.getSelectedWeeks() ?: listOf()
-            if (mode == Mode.DATE_AND_PERIOD && r.weeks.isEmpty()) {
+            if (mode != Mode.PERIOD_ONLY && r.weeks.isEmpty()) {
                 Toast.makeText(context, R.string.ade_pick_weeks, Toast.LENGTH_SHORT).show()
             } else {
                 onTimeSelectedListener?.onSelected(r)
@@ -189,7 +190,14 @@ class PopUpPickCourseTime(val timetable: Timetable) :
             }
         }
 
-        if (mode == Mode.PERIOD_ONLY) {
+        if (mode == Mode.DATE_ONLY) {
+            binding.pickfromt.visibility = View.GONE
+            binding.picktot.visibility = View.GONE
+            binding.pickToLabel.visibility = View.GONE
+            binding.fromTime.visibility = View.GONE
+            binding.toTime.visibility = View.GONE
+            binding.timePreviewDash.visibility = View.GONE
+        } else if (mode == Mode.PERIOD_ONLY) {
             binding.pickdow.visibility = View.GONE
             binding.textView3.visibility = View.GONE
             binding.weekList.visibility = View.GONE

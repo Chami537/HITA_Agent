@@ -194,7 +194,7 @@ class PopupAddEvent(private val addSubjectMode: Boolean = false) :
 
         binding?.pickDate?.setOnClickListener {
             if (viewModel.dateModeLiveData.value == AddEventViewModel.DateMode.WEEKLY) {
-                showCourseTimePicker(requireWeeks = true)
+                showCourseTimePicker(PopUpPickCourseTime.Mode.DATE_ONLY)
             } else {
                 val initDate = viewModel.customDateLiveData.value?.data
                 PopUpCalendarPicker()
@@ -214,7 +214,7 @@ class PopupAddEvent(private val addSubjectMode: Boolean = false) :
 
         binding?.pickTime?.setOnClickListener {
             if (viewModel.timeModeLiveData.value == AddEventViewModel.TimeMode.PERIOD) {
-                showCourseTimePicker(requireWeeks = viewModel.dateModeLiveData.value == AddEventViewModel.DateMode.WEEKLY)
+                showCourseTimePicker(PopUpPickCourseTime.Mode.PERIOD_ONLY)
             } else {
                 val initPeriod = viewModel.customTimePeriodLiveData.value?.data
                 PopUpTimePeriodPicker()
@@ -291,18 +291,14 @@ class PopupAddEvent(private val addSubjectMode: Boolean = false) :
         viewModel.init(addSubjectMode, initTimetable, initSubject, initCourseTime)
     }
 
-    private fun showCourseTimePicker(requireWeeks: Boolean) {
+    private fun showCourseTimePicker(mode: PopUpPickCourseTime.Mode) {
         viewModel.timetableLiveData.value?.data?.let { tt ->
             PopUpPickCourseTime(tt)
-                .setMode(if (requireWeeks) PopUpPickCourseTime.Mode.DATE_AND_PERIOD else PopUpPickCourseTime.Mode.PERIOD_ONLY)
+                .setMode(mode)
                 .setInitialValue(tt, viewModel.timeRangeLiveDate.value?.data)
                 .setSelectListener(object : PopUpPickCourseTime.OnTimeSelectedListener {
                     override fun onSelected(data: CourseTime) {
-                        if (requireWeeks && data.weeks.isEmpty()) {
-                            viewModel.timeRangeLiveDate.value = DataState(DataState.STATE.NOTHING)
-                        } else {
-                            viewModel.timeRangeLiveDate.value = DataState(data)
-                        }
+                        viewModel.mergeCourseTimeSelection(data, mode == PopUpPickCourseTime.Mode.DATE_ONLY)
                     }
                 }).show(childFragmentManager, "pick_course_time")
         }

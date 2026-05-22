@@ -113,6 +113,22 @@ class AddEventViewModel @Inject constructor(
         checkDone()
     }
 
+    fun mergeCourseTimeSelection(selection: CourseTime, dateOnly: Boolean) {
+        val current = timeRangeLiveDate.value?.data
+        val merged = CourseTime().apply {
+            if (dateOnly) {
+                dow = selection.dow
+                weeks = selection.weeks
+                period = current?.period ?: TimePeriodInDay(TimeInDay(0, 0), TimeInDay(0, 0))
+            } else {
+                dow = current?.dow ?: selection.dow
+                weeks = current?.weeks ?: selection.weeks
+                period = selection.period
+            }
+        }
+        timeRangeLiveDate.value = DataState(merged)
+    }
+
     fun selectExistingEvent(event: EventItem) {
         contentModeLiveData.value = ContentMode.EXISTING
         selectedEventLiveData.value = DataState(event)
