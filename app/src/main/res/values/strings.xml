@@ -289,6 +289,8 @@
     <string name="ade_section_time">时间</string>
     <string name="ade_time_clock">具体时间段</string>
     <string name="ade_time_period">节次时间段</string>
+    <string name="ade_optional_location">地点（可选）</string>
+    <string name="ade_optional_teacher_note">教师/说明（可选）</string>
     <string name="label_activity_attitude">HITSZ态度墙</string>
     <string name="label_activity_tasks">待办事项</string>
     <string name="task_card_title_tasknum">待办</string>

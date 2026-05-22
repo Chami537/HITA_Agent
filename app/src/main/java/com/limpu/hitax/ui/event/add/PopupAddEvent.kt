@@ -130,7 +130,7 @@ class PopupAddEvent(private val addSubjectMode: Boolean = false) :
                 binding?.pickTeacherText?.text = it.data
                 binding?.pickTeacherCancel?.visibility = View.VISIBLE
             } else {
-                binding?.pickTeacherText?.text = getString(R.string.ade_pick_teacher)
+                binding?.pickTeacherText?.text = getString(R.string.ade_optional_teacher_note)
                 binding?.pickTeacher?.setCardBackgroundColor(unselectedBackgroundColor())
                 binding?.pickTeacherText?.setTextColor(unselectedForegroundColor())
                 binding?.pickTeacherCancel?.visibility = View.GONE
@@ -146,7 +146,7 @@ class PopupAddEvent(private val addSubjectMode: Boolean = false) :
                 binding?.pickLocationText?.text = it.data
                 binding?.pickLocationCancel?.visibility = View.VISIBLE
             } else {
-                binding?.pickLocationText?.text = getString(R.string.ade_pick_location)
+                binding?.pickLocationText?.text = getString(R.string.ade_optional_location)
                 binding?.pickLocation?.setCardBackgroundColor(unselectedBackgroundColor())
                 binding?.pickLocationText?.setTextColor(unselectedForegroundColor())
                 binding?.pickLocationIcon?.clearColorFilter()
@@ -235,7 +235,7 @@ class PopupAddEvent(private val addSubjectMode: Boolean = false) :
             viewModel.teacherLiveData.value = DataState(DataState.STATE.NOTHING)
         }
         binding?.pickTeacher?.setOnClickListener {
-            DialogAutoEditText().setTitle(getString(R.string.ade_pick_teacher))
+            DialogAutoEditText().setTitle(getString(R.string.ade_optional_teacher_note))
                 .setOnConfirmListener(object : DialogAutoEditText.OnConfirmListener {
                     override fun OnConfirm(content: String) {
                         viewModel.teacherLiveData.value = DataState(content)
@@ -261,7 +261,7 @@ class PopupAddEvent(private val addSubjectMode: Boolean = false) :
             viewModel.locationLiveData.value = DataState(DataState.STATE.NOTHING)
         }
         binding?.pickLocation?.setOnClickListener {
-            DialogAutoEditText().setTitle(getString(R.string.ade_pick_location))
+            DialogAutoEditText().setTitle(getString(R.string.ade_optional_location))
                 .setOnConfirmListener(object : DialogAutoEditText.OnConfirmListener {
                     override fun OnConfirm(content: String) {
                         viewModel.locationLiveData.value = DataState(content)

@@ -430,7 +430,7 @@
                     android:ellipsize="end"
                     android:fontFamily="sans-serif-black"
                     android:singleLine="true"
-                    android:text="@string/ade_pick_location"
+                    android:text="@string/ade_optional_location"
                     android:textColor="?attr/textColorSecondary" />
 
                 <ImageView
@@ -488,7 +488,7 @@
                     android:ellipsize="end"
                     android:fontFamily="sans-serif-black"
                     android:singleLine="true"
-                    android:text="@string/ade_pick_teacher"
+                    android:text="@string/ade_optional_teacher_note"
                     android:textColor="?attr/colorControlNormal" />
 
                 <ImageView
