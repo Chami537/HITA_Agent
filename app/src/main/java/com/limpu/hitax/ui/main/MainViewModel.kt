@@ -36,25 +36,17 @@ class MainViewModel @Inject constructor(
     }
 
     private val checkUpdateTrigger = MutableLiveData<Long>()
-    val checkUpdateResult = checkUpdateTrigger.switchMap{
-        updateRepository.checkUpdateFromGitHub(
+    val checkUpdateResult = checkUpdateTrigger.switchMap { currentCode ->
+        updateRepository.checkUpdateWithFallback(
             currentVersionName = BuildConfig.VERSION_NAME,
+            currentVersionCode = currentCode,
+            builtInVersionName = BuildConfig.UPDATE_VERSION_NAME,
+            builtInVersionCode = BuildConfig.UPDATE_VERSION_CODE,
             updateUrl = BuildConfig.UPDATE_URL,
+            updateLog = BuildConfig.UPDATE_LOG,
             allowPrerelease = BuildConfig.UPDATE_ALLOW_PRERELEASE
-        )?.let { github ->
+        ).let { github ->
             return@switchMap github
-        }
-        buildLocalUpdateResult(it)?.let { local ->
-            return@switchMap LiveDataUtils.getMutableLiveData(local)
-        }
-        if (localUserRepository.getLoggedInUser().isValid()) {
-            return@switchMap managerRepository.checkUpdate(
-                localUserRepository.getLoggedInUser().token!!,
-                it,
-                easRepository.getEasToken().stuId
-            )
-        } else {
-            return@switchMap LiveDataUtils.getMutableLiveData(DataState(DataState.STATE.NOT_LOGGED_IN))
         }
     }
 
@@ -66,18 +58,5 @@ class MainViewModel @Inject constructor(
 
     fun checkForUpdate(versionCode: Long) {
         checkUpdateTrigger.value = versionCode
-    }
-
-    private fun buildLocalUpdateResult(currentCode: Long): DataState<CheckUpdateResult>? {
-        val url = BuildConfig.UPDATE_URL.trim()
-        if (url.isBlank()) return null
-        val result = CheckUpdateResult().apply {
-            latestVersionCode = BuildConfig.UPDATE_VERSION_CODE
-            latestVersionName = BuildConfig.UPDATE_VERSION_NAME
-            latestUrl = url
-            updateLog = BuildConfig.UPDATE_LOG
-            shouldUpdate = latestVersionCode > currentCode
-        }
-        return DataState(result)
     }
 }

@@ -1,6 +1,8 @@
 package com.limpu.hitax.data.repository
 
 import androidx.lifecycle.LiveData
+import androidx.lifecycle.MediatorLiveData
+import androidx.lifecycle.MutableLiveData
 import javax.inject.Inject
 import androidx.lifecycle.map
 import com.limpu.component.data.DataState
@@ -48,11 +50,92 @@ class UpdateRepository @Inject constructor(
                 latestVersionCode = latestVersion.toVersionCode()
                 latestUrl = best.htmlUrl ?: updateUrl
                 downloadUrl = apkAsset?.downloadUrl ?: best.htmlUrl ?: updateUrl
-                updateLog = updateLogText
+                this.updateLog = updateLogText
                 shouldUpdate = latestVersion > current
             }
             DataState(result)
         }
+    }
+
+    fun checkUpdateWithFallback(
+        currentVersionName: String,
+        currentVersionCode: Long,
+        builtInVersionName: String,
+        builtInVersionCode: Long,
+        updateUrl: String,
+        updateLog: String,
+        allowPrerelease: Boolean
+    ): LiveData<DataState<CheckUpdateResult>> {
+        val repo = parseGitHubRepo(updateUrl)
+        if (repo == null) {
+            return MutableLiveData(
+                buildLocalResult(currentVersionCode, builtInVersionCode,
+                    builtInVersionName, updateUrl, updateLog)
+            )
+        }
+        val githubResult = githubWebSource.listReleases(repo.owner, repo.repo).map { state ->
+            if (state.state != DataState.STATE.SUCCESS) {
+                return@map DataState(state.state)
+            }
+            val releases = state.data ?: return@map DataState(DataState.STATE.FETCH_FAILED)
+            val current = ParsedVersion.parse(currentVersionName)
+                ?: return@map DataState(DataState.STATE.FETCH_FAILED)
+            val best = selectBestRelease(releases, allowPrerelease)
+                ?: return@map DataState(DataState.STATE.FETCH_FAILED)
+            val latestVersion = ParsedVersion.parse(best.tagName ?: best.name)
+                ?: return@map DataState(DataState.STATE.FETCH_FAILED)
+
+            val updateLogText = buildString {
+                if (best.prerelease == true) {
+                    append("预发布版本\n")
+                }
+                if (!best.body.isNullOrBlank()) {
+                    append(best.body.trim())
+                }
+            }.trim()
+
+            val apkAsset = best.assets?.find {
+                it.name?.endsWith(".apk", ignoreCase = true) == true
+            }
+            val result = CheckUpdateResult().apply {
+                latestVersionName = latestVersion.displayName()
+                latestVersionCode = latestVersion.toVersionCode()
+                latestUrl = best.htmlUrl ?: updateUrl
+                downloadUrl = apkAsset?.downloadUrl ?: best.htmlUrl ?: updateUrl
+                this.updateLog = updateLogText
+                shouldUpdate = latestVersion > current
+            }
+            DataState(result)
+        }
+        val mediator = MediatorLiveData<DataState<CheckUpdateResult>>()
+        mediator.addSource(githubResult) { state ->
+            if (state.state == DataState.STATE.SUCCESS) {
+                mediator.value = state
+            } else {
+                mediator.value = buildLocalResult(
+                    currentVersionCode, builtInVersionCode,
+                    builtInVersionName, updateUrl, updateLog
+                )
+            }
+        }
+        return mediator
+    }
+
+    private fun buildLocalResult(
+        currentVersionCode: Long,
+        builtInVersionCode: Long,
+        builtInVersionName: String,
+        updateUrl: String,
+        updateLog: String
+    ): DataState<CheckUpdateResult> {
+        val result = CheckUpdateResult().apply {
+            latestVersionCode = builtInVersionCode
+            latestVersionName = builtInVersionName
+            latestUrl = updateUrl
+            this.updateLog = updateLog
+            shouldUpdate = builtInVersionCode > currentVersionCode
+        }
+        return DataState(result)
     }
 
     private fun selectBestRelease(
