@@ -80,7 +80,12 @@ class ActivityAbout: HiltBaseActivity<ActivityAboutBinding>() {
                     if (cr.shouldUpdate) {
                         ActivityUtils.showUpdateNotificationForce(cr,this)
                     }else{
-                        Toast.makeText(this,R.string.already_up_to_date,Toast.LENGTH_SHORT).show()
+                        val msg = if (cr.downloadCount > 0) {
+                            getString(R.string.already_up_to_date) + " · 累计下载 ${cr.downloadCount} 次"
+                        } else {
+                            getString(R.string.already_up_to_date)
+                        }
+                        Toast.makeText(this, msg, Toast.LENGTH_SHORT).show()
                     }
                 }
             }

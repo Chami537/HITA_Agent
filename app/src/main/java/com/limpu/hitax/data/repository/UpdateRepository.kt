@@ -50,6 +50,7 @@ class UpdateRepository @Inject constructor(
                 latestVersionCode = latestVersion.toVersionCode()
                 latestUrl = best.htmlUrl ?: updateUrl
                 downloadUrl = apkAsset?.downloadUrl ?: best.htmlUrl ?: updateUrl
+                downloadCount = apkAsset?.downloadCount ?: 0
                 this.updateLog = updateLogText
                 shouldUpdate = latestVersion > current
             }
@@ -102,6 +103,7 @@ class UpdateRepository @Inject constructor(
                 latestVersionCode = latestVersion.toVersionCode()
                 latestUrl = best.htmlUrl ?: updateUrl
                 downloadUrl = apkAsset?.downloadUrl ?: best.htmlUrl ?: updateUrl
+                downloadCount = apkAsset?.downloadCount ?: 0
                 this.updateLog = updateLogText
                 shouldUpdate = latestVersion > current
             }

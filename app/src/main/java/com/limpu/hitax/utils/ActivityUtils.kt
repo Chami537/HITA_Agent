@@ -426,6 +426,9 @@ object ActivityUtils {
     private fun buildUpdateMarkdown(activity: AppCompatActivity, cr: CheckUpdateResult): CharSequence {
         val markdown = buildString {
             append("版本：${cr.latestVersionName}\n\n")
+            if (cr.downloadCount > 0) {
+                append("累计下载：${cr.downloadCount} 次\n\n")
+            }
             append("更新内容：\n\n")
             if (cr.updateLog.isBlank()) {
                 append("暂无更新说明")

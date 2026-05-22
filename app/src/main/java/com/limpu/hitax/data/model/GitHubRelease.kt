@@ -4,7 +4,8 @@ import com.google.gson.annotations.SerializedName
 
 data class GitHubAsset(
     @SerializedName("browser_download_url") val downloadUrl: String? = null,
-    val name: String? = null
+    val name: String? = null,
+    @SerializedName("download_count") val downloadCount: Long = 0
 )
 
 data class GitHubRelease(

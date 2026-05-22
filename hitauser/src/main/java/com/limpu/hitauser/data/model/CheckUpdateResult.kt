@@ -7,4 +7,5 @@ class CheckUpdateResult {
     var latestUrl: String = ""
     var updateLog: String = ""
     var downloadUrl: String = ""
+    var downloadCount: Long = 0
 }
