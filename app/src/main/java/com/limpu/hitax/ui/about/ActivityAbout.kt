@@ -80,7 +80,7 @@ class ActivityAbout: HiltBaseActivity<ActivityAboutBinding>() {
                     if (cr.shouldUpdate) {
                         ActivityUtils.showUpdateNotificationForce(cr,this)
                     }else{
-                        val msg = if (cr.downloadCount > 0) {
+                        val msg = if (BuildConfig.DEBUG && cr.downloadCount > 0) {
                             getString(R.string.already_up_to_date) + " · 累计下载 ${cr.downloadCount} 次"
                         } else {
                             getString(R.string.already_up_to_date)
