@@ -143,9 +143,12 @@ class ExamViewModel @Inject constructor(
         // 调用API获取服务器考试数据，传递学期参数
         LogUtils.d("🌐 calling getExamInfo API with term: ${selectedTerm.name}", "ExamViewModel")
 
-        // 移除旧的观察者（如果有的话）
+        // 获取新的 LiveData（每次调用 getExamInfo 返回新实例，只取一次避免双重网络请求）
+        val newLiveData = easRepo.getExamInfo(selectedTerm)
+
+        // 从旧的 LiveData 上移除旧的观察者
         examInfoObserver?.let {
-            easRepo.getExamInfo(selectedTerm).removeObserver(it)
+            currentExamSource?.removeObserver(it)
         }
 
         // 创建新的观察者并保存引用
@@ -171,13 +174,24 @@ class ExamViewModel @Inject constructor(
             }
         }
 
-        easRepo.getExamInfo(selectedTerm).observeForever(newObserver)
+        newLiveData.observeForever(newObserver)
+        currentExamSource = newLiveData
         examInfoObserver = newObserver
     }
 
+    private var currentExamSource: LiveData<DataState<List<ExamItem>>>? = null
     private var examInfoObserver: androidx.lifecycle.Observer<DataState<List<ExamItem>>>? = null
     private var lastRefreshTime: Long = 0
     private var previousTerm: TermItem? = null
+
+    override fun onCleared() {
+        super.onCleared()
+        examInfoObserver?.let { observer ->
+            currentExamSource?.removeObserver(observer)
+        }
+        currentExamSource = null
+        examInfoObserver = null
+    }
 
     /**
      * 学期匹配逻辑 - 使用统一的ID进行精确匹配

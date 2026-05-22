@@ -1484,14 +1484,14 @@ class BenbuEASWebSource(
     private fun extractYearFromLabel(text: String?): Int? {
         val normalized = text?.trim().orEmpty()
         if (normalized.isBlank()) return null
-        return Regex("""(?:19|20)\\d{2}""")
+        return Regex("""(?:19|20)\d{2}""")
             .find(normalized)
             ?.value
             ?.toIntOrNull()
     }
 
     private fun extractEndYear(yearCode: String): Int? {
-        val match = Regex("""^\\d{4}-(\\d{4})$""").find(yearCode.trim())
+        val match = Regex("""^\d{4}-(\d{4})$""").find(yearCode.trim())
         return match?.groupValues?.getOrNull(1)?.toIntOrNull()
     }
 

@@ -157,19 +157,20 @@ object FileProviderUtils {
      * 获取数据库表中的 _data 列，即返回Uri对应的文件路径
      */
     private fun getDataColumn(context: Context, uri: Uri?, selection: String?, selectionArgs: Array<String>?): String? {
-        var path: String? = null
         val projection = arrayOf(MediaStore.Images.Media.DATA)
         var cursor: Cursor? = null
         try {
             cursor = context.contentResolver.query(uri!!, projection, selection, selectionArgs, null)
             if (cursor != null && cursor.moveToFirst()) {
                 val columnIndex = cursor.getColumnIndexOrThrow(projection[0])
-                path = cursor.getString(columnIndex)
+                return cursor.getString(columnIndex)
             }
         } catch (e: Exception) {
+            LogUtils.e("Failed to query content resolver", e)
+        } finally {
             cursor?.close()
         }
-        return path
+        return null
     }
 
     /**
