@@ -77,6 +77,9 @@ class PopupAddEvent(private val addSubjectMode: Boolean = false) :
         binding?.modeFree?.setOnClickListener {
             viewModel.setAddMode(AddEventViewModel.AddMode.FREE_RANGE)
         }
+        binding?.contentCustom?.setOnClickListener {
+            viewModel.setContentMode(AddEventViewModel.ContentMode.CUSTOM)
+        }
         binding?.pickSubject?.setOnClickListener {
             showSubjectPicker()
         }
@@ -93,7 +96,7 @@ class PopupAddEvent(private val addSubjectMode: Boolean = false) :
         }
 
         viewModel.contentModeLiveData.observe(this) {
-            refreshSubjectChip(viewModel.subjectLiveData.value)
+            applyContentModeUi(it, viewModel.subjectLiveData.value)
             refreshNameInputByContentMode(it)
         }
 
@@ -168,7 +171,7 @@ class PopupAddEvent(private val addSubjectMode: Boolean = false) :
                     binding?.name?.setText(it.data?.name)
                 }
             }
-            refreshSubjectChip(it)
+            applyContentModeUi(viewModel.contentModeLiveData.value ?: AddEventViewModel.ContentMode.CUSTOM, it)
         }
 
         viewModel.timetableLiveData.observe(this) {
@@ -367,6 +370,7 @@ class PopupAddEvent(private val addSubjectMode: Boolean = false) :
 
     private fun applyModeUi(mode: AddEventViewModel.AddMode) {
         val isBatch = mode == AddEventViewModel.AddMode.BATCH_PERIOD
+        binding?.contentSourceRow?.visibility = if (addSubjectMode) View.GONE else View.VISIBLE
         binding?.pickDate?.visibility = if (isBatch) View.GONE else View.VISIBLE
         if (isBatch) {
             binding?.pickTime?.visibility =
@@ -416,19 +420,32 @@ class PopupAddEvent(private val addSubjectMode: Boolean = false) :
             return
         }
         binding?.pickSubject?.visibility = View.VISIBLE
+        if (viewModel.contentModeLiveData.value == AddEventViewModel.ContentMode.CUSTOM) {
+            binding?.pickSubjectText?.text = getString(R.string.ade_pick_subject)
+            binding?.pickSubjectIcon?.clearColorFilter()
+            return
+        }
         if (viewModel.contentModeLiveData.value == AddEventViewModel.ContentMode.SUBJECT &&
             state?.state == DataState.STATE.SUCCESS
         ) {
             binding?.pickSubjectIcon?.setColorFilter(getColorPrimary())
-            binding?.pickSubjectText?.setTextColor(getColorPrimary())
-            binding?.pickSubject?.setCardBackgroundColor(getColorPrimary())
             binding?.pickSubjectText?.text = state.data?.name ?: getString(R.string.ade_pick_subject)
         } else {
-            binding?.pickSubjectText?.text = getString(R.string.ade_content_custom)
-            binding?.pickSubject?.setCardBackgroundColor(getTextColorSecondary())
-            binding?.pickSubjectText?.setTextColor(getTextColorSecondary())
+            binding?.pickSubjectText?.text = getString(R.string.ade_pick_subject)
             binding?.pickSubjectIcon?.clearColorFilter()
         }
+    }
+
+    private fun applyContentModeUi(
+        mode: AddEventViewModel.ContentMode,
+        state: DataState<TermSubject>?,
+    ) {
+        val isCustom = mode == AddEventViewModel.ContentMode.CUSTOM
+        binding?.contentCustom?.setCardBackgroundColor(if (isCustom) getColorPrimary() else getTextColorSecondary())
+        binding?.contentCustomText?.setTextColor(if (isCustom) getColorPrimary() else getTextColorSecondary())
+        binding?.pickSubject?.setCardBackgroundColor(if (isCustom) getTextColorSecondary() else getColorPrimary())
+        binding?.pickSubjectText?.setTextColor(if (isCustom) getTextColorSecondary() else getColorPrimary())
+        refreshSubjectChip(state)
     }
 
     private fun refreshNameInputByContentMode(mode: AddEventViewModel.ContentMode) {
