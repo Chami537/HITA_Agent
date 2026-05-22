@@ -80,11 +80,13 @@ object BenbuScheduleParser {
             if (teacherLocationLines.isNotEmpty()) {
                 val combined = teacherLocationLines.joinToString("")
                 val elements = splitTeacherLocationPairs(combined)
+                val parsedForCourse = mutableListOf<CourseItem>()
 
                 for (element in elements) {
                     val courseList = parseCourseElement(courseName, element, dow, periodHint, periodInfo)
-                    courses.addAll(courseList)
+                    parsedForCourse.addAll(courseList)
                 }
+                courses.addAll(normalizeCourseElementParts(parsedForCourse))
             }
         }
 
@@ -175,6 +177,25 @@ object BenbuScheduleParser {
         }
 
         return result
+    }
+
+    private fun normalizeCourseElementParts(items: List<CourseItem>): List<CourseItem> {
+        if (items.size <= 1) return items
+
+        val teacherFallback = items.firstOrNull { !it.teacher.isNullOrBlank() }?.teacher
+        val classrooms = items.mapNotNull { it.classroom?.takeIf { room -> room.isNotBlank() } }
+            .distinct()
+        val classroomFallback = classrooms.singleOrNull()
+
+        items.forEach { item ->
+            if (item.teacher.isNullOrBlank() && !teacherFallback.isNullOrBlank()) {
+                item.teacher = teacherFallback
+            }
+            if (item.classroom.isNullOrBlank() && !classroomFallback.isNullOrBlank()) {
+                item.classroom = classroomFallback
+            }
+        }
+        return items
     }
 
     private fun resolvePeriod(periodInfo: String, periodHint: Int): Pair<Int, Int> {
