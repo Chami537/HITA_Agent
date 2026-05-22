@@ -13,6 +13,7 @@ import com.limpu.hitax.data.repository.ScheduleEventCreator
 import com.limpu.hitax.data.repository.SubjectRepository
 import com.limpu.hitax.data.repository.TimetableRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
+import java.sql.Timestamp
 import java.util.Calendar
 import javax.inject.Inject
 
@@ -53,6 +54,7 @@ class AddEventViewModel @Inject constructor(
     val doneLiveData = MediatorLiveData<Boolean>()
 
     var addSubject: Boolean = false
+    private var editingEvent: EventItem? = null
 
     init {
         doneLiveData.addSource(contentModeLiveData) { checkDone() }
@@ -199,8 +201,10 @@ class AddEventViewModel @Inject constructor(
         addSubject: Boolean,
         timetable: Timetable?,
         subject: TermSubject?,
-        courseTime: CourseTime?
+        courseTime: CourseTime?,
+        eventToEdit: EventItem? = null,
     ) {
+        editingEvent = eventToEdit
         initCourseT = courseTime
         initSubject = subject
         this.addSubject = addSubject
@@ -229,6 +233,25 @@ class AddEventViewModel @Inject constructor(
                 teacherLiveData.value = DataState(it.teacher!!)
             }
         }
+        eventToEdit?.let {
+            setContentMode(ContentMode.CUSTOM)
+            dateModeLiveData.value = DateMode.SINGLE
+            timeModeLiveData.value = if (it.fromNumber > 0 && it.lastNumber > 0) {
+                TimeMode.PERIOD
+            } else {
+                TimeMode.CLOCK
+            }
+            nameLiveData.value = it.name
+            customDateLiveData.value = DataState(startOfDay(it.from.time))
+            customTimePeriodLiveData.value = DataState(TimePeriodInDay(TimeInDay(it.from), TimeInDay(it.to)))
+            if (!it.place.isNullOrBlank()) {
+                locationLiveData.value = DataState(it.place!!)
+            }
+            if (!it.teacher.isNullOrBlank()) {
+                teacherLiveData.value = DataState(it.teacher!!)
+            }
+            checkDone()
+        }
     }
 
     fun setCustomDate(dateMs: Long) {
@@ -241,6 +264,10 @@ class AddEventViewModel @Inject constructor(
 
     fun createEvent() {
         timetableLiveData.value?.data?.let { timetable ->
+            if (editingEvent != null) {
+                updateEditingEvent(timetable)
+                return
+            }
             val subjectToSave: TermSubject?
             val selectedEvent = selectedEventLiveData.value?.data
             val content = if (contentModeLiveData.value == ContentMode.EXISTING && selectedEvent != null) {
@@ -277,6 +304,25 @@ class AddEventViewModel @Inject constructor(
             val result = buildResult(timetable, content) ?: return
             ScheduleEventCreator.persistAsync(result, eventRepo, subjectRepo, subjectToSave)
         }
+    }
+
+    private fun updateEditingEvent(timetable: Timetable) {
+        val original = editingEvent ?: return
+        val dateMode = dateModeLiveData.value ?: DateMode.SINGLE
+        val timeMode = timeModeLiveData.value ?: TimeMode.PERIOD
+        val ranges = buildFixedRanges(timetable, dateMode, timeMode) ?: return
+        val range = ranges.firstOrNull() ?: return
+        val edited = original.apply {
+            name = nameLiveData.value?.trim().orEmpty()
+            place = locationLiveData.value?.data ?: ""
+            teacher = teacherLiveData.value?.data ?: ""
+            timetableId = timetable.id
+            from = Timestamp(range.fromMs)
+            to = Timestamp(range.toMs)
+            fromNumber = range.fromNumber
+            lastNumber = range.lastNumber
+        }
+        eventRepo.actionUpdateEvent(edited)
     }
 
     private fun buildResult(

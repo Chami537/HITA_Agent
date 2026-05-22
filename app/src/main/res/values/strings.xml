@@ -336,6 +336,7 @@
     <string name="notif_delete_success">删除成功！</string>
     <string name="dialog_title_sure_delete">确定删除吗？</string>
     <string name="dialog_title_select_delete">选择要删除的课程</string>
+    <string name="dialog_title_select_edit">选择要修改的课程</string>
     <string name="none">无</string>
     <string name="pick_teacher">选择教师</string>
     <string name="pick_classroom">选择教室</string>
@@ -345,6 +346,7 @@
     <string name="menu_search_teacher_website">查找教师网站</string>
     <string name="menu_logout">注销</string>
     <string name="menu_delete">删除</string>
+    <string name="menu_edit">修改</string>
     <string name="settings_category_functions">功能开关</string>
     <string name="settings_summary_task">开启后方可使用学习助手</string>
     <string name="settings_title_task">任务模块(开发阶段)</string>

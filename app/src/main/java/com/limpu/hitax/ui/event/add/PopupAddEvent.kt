@@ -35,6 +35,7 @@ class PopupAddEvent(private val addSubjectMode: Boolean = false) :
     var initTimetable: Timetable? = null
     var initSubject: TermSubject? = null
     var initCourseTime: CourseTime? = null
+    var editEvent: EventItem? = null
 
     override fun getViewModelClass(): Class<AddEventViewModel> {
         return AddEventViewModel::class.java
@@ -67,9 +68,29 @@ class PopupAddEvent(private val addSubjectMode: Boolean = false) :
         return this
     }
 
+    fun setEditEvent(event: EventItem): PopupAddEvent {
+        editEvent = event
+        val ct = CourseTime()
+        ct.dow = event.getDow()
+        event.fromNumber.takeIf { it > 0 }?.let { from ->
+            val to = from + event.lastNumber - 1
+            initTimetable?.let { timetable ->
+                ct.period = timetable.transformTimePeriod(from, to)
+            }
+        } ?: run {
+            ct.period = TimePeriodInDay(TimeInDay(event.from), TimeInDay(event.to))
+        }
+        initCourseTime = ct
+        return this
+    }
+
     @SuppressLint("SetTextI18n")
     override fun initViews(view: View) {
-        binding?.title?.setText(if (addSubjectMode) R.string.add_subject else R.string.ade_title)
+        binding?.title?.text = when {
+            editEvent != null -> getString(R.string.ade_title_edit, editEvent?.name.orEmpty())
+            addSubjectMode -> getString(R.string.add_subject)
+            else -> getString(R.string.ade_title)
+        }
         binding?.cancel?.setOnClickListener { dismiss() }
 
         binding?.pickSubject?.setOnClickListener {
@@ -288,7 +309,11 @@ class PopupAddEvent(private val addSubjectMode: Boolean = false) :
             }
         })
 
-        viewModel.init(addSubjectMode, initTimetable, initSubject, initCourseTime)
+        applyEditModeUi()
+        viewModel.init(addSubjectMode, initTimetable, initSubject, initCourseTime, editEvent)
+        editEvent?.let {
+            binding?.name?.setText(it.name)
+        }
     }
 
     private fun showCourseTimePicker(mode: PopUpPickCourseTime.Mode) {
@@ -319,7 +344,7 @@ class PopupAddEvent(private val addSubjectMode: Boolean = false) :
         } else {
             getString(R.string.ade_content_existing)
         }
-        binding?.contentSourceRow?.visibility = if (addSubjectMode) View.GONE else View.VISIBLE
+        binding?.contentSourceRow?.visibility = if (addSubjectMode || editEvent != null) View.GONE else View.VISIBLE
     }
 
     private fun applyDateModeUi(mode: AddEventViewModel.DateMode) {
@@ -340,11 +365,18 @@ class PopupAddEvent(private val addSubjectMode: Boolean = false) :
     }
 
     private fun refreshNameInputByContentMode(mode: AddEventViewModel.ContentMode) {
-        val isCustom = mode == AddEventViewModel.ContentMode.CUSTOM || addSubjectMode
+        val isCustom = mode == AddEventViewModel.ContentMode.CUSTOM || addSubjectMode || editEvent != null
         binding?.name?.isEnabled = isCustom
         binding?.name?.visibility = if (isCustom) View.VISIBLE else View.GONE
         binding?.adeNamelayout?.visibility = if (isCustom) View.VISIBLE else View.GONE
         binding?.name?.hint = getString(R.string.ade_namehint)
+    }
+
+    private fun applyEditModeUi() {
+        if (editEvent == null) return
+        binding?.pickTimetable?.isEnabled = false
+        binding?.contentSourceRow?.visibility = View.GONE
+        binding?.dateModeRow?.visibility = View.GONE
     }
 
     private fun refreshDateText() {

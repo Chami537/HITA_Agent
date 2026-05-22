@@ -348,6 +348,12 @@ class TimetableRepository @Inject constructor(val application: Application) {
         }
     }
 
+    fun actionUpdateEvent(event: EventItem) {
+        executor.execute {
+            eventItemDao.updateEventSync(event)
+        }
+    }
+
     @WorkerThread
     fun addEventsSync(data: List<EventItem>) {
         eventItemDao.addEvents(data)

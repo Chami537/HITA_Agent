@@ -5,6 +5,7 @@ import androidx.room.Dao
 import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
+import androidx.room.Update
 import com.limpu.hitax.data.model.timetable.EventItem
 import com.limpu.hitax.ui.timetable.detail.TeacherInfo
 
@@ -107,6 +108,9 @@ interface EventItemDao {
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     fun insertEventSync(event: EventItem)
+
+    @Update
+    fun updateEventSync(event: EventItem)
 
     /**
      * 将某课表的所有课程时间加上offset

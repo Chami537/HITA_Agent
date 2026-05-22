@@ -191,6 +191,36 @@ class TimetableFragment : HiltBaseFragment<FragmentTimetableBinding>() {
         return Pair(null, null)
     }
 
+    private fun showEditEventDialog(eventItem: EventItem) {
+        val timetable = viewModel.timetableLiveData.value
+            ?.firstOrNull { it.id == eventItem.timetableId }
+        if (timetable == null) {
+            Toast.makeText(requireContext(), R.string.loading, Toast.LENGTH_SHORT).show()
+            return
+        }
+        PopupAddEvent()
+            .setInitTimetable(timetable)
+            .setEditEvent(eventItem)
+            .show(childFragmentManager, "edit_event")
+    }
+
+    private fun showPickDuplicateEventDialog(
+        eventItems: List<EventItem>,
+        onSelected: (EventItem) -> Unit,
+    ) {
+        if (eventItems.size == 1) {
+            onSelected(eventItems[0])
+            return
+        }
+        AlertDialog.Builder(requireContext())
+            .setTitle(R.string.dialog_title_select_edit)
+            .setItems(eventItems.map { it.name }.toTypedArray()) { _, which ->
+                onSelected(eventItems[which])
+            }
+            .setNegativeButton(R.string.button_cancel, null)
+            .show()
+    }
+
     private fun refreshWeekLayout(currentPageStart: Long, timetables: List<Timetable>) {
         val cdCalendar = Calendar.getInstance()
         cdCalendar.timeInMillis = currentPageStart
@@ -284,25 +314,28 @@ class TimetableFragment : HiltBaseFragment<FragmentTimetableBinding>() {
                         val pm = PopupMenu(requireContext(), v)
                         pm.inflate(R.menu.menu_opr_timetable)
                         pm.setOnMenuItemClickListener { item ->
-                            if (item.itemId == R.id.delete) {
-                                val ad = AlertDialog.Builder(requireContext())
-                                    .setNegativeButton(R.string.button_cancel, null)
-                                    .setPositiveButton(R.string.button_confirm) { _, _ ->
-                                        val ef: ExplosionField =
-                                            ExplosionField.attach2Window(requireActivity())
-                                        ef.explode(v)
-                                        v.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
-                                        Thread{
-                                            activity?.application?.let {
-                                                TimetableRepository(it).actionDeleteEvents(
-                                                    listOf(eventItem)
-                                                )
-                                                activity?.let { act -> WidgetUtils.sendRefreshToAll(act) }
-                                            }
-                                        }.start()
-                                    }.create()
-                                ad.setTitle(R.string.dialog_title_sure_delete)
-                                ad.show()
+                            when (item.itemId) {
+                                R.id.edit -> showEditEventDialog(eventItem)
+                                R.id.delete -> {
+                                    val ad = AlertDialog.Builder(requireContext())
+                                        .setNegativeButton(R.string.button_cancel, null)
+                                        .setPositiveButton(R.string.button_confirm) { _, _ ->
+                                            val ef: ExplosionField =
+                                                ExplosionField.attach2Window(requireActivity())
+                                            ef.explode(v)
+                                            v.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
+                                            Thread{
+                                                activity?.application?.let {
+                                                    TimetableRepository(it).actionDeleteEvents(
+                                                        listOf(eventItem)
+                                                    )
+                                                    activity?.let { act -> WidgetUtils.sendRefreshToAll(act) }
+                                                }
+                                            }.start()
+                                        }.create()
+                                    ad.setTitle(R.string.dialog_title_sure_delete)
+                                    ad.show()
+                                }
                             }
                             true
                         }
@@ -320,55 +353,61 @@ class TimetableFragment : HiltBaseFragment<FragmentTimetableBinding>() {
                         val pm = PopupMenu(requireContext(), v)
                         pm.inflate(R.menu.menu_opr_timetable)
                         pm.setOnMenuItemClickListener { item ->
-                            if (item.itemId == R.id.delete) {
-                                if (eventItems.size == 1) {
-                                    // 只有一门课程，直接删除
-                                    val ad = AlertDialog.Builder(requireContext())
-                                        .setNegativeButton(R.string.button_cancel, null)
-                                        .setPositiveButton(R.string.button_confirm) { _, _ ->
-                                            val ef: ExplosionField =
-                                                ExplosionField.attach2Window(requireActivity())
-                                            ef.explode(v)
-                                            v.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
-                                        Thread{
-                                            activity?.application?.let {
-                                                TimetableRepository(it).actionDeleteEvents(
-                                                    eventItems
-                                                )
-                                                activity?.let { act -> WidgetUtils.sendRefreshToAll(act) }
+                            when (item.itemId) {
+                                R.id.edit -> showPickDuplicateEventDialog(eventItems) {
+                                    showEditEventDialog(it)
+                                }
+
+                                R.id.delete -> {
+                                    if (eventItems.size == 1) {
+                                        // 只有一门课程，直接删除
+                                        val ad = AlertDialog.Builder(requireContext())
+                                            .setNegativeButton(R.string.button_cancel, null)
+                                            .setPositiveButton(R.string.button_confirm) { _, _ ->
+                                                val ef: ExplosionField =
+                                                    ExplosionField.attach2Window(requireActivity())
+                                                ef.explode(v)
+                                                v.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
+                                            Thread{
+                                                activity?.application?.let {
+                                                    TimetableRepository(it).actionDeleteEvents(
+                                                        eventItems
+                                                    )
+                                                    activity?.let { act -> WidgetUtils.sendRefreshToAll(act) }
+                                                }
+                                            }.start()
+                                            }.create()
+                                        ad.setTitle(R.string.dialog_title_sure_delete)
+                                        ad.show()
+                                    } else {
+                                        // 多门课程冲突，弹出选择对话框
+                                        val names = eventItems.map { it.name }.toTypedArray()
+                                        AlertDialog.Builder(requireContext())
+                                            .setTitle(R.string.dialog_title_select_delete)
+                                            .setItems(names) { _, which ->
+                                                val selectedEvent = eventItems[which]
+                                                val ad = AlertDialog.Builder(requireContext())
+                                                    .setNegativeButton(R.string.button_cancel, null)
+                                                    .setPositiveButton(R.string.button_confirm) { _, _ ->
+                                                        val ef: ExplosionField =
+                                                            ExplosionField.attach2Window(requireActivity())
+                                                        ef.explode(v)
+                                                        v.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
+                                                        Thread{
+                                                            activity?.application?.let {
+                                                                TimetableRepository(it).actionDeleteEvents(
+                                                                    listOf(selectedEvent)
+                                                                )
+                                                                activity?.let { act -> WidgetUtils.sendRefreshToAll(act) }
+                                                            }
+                                                        }.start()
+                                                    }.create()
+                                                ad.setTitle(R.string.dialog_title_sure_delete)
+                                                ad.show()
                                             }
-                                        }.start()
-                                        }.create()
-                                    ad.setTitle(R.string.dialog_title_sure_delete)
-                                    ad.show()
-                                } else {
-                                    // 多门课程冲突，弹出选择对话框
-                                    val names = eventItems.map { it.name }.toTypedArray()
-                                    AlertDialog.Builder(requireContext())
-                                        .setTitle(R.string.dialog_title_select_delete)
-                                        .setItems(names) { _, which ->
-                                            val selectedEvent = eventItems[which]
-                                            val ad = AlertDialog.Builder(requireContext())
-                                                .setNegativeButton(R.string.button_cancel, null)
-                                                .setPositiveButton(R.string.button_confirm) { _, _ ->
-                                                    val ef: ExplosionField =
-                                                        ExplosionField.attach2Window(requireActivity())
-                                                    ef.explode(v)
-                                                    v.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
-                                                    Thread{
-                                                        activity?.application?.let {
-                                                            TimetableRepository(it).actionDeleteEvents(
-                                                                listOf(selectedEvent)
-                                                            )
-                                                            activity?.let { act -> WidgetUtils.sendRefreshToAll(act) }
-                                                        }
-                                                    }.start()
-                                                }.create()
-                                            ad.setTitle(R.string.dialog_title_sure_delete)
-                                            ad.show()
-                                        }
-                                        .setNegativeButton(R.string.button_cancel, null)
-                                        .show()
+                                            .setNegativeButton(R.string.button_cancel, null)
+                                            .show()
+                                    }
                                 }
                             }
                             true
