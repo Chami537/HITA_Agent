@@ -39,6 +39,12 @@ import com.limpu.hitauser.data.model.CheckUpdateResult
 import com.limpu.hitauser.data.repository.LocalUserRepository
 import com.limpu.style.widgets.PopUpText
 import com.limpu.style.widgets.PopUpUpdate
+import io.noties.markwon.Markwon
+import io.noties.markwon.ext.strikethrough.StrikethroughPlugin
+import io.noties.markwon.ext.tables.TablePlugin
+import io.noties.markwon.ext.tasklist.TaskListPlugin
+import io.noties.markwon.html.HtmlPlugin
+import io.noties.markwon.linkify.LinkifyPlugin
 import java.net.URLEncoder
 import java.nio.charset.StandardCharsets
 
@@ -385,7 +391,7 @@ object ActivityUtils {
     }
 
     fun showUpdateNotificationForce(cr:CheckUpdateResult,activity: AppCompatActivity){
-        PopUpText().setText("版本：${cr.latestVersionName}\n更新内容：${cr.updateLog}\n" + "是否下载安装？")
+        PopUpText().setText(buildUpdateMarkdown(activity, cr))
             .setTitle(R.string.new_version_available)
             .setOnConfirmListener(object : PopUpText.OnConfirmListener {
 
@@ -400,7 +406,7 @@ object ActivityUtils {
        val preference: SharedPreferences =
             activity.application.getSharedPreferences("update_skip", Context.MODE_PRIVATE)
         if(preference.getBoolean(cr.latestVersionCode.toString(),false)) return
-        PopUpUpdate().setText("版本：${cr.latestVersionName}\n更新内容：${cr.updateLog}\n" + "是否下载安装？")
+        PopUpUpdate().setText(buildUpdateMarkdown(activity, cr))
             .setTitle(R.string.new_version_available)
             .setOnActionListener(object : PopUpUpdate.OnActionListener {
                 override fun onConfirm() {
@@ -415,6 +421,27 @@ object ActivityUtils {
                     preference.edit().putBoolean(cr.latestVersionCode.toString(),true).apply()
                 }
             }).show(activity.supportFragmentManager, "update")
+    }
+
+    private fun buildUpdateMarkdown(activity: AppCompatActivity, cr: CheckUpdateResult): CharSequence {
+        val markdown = buildString {
+            append("版本：${cr.latestVersionName}\n\n")
+            append("更新内容：\n\n")
+            if (cr.updateLog.isBlank()) {
+                append("暂无更新说明")
+            } else {
+                append(cr.updateLog.trim())
+            }
+            append("\n\n是否下载安装？")
+        }
+        return Markwon.builder(activity)
+            .usePlugin(LinkifyPlugin.create())
+            .usePlugin(TablePlugin.create(activity))
+            .usePlugin(TaskListPlugin.create(activity))
+            .usePlugin(StrikethroughPlugin.create())
+            .usePlugin(HtmlPlugin.create())
+            .build()
+            .toMarkdown(markdown)
     }
 
     private var lastDownloadId: Long = -1

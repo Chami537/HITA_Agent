@@ -1,6 +1,7 @@
 package com.limpu.style.widgets
 
 import android.text.TextUtils
+import android.text.method.LinkMovementMethod
 import android.view.View
 import androidx.annotation.StringRes
 import com.limpu.style.R
@@ -14,7 +15,7 @@ class PopUpText : TransparentBottomSheetDialog<DialogBottomTextBinding>() {
 
     @StringRes
     var init_title: Int? = null
-    private var init_text: String? = null
+    private var init_text: CharSequence? = null
     var onConfirmListener: OnConfirmListener? = null
 
     interface OnConfirmListener {
@@ -36,7 +37,7 @@ class PopUpText : TransparentBottomSheetDialog<DialogBottomTextBinding>() {
         return this
     }
 
-    fun setText(text: String?): PopUpText {
+    fun setText(text: CharSequence?): PopUpText {
         init_text = text
         return this
     }
@@ -53,8 +54,10 @@ class PopUpText : TransparentBottomSheetDialog<DialogBottomTextBinding>() {
         }
         if (!TextUtils.isEmpty(init_text)) {
             binding.text.text = init_text
+            binding.text.movementMethod = LinkMovementMethod.getInstance()
             binding.text.visibility = View.VISIBLE
         } else {
+            binding.text.movementMethod = null
             binding.text.visibility = View.GONE
         }
         if (isCancelable) {

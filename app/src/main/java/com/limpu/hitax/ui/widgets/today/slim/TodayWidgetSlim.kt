@@ -7,6 +7,8 @@ import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import com.limpu.hitax.data.repository.TimetableRepository
+import com.limpu.hitax.data.work.WidgetRefreshScheduler
+import com.limpu.hitax.ui.widgets.WidgetUtils
 import com.limpu.hitax.ui.widgets.WidgetUtils.EVENT_REFRESH
 import com.limpu.hitax.utils.LogUtils
 import com.limpu.hitax.ui.widgets.today.TodayUtils
@@ -80,10 +82,14 @@ class TodayWidgetSlim : AppWidgetProvider() {
 
     override fun onEnabled(context: Context) {
         super.onEnabled(context)
+        WidgetRefreshScheduler.schedule(context)
     }
 
     override fun onDisabled(context: Context) {
         //Log.e("WI2", "onDisabled")
+        if (!WidgetUtils.hasAnyWidget(context)) {
+            WidgetRefreshScheduler.cancel(context)
+        }
         super.onDisabled(context)
     }
 

@@ -118,6 +118,15 @@ object TodayUtils {
         serviceIntent.data = Uri.parse(serviceIntent.toUri(Intent.URI_INTENT_SCHEME))
         views.setRemoteAdapter(R.id.list, serviceIntent)
         if (upcomingExams.isNotEmpty()) {
+            val firstExam = upcomingExams.first()
+            val text = buildString {
+                append(SpecialEventReminderUtils.formatExamReminderLine(firstExam))
+                if (upcomingExams.size > 1) {
+                    append(" 等 ")
+                    append(upcomingExams.size)
+                    append(" 场考试")
+                }
+            }
             views.setViewVisibility(R.id.exam_reminder, View.VISIBLE)
             views.setTextViewText(
                 R.id.exam_reminder_time,
@@ -125,9 +134,7 @@ object TodayUtils {
             )
             views.setTextViewText(
                 R.id.exam_reminder_name,
-                upcomingExams.joinToString("\n") {
-                    SpecialEventReminderUtils.formatExamReminderLine(it)
-                }
+                text
             )
         } else {
             views.setViewVisibility(R.id.exam_reminder, View.GONE)

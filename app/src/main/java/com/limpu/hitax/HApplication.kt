@@ -17,6 +17,8 @@ import com.limpu.hitauser.data.repository.LocalUserRepository
 import javax.inject.Inject
 import com.limpu.hitax.agent.remote.AgentBackendClient
 import com.limpu.hitax.data.work.CourseReminderScheduler
+import com.limpu.hitax.data.work.WidgetRefreshScheduler
+import com.limpu.hitax.ui.widgets.WidgetUtils
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -72,6 +74,14 @@ class HApplication : Application() {
             CourseReminderScheduler.autoSchedule(this)
         } catch (e: Exception) {
             LogUtils.e("CourseReminderScheduler.autoSchedule failed", e)
+        }
+
+        try {
+            if (WidgetUtils.hasAnyWidget(this)) {
+                WidgetRefreshScheduler.schedule(this)
+            }
+        } catch (e: Exception) {
+            LogUtils.e("WidgetRefreshScheduler.schedule failed", e)
         }
 
         try {

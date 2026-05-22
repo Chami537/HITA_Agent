@@ -91,19 +91,22 @@ class TimelineListAdapter(
 
     private fun formatExamReminderText(exams: List<EventItem>): SpannableStringBuilder {
         val builder = SpannableStringBuilder()
-        exams.forEachIndexed { index, exam ->
-            if (index > 0) builder.append('\n')
-            val countdown = SpecialEventReminderUtils.formatExamCountdown(exam)
-            val start = builder.length
-            builder.append(countdown)
-            builder.setSpan(
-                StyleSpan(Typeface.BOLD),
-                start,
-                builder.length,
-                Spanned.SPAN_EXCLUSIVE_EXCLUSIVE
-            )
-            builder.append("  ")
-            builder.append(SpecialEventReminderUtils.formatExamName(exam))
+        val exam = exams.firstOrNull() ?: return builder
+        val countdown = SpecialEventReminderUtils.formatExamCountdown(exam)
+        val start = builder.length
+        builder.append(countdown)
+        builder.setSpan(
+            StyleSpan(Typeface.BOLD),
+            start,
+            builder.length,
+            Spanned.SPAN_EXCLUSIVE_EXCLUSIVE
+        )
+        builder.append("  ")
+        builder.append(SpecialEventReminderUtils.formatExamName(exam))
+        if (exams.size > 1) {
+            builder.append(" 等 ")
+            builder.append(exams.size.toString())
+            builder.append(" 场考试")
         }
         return builder
     }

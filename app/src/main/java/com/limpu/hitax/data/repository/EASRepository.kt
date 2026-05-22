@@ -12,6 +12,7 @@ import androidx.lifecycle.map
 import androidx.lifecycle.switchMap
 import com.limpu.component.data.DataState
 import com.limpu.hitax.data.AppDatabase
+import com.limpu.hitax.data.model.classroom.ClassroomCacheEntity
 import com.limpu.hitax.data.model.eas.*
 import com.limpu.hitax.data.model.timetable.EventItem
 import com.limpu.hitax.data.model.timetable.TermSubject
@@ -36,6 +37,9 @@ import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 import com.limpu.hitax.utils.LogUtils
+import org.json.JSONArray
+import org.json.JSONObject
+import kotlin.concurrent.thread
 
 class EASRepository @Inject constructor(
     application: Application,
@@ -55,6 +59,7 @@ class EASRepository @Inject constructor(
     private var eventItemDao = AppDatabase.getDatabase(application).eventItemDao()
     private var timetableDao = AppDatabase.getDatabase(application).timetableDao()
     private var subjectDao = AppDatabase.getDatabase(application).subjectDao()
+    private var classroomCacheDao = AppDatabase.getDatabase(application).classroomCacheDao()
     private val easTokenLiveData = MutableLiveData(easPreferenceSource.getEasToken())
 
     private fun getService(campus: EASToken.Campus): EASService {
@@ -254,15 +259,85 @@ class EASRepository @Inject constructor(
         val easToken = easPreferenceSource.getEasToken()
         LogUtils.d("queryEmptyClassroom: isLogin=${easToken.isLogin()}, term=${term.getCode()}, building=${buildingItem.name}")
         if (easToken.isLogin()) {
-            return getService(easToken.campus).queryEmptyClassroom(
+            val result = MediatorLiveData<DataState<List<ClassroomItem>>>()
+            val hasCachedResult = AtomicBoolean(false)
+            thread(name = "classroom-cache-load") {
+                val cached = classroomCacheDao.getByQuerySync(
+                    buildingItem.id,
+                    term.yearCode,
+                    term.termCode,
+                    week
+                )
+                if (cached.isNotEmpty()) {
+                    hasCachedResult.set(true)
+                    result.postValue(
+                        DataState(cached.map { it.toClassroomItem() }).setFromCache(true)
+                    )
+                }
+            }
+            val remote = getService(easToken.campus).queryEmptyClassroom(
                 easToken,
                 term,
                 buildingItem,
                 listOf(week.toString())
             )
+            result.addSource(remote) { state ->
+                if (hasCachedResult.get() && state.state != DataState.STATE.SUCCESS) {
+                    return@addSource
+                }
+                result.value = state
+                if (state.state == DataState.STATE.SUCCESS) {
+                    val classrooms = state.data.orEmpty()
+                    thread(name = "classroom-cache-save") {
+                        saveClassroomCache(term, buildingItem, week, classrooms)
+                    }
+                }
+            }
+            return result
         }
         LogUtils.w("queryEmptyClassroom: not logged in")
         return LiveDataUtils.getMutableLiveData(DataState(DataState.STATE.NOT_LOGGED_IN))
+    }
+
+    private fun saveClassroomCache(
+        term: TermItem,
+        buildingItem: BuildingItem,
+        week: Int,
+        classrooms: List<ClassroomItem>
+    ) {
+        classroomCacheDao.deleteByQuerySync(buildingItem.id, term.yearCode, term.termCode, week)
+        if (classrooms.isEmpty()) return
+        val cachedAt = System.currentTimeMillis()
+        val entities = classrooms.map { classroom ->
+            ClassroomCacheEntity(
+                buildingId = buildingItem.id,
+                buildingName = buildingItem.name.orEmpty(),
+                termYearCode = term.yearCode,
+                termTermCode = term.termCode,
+                week = week,
+                name = classroom.name,
+                capacity = classroom.capacity,
+                specialClassroom = classroom.specialClassroom,
+                scheduleJson = JSONArray(classroom.scheduleList).toString(),
+                cachedAt = cachedAt
+            )
+        }
+        classroomCacheDao.saveAllSync(entities)
+        classroomCacheDao.deleteOldCachesSync(cachedAt - 180L * 24L * 60L * 60L * 1000L)
+    }
+
+    private fun ClassroomCacheEntity.toClassroomItem(): ClassroomItem {
+        return ClassroomItem().also { classroom ->
+            classroom.id = name
+            classroom.name = name
+            classroom.capacity = capacity
+            classroom.specialClassroom = specialClassroom
+            val arr = JSONArray(scheduleJson)
+            for (i in 0 until arr.length()) {
+                val obj = arr.optJSONObject(i) ?: JSONObject()
+                classroom.scheduleList.add(obj)
+            }
+        }
     }
 
     /**
