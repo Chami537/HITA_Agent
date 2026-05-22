@@ -2,11 +2,7 @@ package com.limpu.hitax.ui.main.timeline
 
 import android.annotation.SuppressLint
 import android.content.Context
-import android.graphics.Typeface
-import android.text.SpannableStringBuilder
-import android.text.Spanned
 import android.text.TextUtils
-import android.text.style.StyleSpan
 import android.util.TypedValue
 import android.view.HapticFeedbackConstants
 import android.view.View
@@ -89,26 +85,15 @@ class TimelineListAdapter(
         return typedValue.data
     }
 
-    private fun formatExamReminderText(exams: List<EventItem>): SpannableStringBuilder {
-        val builder = SpannableStringBuilder()
-        val exam = exams.firstOrNull() ?: return builder
-        val countdown = SpecialEventReminderUtils.formatExamCountdown(exam)
-        val start = builder.length
-        builder.append(countdown)
-        builder.setSpan(
-            StyleSpan(Typeface.BOLD),
-            start,
-            builder.length,
-            Spanned.SPAN_EXCLUSIVE_EXCLUSIVE
-        )
-        builder.append("  ")
-        builder.append(SpecialEventReminderUtils.formatExamName(exam))
+    private fun formatExamReminderName(exams: List<EventItem>): String {
+        val exam = exams.firstOrNull() ?: return ""
+        val builder = StringBuilder(SpecialEventReminderUtils.formatExamName(exam))
         if (exams.size > 1) {
             builder.append(" 等 ")
             builder.append(exams.size.toString())
             builder.append(" 场考试")
         }
-        return builder
+        return builder.toString()
     }
 
     override fun notifyItemChangedSmooth(newL: List<EventItem>) {
@@ -332,7 +317,8 @@ class TimelineListAdapter(
         private var head_counting_time: TextView
         private var head_counting_name: TextView
         private var head_exam: LinearLayout
-        private var head_exam_text: TextView
+        private var head_exam_time: TextView
+        private var head_exam_name: TextView
         private var hasUpcomingExam = false
         var head_goQuickly_classroom: TextView
         var head_goNow: LinearLayout
@@ -529,8 +515,10 @@ class TimelineListAdapter(
             val exams = upcomingExamEvents
             hasUpcomingExam = exams.isNotEmpty()
             if (exams.isNotEmpty()) {
+                val exam = exams.first()
                 head_exam.visibility = View.VISIBLE
-                head_exam_text.text = formatExamReminderText(exams)
+                head_exam_time.text = SpecialEventReminderUtils.formatExamCountdown(exam)
+                head_exam_name.text = formatExamReminderName(exams)
             } else {
                 head_exam.visibility = View.GONE
             }
@@ -567,7 +555,8 @@ class TimelineListAdapter(
             head_counting_image = v.findViewById(R.id.tl_head_counting_image)
             head_counting_time = v.findViewById(R.id.tl_head_counting_time)
             head_exam = v.findViewById(R.id.head_exam)
-            head_exam_text = v.findViewById(R.id.tl_head_exam_text)
+            head_exam_time = v.findViewById(R.id.tl_head_exam_time)
+            head_exam_name = v.findViewById(R.id.tl_head_exam_name)
             head_goQuickly_classroom = v.findViewById(R.id.tl_head_gonow_classroom)
             bt_bar_timetable.setOnClickListener { view ->
                 view.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
