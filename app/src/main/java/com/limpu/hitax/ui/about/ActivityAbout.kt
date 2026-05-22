@@ -13,6 +13,7 @@ import android.widget.Toast
 import com.limpu.component.data.DataState
 import com.limpu.hitax.R
 import androidx.activity.viewModels
+import com.limpu.hitax.BuildConfig
 import com.limpu.hitax.databinding.ActivityAboutBinding
 import com.limpu.hitax.ui.base.HiltBaseActivity
 import com.limpu.hitax.utils.ActivityUtils

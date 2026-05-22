@@ -1206,4 +1206,7 @@
     <string name="title_agent">助手</string>
     <string name="agent_chat_no_timetable">未选择课表</string>
     <string name="agent_chat_attach">附件</string>
+    <string name="download_started">已开始下载</string>
+    <string name="download_already_in_progress">正在下载中，请查看通知栏</string>
+    <string name="download_failed">下载启动失败，请稍后重试</string>
 </resources>

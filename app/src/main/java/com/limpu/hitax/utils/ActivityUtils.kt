@@ -10,6 +10,7 @@ import android.content.IntentFilter
 import android.content.SharedPreferences
 import android.database.Cursor
 import android.net.Uri
+import android.os.Build
 import android.os.Environment
 import android.view.View
 import android.widget.ImageView
@@ -450,55 +451,79 @@ object ActivityUtils {
 
     private var lastDownloadId: Long = -1
     private var downloadReceiver: BroadcastReceiver? = null
+    private var isDownloading: Boolean = false
 
     private fun downloadAndInstall(activity: AppCompatActivity, cr: CheckUpdateResult) {
-        val downloadUrl = cr.downloadUrl.ifEmpty { cr.latestUrl }
-        val fileName = "HITA_v${cr.latestVersionName}.apk"
-        val request = DownloadManager.Request(Uri.parse(downloadUrl))
-            .setTitle("HITA 更新下载")
-            .setDescription("正在下载 v${cr.latestVersionName}")
-            .setMimeType("application/vnd.android.package-archive")
-            .setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, fileName)
-            .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
-        val dm = activity.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
-        lastDownloadId = dm.enqueue(request)
+        if (isDownloading) {
+            Toast.makeText(activity, R.string.download_already_in_progress, Toast.LENGTH_SHORT).show()
+            return
+        }
+        isDownloading = true
+        try {
+            val downloadUrl = cr.downloadUrl.ifEmpty { cr.latestUrl }
+            val fileName = "HITA_v${cr.latestVersionName}.apk"
+            val request = DownloadManager.Request(Uri.parse(downloadUrl))
+                .setTitle("HITA 更新下载")
+                .setDescription("正在下载 v${cr.latestVersionName}")
+                .setMimeType("application/vnd.android.package-archive")
+                .setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, fileName)
+                .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
+            val dm = activity.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
+            lastDownloadId = dm.enqueue(request)
 
-        downloadReceiver?.let { activity.unregisterReceiver(it) }
-        val receiver = object : BroadcastReceiver() {
-            override fun onReceive(context: Context, intent: Intent) {
-                if (intent.action != DownloadManager.ACTION_DOWNLOAD_COMPLETE) return
-                val downloadId = intent.getLongExtra(DownloadManager.EXTRA_DOWNLOAD_ID, -1)
-                if (downloadId != lastDownloadId) return
+            downloadReceiver?.let {
+                try { activity.unregisterReceiver(it) } catch (_: Exception) {}
+            }
+            val receiver = object : BroadcastReceiver() {
+                override fun onReceive(context: Context, intent: Intent) {
+                    if (intent.action != DownloadManager.ACTION_DOWNLOAD_COMPLETE) return
+                    val downloadId = intent.getLongExtra(DownloadManager.EXTRA_DOWNLOAD_ID, -1)
+                    if (downloadId != lastDownloadId) return
 
-                try {
-                    val query = DownloadManager.Query().setFilterById(downloadId)
-                    val cursor: Cursor = dm.query(query)
-                    if (cursor.moveToFirst()) {
-                        val status = cursor.getInt(cursor.getColumnIndexOrThrow(DownloadManager.COLUMN_STATUS))
-                        if (status == DownloadManager.STATUS_SUCCESSFUL) {
-                            val uri = dm.getUriForDownloadedFile(downloadId)
-                            if (uri != null) {
-                                val installIntent = Intent(Intent.ACTION_VIEW).apply {
-                                    setDataAndType(uri, "application/vnd.android.package-archive")
-                                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    try {
+                        val query = DownloadManager.Query().setFilterById(downloadId)
+                        val cursor: Cursor = dm.query(query)
+                        if (cursor.moveToFirst()) {
+                            val status = cursor.getInt(cursor.getColumnIndexOrThrow(DownloadManager.COLUMN_STATUS))
+                            if (status == DownloadManager.STATUS_SUCCESSFUL) {
+                                val uri = dm.getUriForDownloadedFile(downloadId)
+                                if (uri != null) {
+                                    val installIntent = Intent(Intent.ACTION_VIEW).apply {
+                                        setDataAndType(uri, "application/vnd.android.package-archive")
+                                        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                    }
+                                    context.startActivity(installIntent)
                                 }
-                                context.startActivity(installIntent)
                             }
                         }
+                        cursor.close()
+                    } catch (e: Exception) {
+                        LogUtils.e("Failed to handle download result", e)
                     }
-                    cursor.close()
-                } catch (e: Exception) { LogUtils.w("Failed to close download cursor") }
 
-                try {
-                    context.unregisterReceiver(this)
-                } catch (e: Exception) { LogUtils.w("Failed to unregister download receiver") }
+                    isDownloading = false
+
+                    try {
+                        context.unregisterReceiver(this)
+                    } catch (e: Exception) {
+                        LogUtils.e("Failed to unregister download receiver", e)
+                    }
+                }
             }
+            val filter = IntentFilter(DownloadManager.ACTION_DOWNLOAD_COMPLETE)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                activity.applicationContext.registerReceiver(receiver, filter, Context.RECEIVER_NOT_EXPORTED)
+            } else {
+                activity.applicationContext.registerReceiver(receiver, filter)
+            }
+            downloadReceiver = receiver
+            Toast.makeText(activity, R.string.download_started, Toast.LENGTH_SHORT).show()
+        } catch (e: Exception) {
+            isDownloading = false
+            LogUtils.e("Failed to start download", e)
+            Toast.makeText(activity, R.string.download_failed, Toast.LENGTH_SHORT).show()
         }
-        val filter = IntentFilter(DownloadManager.ACTION_DOWNLOAD_COMPLETE)
-        activity.applicationContext.registerReceiver(receiver, filter)
-        downloadReceiver = receiver
-        Toast.makeText(activity, "已开始下载", Toast.LENGTH_SHORT).show()
     }
 
     fun startNewsActivity(from: Context, url: String, title: String) {
