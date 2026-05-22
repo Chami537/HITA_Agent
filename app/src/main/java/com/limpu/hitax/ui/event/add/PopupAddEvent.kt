@@ -4,27 +4,19 @@ import android.annotation.SuppressLint
 import android.text.Editable
 import android.text.TextWatcher
 import android.view.View
-import android.widget.Toast
 import androidx.lifecycle.LiveData
 import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.switchMap
-import androidx.recyclerview.widget.LinearLayoutManager
 import com.limpu.component.data.DataState
 import com.limpu.hitax.R
-import com.limpu.hitax.agent.core.AgentProvider
-import com.limpu.hitax.agent.core.AgentSession
-import com.limpu.hitax.agent.timetable.ArrangementInput
-import com.limpu.hitax.agent.timetable.TimetableAgentFactory
-import com.limpu.hitax.agent.timetable.TimetableAgentInput
-import com.limpu.hitax.agent.timetable.TimetableAgentOutput
 import com.limpu.hitax.data.model.timetable.TermSubject
 import com.limpu.hitax.data.model.timetable.TimeInDay
 import com.limpu.hitax.data.model.timetable.TimePeriodInDay
 import com.limpu.hitax.data.model.timetable.Timetable
+import com.limpu.hitax.data.repository.SubjectRepository
 import com.limpu.hitax.data.repository.TeacherInfoRepository
 import com.limpu.hitax.data.repository.TimetableRepository
 import com.limpu.hitax.databinding.DialogBottomAddEventBinding
-import com.limpu.hitax.ui.subject.SubjectAgentTraceListAdapter
 import com.limpu.hitax.ui.widgets.PopUpCalendarPicker
 import com.limpu.hitax.ui.widgets.PopUpPickCourseTime
 import com.limpu.hitax.ui.widgets.PopUpTimePeriodPicker
@@ -54,13 +46,6 @@ class PopupAddEvent(private val addSubjectMode: Boolean = false) :
     override fun initViewBinding(v: View): DialogBottomAddEventBinding {
         return DialogBottomAddEventBinding.bind(v)
     }
-
-    private val timetableAgentProvider: AgentProvider<TimetableAgentInput, TimetableAgentOutput> by lazy {
-        TimetableAgentFactory.createProvider()
-    }
-    private var timetableAgentSession: AgentSession<TimetableAgentInput, TimetableAgentOutput>? = null
-    private var submittingByAgent = false
-    private lateinit var agentTraceAdapter: SubjectAgentTraceListAdapter
 
     fun setInitTimetable(timetable: Timetable?): PopupAddEvent {
         initTimetable = timetable
@@ -92,8 +77,9 @@ class PopupAddEvent(private val addSubjectMode: Boolean = false) :
         binding?.modeFree?.setOnClickListener {
             viewModel.setAddMode(AddEventViewModel.AddMode.FREE_RANGE)
         }
-
-        initAgentTraceList()
+        binding?.pickSubject?.setOnClickListener {
+            showSubjectPicker()
+        }
 
         viewModel.doneLiveData.observe(this) {
             if (it) binding?.adeBtDone?.show() else binding?.adeBtDone?.hide()
@@ -101,9 +87,14 @@ class PopupAddEvent(private val addSubjectMode: Boolean = false) :
 
         viewModel.addModeLiveData.observe(this) { mode ->
             applyModeUi(mode)
-            binding?.pickSubject?.visibility = View.GONE
+            refreshSubjectChip(viewModel.subjectLiveData.value)
             refreshTeacherVisibility(viewModel.teacherLiveData.value)
             refreshTimeTextByMode(mode)
+        }
+
+        viewModel.contentModeLiveData.observe(this) {
+            refreshSubjectChip(viewModel.subjectLiveData.value)
+            refreshNameInputByContentMode(it)
         }
 
         viewModel.customDateLiveData.observe(this) { state ->
@@ -173,8 +164,11 @@ class PopupAddEvent(private val addSubjectMode: Boolean = false) :
 
         viewModel.subjectLiveData.observe(this) {
             if (it.state == DataState.STATE.SUCCESS) {
-                binding?.name?.setText(it.data?.name)
+                if (viewModel.contentModeLiveData.value == AddEventViewModel.ContentMode.SUBJECT) {
+                    binding?.name?.setText(it.data?.name)
+                }
             }
+            refreshSubjectChip(it)
         }
 
         viewModel.timetableLiveData.observe(this) {
@@ -356,17 +350,9 @@ class PopupAddEvent(private val addSubjectMode: Boolean = false) :
         }
 
         binding?.adeBtDone?.setOnClickListener {
-            when (viewModel.addModeLiveData.value ?: AddEventViewModel.AddMode.BATCH_PERIOD) {
-                AddEventViewModel.AddMode.BATCH_PERIOD -> {
-                    viewModel.createEvent()
-                    activity?.let { WidgetUtils.sendRefreshToAll(it) }
-                    dismiss()
-                }
-
-                AddEventViewModel.AddMode.FREE_RANGE -> {
-                    submitFreeRangeByAgent()
-                }
-            }
+            viewModel.createEvent()
+            activity?.let { WidgetUtils.sendRefreshToAll(it) }
+            dismiss()
         }
         binding?.name?.addTextChangedListener(object : TextWatcher {
             override fun beforeTextChanged(p0: CharSequence?, p1: Int, p2: Int, p3: Int) {}
@@ -377,27 +363,6 @@ class PopupAddEvent(private val addSubjectMode: Boolean = false) :
         })
 
         viewModel.init(addSubjectMode, initTimetable, initSubject, initCourseTime)
-    }
-
-    private fun initAgentTraceList() {
-        agentTraceAdapter = SubjectAgentTraceListAdapter()
-        binding?.agentTraceList?.layoutManager = LinearLayoutManager(requireContext())
-        binding?.agentTraceList?.adapter = agentTraceAdapter
-        binding?.agentTraceContainer?.visibility = View.GONE
-    }
-
-    private fun updateAgentTraceUiByMode(mode: AddEventViewModel.AddMode) {
-        if (mode == AddEventViewModel.AddMode.FREE_RANGE) {
-            if (submittingByAgent || agentTraceAdapter.itemCount > 0) {
-                binding?.agentTraceContainer?.visibility = View.VISIBLE
-            }
-        } else {
-            binding?.agentTraceContainer?.visibility = View.GONE
-        }
-    }
-
-    private fun showAgentTraceStatus(text: String) {
-        binding?.agentTraceStatus?.text = text
     }
 
     private fun applyModeUi(mode: AddEventViewModel.AddMode) {
@@ -413,16 +378,12 @@ class PopupAddEvent(private val addSubjectMode: Boolean = false) :
         binding?.modeBatchText?.setTextColor(if (isBatch) getColorPrimary() else getTextColorSecondary())
         binding?.modeFree?.setCardBackgroundColor(if (isBatch) getTextColorSecondary() else getColorPrimary())
         binding?.modeFreeText?.setTextColor(if (isBatch) getTextColorSecondary() else getColorPrimary())
-        updateAgentTraceUiByMode(mode)
+        binding?.agentTraceContainer?.visibility = View.GONE
     }
 
     private fun refreshTeacherVisibility(state: DataState<String>?) {
-        val isFreeMode = viewModel.addModeLiveData.value == AddEventViewModel.AddMode.FREE_RANGE
         val hiddenByState = state?.state == DataState.STATE.FETCH_FAILED
-        binding?.pickTeacher?.visibility = if (isFreeMode || hiddenByState) View.GONE else View.VISIBLE
-        if (isFreeMode) {
-            binding?.pickTeacherCancel?.visibility = View.GONE
-        }
+        binding?.pickTeacher?.visibility = if (hiddenByState) View.GONE else View.VISIBLE
     }
 
     private fun refreshTimeTextByMode(mode: AddEventViewModel.AddMode) {
@@ -449,73 +410,79 @@ class PopupAddEvent(private val addSubjectMode: Boolean = false) :
         }
     }
 
-    private fun submitFreeRangeByAgent() {
-        if (submittingByAgent) return
-        val fromTo = viewModel.customFromToLiveData.value?.data ?: return
-        val eventName = (viewModel.nameLiveData.value ?: "").trim()
-        if (eventName.isBlank()) return
-
-        val timetableId = viewModel.timetableLiveData.value?.data?.id
-        val place = if (viewModel.locationLiveData.value?.state == DataState.STATE.SUCCESS) {
-            viewModel.locationLiveData.value?.data.orEmpty()
-        } else {
-            ""
+    private fun refreshSubjectChip(state: DataState<TermSubject>?) {
+        if (addSubjectMode) {
+            binding?.pickSubject?.visibility = View.GONE
+            return
         }
-
-        val session = timetableAgentProvider.createSession()
-        timetableAgentSession?.dispose()
-        timetableAgentSession = session
-        submittingByAgent = true
-        binding?.adeBtDone?.isEnabled = false
-        agentTraceAdapter.clear()
-        updateAgentTraceUiByMode(AddEventViewModel.AddMode.FREE_RANGE)
-        showAgentTraceStatus(getString(R.string.loading))
-
-        session.run(
-            input = TimetableAgentInput(
-                application = requireActivity().application,
-                action = TimetableAgentInput.Action.ADD_TIMETABLE_ARRANGEMENT,
-                timetableId = timetableId,
-                arrangement = ArrangementInput(
-                    name = eventName,
-                    fromMs = fromTo.first,
-                    toMs = fromTo.second,
-                    place = place,
-                ),
-            ),
-            onTrace = { trace ->
-                activity?.runOnUiThread {
-                    binding?.agentTraceContainer?.visibility = View.VISIBLE
-                    agentTraceAdapter.append(trace)
-                    if (agentTraceAdapter.itemCount > 0) {
-                        binding?.agentTraceList?.scrollToPosition(agentTraceAdapter.itemCount - 1)
-                    }
-                }
-            },
-            onResult = { result ->
-                activity?.runOnUiThread {
-                    submittingByAgent = false
-                    binding?.adeBtDone?.isEnabled = true
-                    if (result.ok) {
-                        activity?.let { WidgetUtils.sendRefreshToAll(it) }
-                        dismiss()
-                    } else {
-                        showAgentTraceStatus(result.error ?: getString(R.string.operation_failed))
-                        Toast.makeText(
-                            requireContext(),
-                            result.error ?: getString(R.string.operation_failed),
-                            Toast.LENGTH_SHORT
-                        ).show()
-                    }
-                }
-            }
-        )
+        binding?.pickSubject?.visibility = View.VISIBLE
+        if (viewModel.contentModeLiveData.value == AddEventViewModel.ContentMode.SUBJECT &&
+            state?.state == DataState.STATE.SUCCESS
+        ) {
+            binding?.pickSubjectIcon?.setColorFilter(getColorPrimary())
+            binding?.pickSubjectText?.setTextColor(getColorPrimary())
+            binding?.pickSubject?.setCardBackgroundColor(getColorPrimary())
+            binding?.pickSubjectText?.text = state.data?.name ?: getString(R.string.ade_pick_subject)
+        } else {
+            binding?.pickSubjectText?.text = getString(R.string.ade_content_custom)
+            binding?.pickSubject?.setCardBackgroundColor(getTextColorSecondary())
+            binding?.pickSubjectText?.setTextColor(getTextColorSecondary())
+            binding?.pickSubjectIcon?.clearColorFilter()
+        }
     }
 
-    override fun onDestroy() {
-        timetableAgentSession?.dispose()
-        timetableAgentSession = null
-        super.onDestroy()
+    private fun refreshNameInputByContentMode(mode: AddEventViewModel.ContentMode) {
+        val wasSubjectMode = binding?.name?.isEnabled == false
+        binding?.name?.isEnabled = mode == AddEventViewModel.ContentMode.CUSTOM
+        binding?.name?.hint = if (mode == AddEventViewModel.ContentMode.SUBJECT) {
+            getString(R.string.ade_pick_subject)
+        } else {
+            getString(R.string.ade_namehint)
+        }
+        if (mode == AddEventViewModel.ContentMode.CUSTOM && wasSubjectMode) {
+            binding?.name?.setText("")
+        }
+    }
+
+    private fun showSubjectPicker() {
+        val timetable = viewModel.timetableLiveData.value?.data ?: return
+        val customSubject = TermSubject().apply {
+            id = "__custom_schedule__"
+            name = getString(R.string.ade_content_custom)
+            timetableId = timetable.id
+            type = TermSubject.TYPE.TAG
+        }
+        DialogSelectableLiveList<TermSubject>().setTitle(R.string.ade_pick_subject)
+            .setInitValue(viewModel.subjectLiveData.value?.data ?: customSubject)
+            .setDataLoader(object : DialogSelectableLiveList.DataLoader<TermSubject> {
+                override fun loadData(): LiveData<List<DialogSelectableLiveList.ItemData<TermSubject>>> {
+                    return SubjectRepository(requireActivity().application)
+                        .getSubjects(timetable.id)
+                        .switchMap { subjects ->
+                            val res = mutableListOf(
+                                DialogSelectableLiveList.ItemData(
+                                    getString(R.string.ade_content_custom),
+                                    customSubject,
+                                )
+                            )
+                            for (subject in subjects) {
+                                if (subject.type != TermSubject.TYPE.TAG) {
+                                    res.add(DialogSelectableLiveList.ItemData(subject.name, subject))
+                                }
+                            }
+                            MutableLiveData(res)
+                        }
+                }
+            }).setOnConfirmListener(object :
+                DialogSelectableLiveList.OnConfirmListener<TermSubject> {
+                override fun onConfirm(title: String?, key: TermSubject) {
+                    if (key.id == customSubject.id) {
+                        viewModel.setContentMode(AddEventViewModel.ContentMode.CUSTOM)
+                    } else {
+                        viewModel.selectSubject(key)
+                    }
+                }
+            }).show(childFragmentManager, "pick_subject")
     }
 
     private fun formatDateLabel(ms: Long): String {

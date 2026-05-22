@@ -2,11 +2,9 @@ package com.limpu.hitax.agent.timetable
 
 import com.limpu.hitax.agent.core.AgentTool
 import com.limpu.hitax.agent.core.AgentToolResult
-import com.limpu.hitax.data.model.timetable.EventItem
+import com.limpu.hitax.data.repository.ScheduleEventCreator
 import com.limpu.hitax.data.repository.TimetableRepository
 import com.limpu.hitax.utils.LogUtils
-import java.sql.Timestamp
-import java.util.Calendar
 import kotlin.concurrent.thread
 
 class AddTimetableArrangementTool : AgentTool<TimetableAgentInput, TimetableAgentOutput> {
@@ -47,36 +45,27 @@ class AddTimetableArrangementTool : AgentTool<TimetableAgentInput, TimetableAgen
                     ?: repository.ensureDefaultCustomTimetableSync()
                     LogUtils.d("[DEBUG] Got timetable: id=${timetable.id}, name=${timetable.name}")
 
-                val event = EventItem().apply {
-                    type = arrangement.type
-                    source = EventItem.SOURCE_AGENT
-                    name = arrangement.name
-                    timetableId = timetable.id
-                    subjectId = arrangement.subjectId
-                    place = arrangement.place.orEmpty()
-                    teacher = arrangement.teacher.orEmpty()
-                    from = Timestamp(arrangement.fromMs)
-                    to = Timestamp(arrangement.toMs)
-                    fromNumber = 0
-                    lastNumber = 0
-                    color = -1
-                }
-                LogUtils.d("[DEBUG] Created event: id=${event.id}, name=${event.name}, timetableId=${event.timetableId}, from=${event.from}, to=${event.to}")
+                val result = ScheduleEventCreator.buildEvents(
+                    timetable = timetable,
+                    content = ScheduleEventCreator.Content(
+                        name = arrangement.name,
+                        place = arrangement.place.orEmpty(),
+                        teacher = arrangement.teacher.orEmpty(),
+                        subject = null,
+                        type = arrangement.type,
+                    ),
+                    ranges = listOf(
+                        ScheduleEventCreator.FixedRange(
+                            fromMs = arrangement.fromMs,
+                            toMs = arrangement.toMs,
+                        )
+                    ),
+                    source = com.limpu.hitax.data.model.timetable.EventItem.SOURCE_AGENT,
+                )
+                LogUtils.d("[DEBUG] Created events: count=${result.events.size}, timetableId=${timetable.id}")
 
-                repository.addEventsSync(listOf(event))
+                ScheduleEventCreator.persist(result, repository)
                 LogUtils.d("[DEBUG] addEventsSync called successfully")
-
-                if (event.to.time > timetable.endTime.time) {
-                    val c = Calendar.getInstance()
-                    c.timeInMillis = event.to.time
-                    c.firstDayOfWeek = Calendar.MONDAY
-                    c.set(Calendar.DAY_OF_WEEK, Calendar.SUNDAY)
-                    c.set(Calendar.HOUR_OF_DAY, 23)
-                    c.set(Calendar.MINUTE, 59)
-                    timetable.endTime.time = c.timeInMillis
-                    repository.saveTimetableSync(timetable)
-                    LogUtils.d("[DEBUG] Updated timetable endTime")
-                }
 
                 LogUtils.d("[DEBUG] Tool execution successful, returning result")
                 onResult(
@@ -85,7 +74,7 @@ class AddTimetableArrangementTool : AgentTool<TimetableAgentInput, TimetableAgen
                             action = input.action,
                             timetableId = timetable.id,
                             timetableName = timetable.name,
-                            addedEventIds = listOf(event.id),
+                            addedEventIds = result.events.map { it.id },
                         )
                     )
                 )

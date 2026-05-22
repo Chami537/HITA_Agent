@@ -116,6 +116,11 @@ class SubjectRepository @Inject constructor(application: Application) {
         }
     }
 
+    @androidx.annotation.WorkerThread
+    fun saveSubjectSync(subject: TermSubject) {
+        subjectDao.saveSubjectSync(subject)
+    }
+
     fun actionResetRecentSubjectColors() {
         executor.execute {
             val timetable =
