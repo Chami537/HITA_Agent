@@ -279,7 +279,16 @@
     <string name="ade_mode_batch">按节次批量</string>
     <string name="ade_mode_free">自由时间段</string>
     <string name="ade_pick_time_range">设置时间段</string>
+    <string name="ade_section_content">日程内容</string>
+    <string name="ade_content_existing">已有日程</string>
     <string name="ade_content_custom">自定义日程</string>
+    <string name="ade_section_date">日期</string>
+    <string name="ade_date_single">单次</string>
+    <string name="ade_date_weekly">每周</string>
+    <string name="ade_pick_weekly_date">设置周数与星期</string>
+    <string name="ade_section_time">时间</string>
+    <string name="ade_time_clock">具体时间段</string>
+    <string name="ade_time_period">节次时间段</string>
     <string name="label_activity_attitude">HITSZ态度墙</string>
     <string name="label_activity_tasks">待办事项</string>
     <string name="task_card_title_tasknum">待办</string>

@@ -73,6 +73,9 @@ interface EventItemDao {
     @Query("select * from events where timetableId is :timetableId")
     fun getEventsOfTimetableSync(timetableId: String):List<EventItem>
 
+    @Query("select * from events where timetableId is :timetableId order by name asc, `from` asc")
+    fun getEventsOfTimetable(timetableId: String): LiveData<List<EventItem>>
+
     @Query("select * from events where timetableId is :timetableId and `from` < :toMs and `to` > :fromMs order by `from` asc")
     fun getEventsOfTimetableDuringSync(timetableId: String, fromMs: Long, toMs: Long): List<EventItem>
 

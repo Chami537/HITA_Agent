@@ -29,12 +29,18 @@ import kotlin.collections.ArrayList
 
 class PopUpPickCourseTime(val timetable: Timetable) :
     TransparentDialog<DialogBottomPickCourseTimeBinding>() {
+    enum class Mode {
+        DATE_AND_PERIOD,
+        PERIOD_ONLY,
+    }
+
     var rangeLiveData: MutableLiveData<Pair<Int, TimePeriodInDay>> = MutableLiveData()
     var weeksLiveData: MutableLiveData<List<Boolean>> = MutableLiveData()
     var selectedTimesLiveData: MutableLiveData<List<Long>> = MutableLiveData()
     var onTimeSelectedListener: OnTimeSelectedListener? = null
     var initTimetable: Timetable? = null
     var initCourseTime: CourseTime? = null
+    private var mode: Mode = Mode.DATE_AND_PERIOD
     private var listAdapter: PickWeekListAdapter? = null
     private var datesAdapter: SelectedDateAdapter? = null
 
@@ -104,7 +110,7 @@ class PopUpPickCourseTime(val timetable: Timetable) :
                 binding.picktot.currentIndex + 1
             )
             r.weeks = listAdapter?.getSelectedWeeks() ?: listOf()
-            if (r.weeks.isEmpty()) {
+            if (mode == Mode.DATE_AND_PERIOD && r.weeks.isEmpty()) {
                 Toast.makeText(context, R.string.ade_pick_weeks, Toast.LENGTH_SHORT).show()
             } else {
                 onTimeSelectedListener?.onSelected(r)
@@ -127,6 +133,11 @@ class PopUpPickCourseTime(val timetable: Timetable) :
             selectedTimesLiveData.value = getSelectedDates()
         }
         bindLiveData()
+    }
+
+    fun setMode(mode: Mode): PopUpPickCourseTime {
+        this.mode = mode
+        return this
     }
 
 
@@ -175,6 +186,16 @@ class PopUpPickCourseTime(val timetable: Timetable) :
                 binding.fromTime.text = it.scheduleStructure[0].from.toString()
                 binding.toTime.text = it.scheduleStructure[0].to.toString()
             }
+        }
+
+        if (mode == Mode.PERIOD_ONLY) {
+            binding.pickdow.visibility = View.GONE
+            binding.textView3.visibility = View.GONE
+            binding.weekList.visibility = View.GONE
+            binding.dateList.visibility = View.GONE
+            binding.fromTime.visibility = View.VISIBLE
+            binding.toTime.visibility = View.VISIBLE
+            binding.timePreviewDash.visibility = View.VISIBLE
         }
 
         initCourseTime?.let { initCourseTime ->

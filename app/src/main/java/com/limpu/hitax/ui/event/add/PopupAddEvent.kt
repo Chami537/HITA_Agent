@@ -9,11 +9,11 @@ import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.switchMap
 import com.limpu.component.data.DataState
 import com.limpu.hitax.R
+import com.limpu.hitax.data.model.timetable.EventItem
 import com.limpu.hitax.data.model.timetable.TermSubject
 import com.limpu.hitax.data.model.timetable.TimeInDay
 import com.limpu.hitax.data.model.timetable.TimePeriodInDay
 import com.limpu.hitax.data.model.timetable.Timetable
-import com.limpu.hitax.data.repository.SubjectRepository
 import com.limpu.hitax.data.repository.TeacherInfoRepository
 import com.limpu.hitax.data.repository.TimetableRepository
 import com.limpu.hitax.databinding.DialogBottomAddEventBinding
@@ -71,73 +71,63 @@ class PopupAddEvent(private val addSubjectMode: Boolean = false) :
         binding?.title?.setText(if (addSubjectMode) R.string.add_subject else R.string.ade_title)
         binding?.cancel?.setOnClickListener { dismiss() }
 
-        binding?.modeBatch?.setOnClickListener {
-            viewModel.setAddMode(AddEventViewModel.AddMode.BATCH_PERIOD)
-        }
-        binding?.modeFree?.setOnClickListener {
-            viewModel.setAddMode(AddEventViewModel.AddMode.FREE_RANGE)
+        binding?.pickSubject?.setOnClickListener {
+            showExistingEventPicker()
         }
         binding?.contentCustom?.setOnClickListener {
             viewModel.setContentMode(AddEventViewModel.ContentMode.CUSTOM)
         }
-        binding?.pickSubject?.setOnClickListener {
-            showSubjectPicker()
+        binding?.dateSingle?.setOnClickListener {
+            viewModel.setDateMode(AddEventViewModel.DateMode.SINGLE)
+        }
+        binding?.dateWeekly?.setOnClickListener {
+            viewModel.setDateMode(AddEventViewModel.DateMode.WEEKLY)
+        }
+        binding?.modeFree?.setOnClickListener {
+            viewModel.setTimeMode(AddEventViewModel.TimeMode.CLOCK)
+        }
+        binding?.modeBatch?.setOnClickListener {
+            viewModel.setTimeMode(AddEventViewModel.TimeMode.PERIOD)
         }
 
         viewModel.doneLiveData.observe(this) {
             if (it) binding?.adeBtDone?.show() else binding?.adeBtDone?.hide()
         }
 
-        viewModel.addModeLiveData.observe(this) { mode ->
-            applyModeUi(mode)
-            refreshSubjectChip(viewModel.subjectLiveData.value)
-            refreshTeacherVisibility(viewModel.teacherLiveData.value)
-            refreshTimeTextByMode(mode)
-        }
-
         viewModel.contentModeLiveData.observe(this) {
-            applyContentModeUi(it, viewModel.subjectLiveData.value)
+            applyContentModeUi(it, viewModel.selectedEventLiveData.value)
             refreshNameInputByContentMode(it)
         }
-
-        viewModel.customDateLiveData.observe(this) { state ->
-            if (state.state == DataState.STATE.SUCCESS) {
-                binding?.pickDate?.setCardBackgroundColor(getColorPrimary())
-                binding?.pickDateIcon?.setColorFilter(getColorPrimary())
-                binding?.dateShow?.setTextColor(getColorPrimary())
-                binding?.dateShow?.text = formatDateLabel(state.data ?: 0L)
-            } else {
-                binding?.pickDate?.setCardBackgroundColor(getTextColorSecondary())
-                binding?.pickDateIcon?.clearColorFilter()
-                binding?.dateShow?.setTextColor(getTextColorSecondary())
-                binding?.dateShow?.text = getString(R.string.ade_set_date)
-            }
+        viewModel.selectedEventLiveData.observe(this) {
+            applyContentModeUi(viewModel.contentModeLiveData.value ?: AddEventViewModel.ContentMode.CUSTOM, it)
+        }
+        viewModel.dateModeLiveData.observe(this) {
+            applyDateModeUi(it)
+            refreshDateText()
+        }
+        viewModel.timeModeLiveData.observe(this) {
+            applyTimeModeUi(it)
+            refreshTimeText()
         }
 
+        viewModel.customDateLiveData.observe(this) {
+            refreshDateText()
+        }
         viewModel.customTimePeriodLiveData.observe(this) {
-            if (viewModel.addModeLiveData.value == AddEventViewModel.AddMode.FREE_RANGE) {
-                if (it.state == DataState.STATE.SUCCESS) {
-                    binding?.pickTime?.setCardBackgroundColor(getColorPrimary())
-                    binding?.pickTimeIcon?.setColorFilter(getColorPrimary())
-                    binding?.timeShow?.setTextColor(getColorPrimary())
-                    binding?.timeShow?.text = formatTimePeriodLabel(it.data)
-                } else {
-                    binding?.pickTime?.setCardBackgroundColor(getTextColorSecondary())
-                    binding?.pickTimeIcon?.clearColorFilter()
-                    binding?.timeShow?.setTextColor(getTextColorSecondary())
-                    binding?.timeShow?.text = getString(R.string.ade_pick_time_range)
-                }
-            }
+            refreshTimeText()
+        }
+        viewModel.timeRangeLiveDate.observe(this) {
+            refreshDateText()
+            refreshTimeText()
         }
 
         viewModel.teacherLiveData.observe(this) {
-            refreshTeacherVisibility(it)
             if (it.state == DataState.STATE.SUCCESS) {
                 binding?.pickTeacherIcon?.setColorFilter(getColorPrimary())
                 binding?.pickTeacherText?.setTextColor(getColorPrimary())
                 binding?.pickTeacher?.setCardBackgroundColor(getColorPrimary())
                 binding?.pickTeacherText?.text = it.data
-                binding?.pickTeacherCancel?.visibility = if (viewModel.addModeLiveData.value == AddEventViewModel.AddMode.FREE_RANGE) View.GONE else View.VISIBLE
+                binding?.pickTeacherCancel?.visibility = View.VISIBLE
             } else {
                 binding?.pickTeacherText?.text = getString(R.string.ade_pick_teacher)
                 binding?.pickTeacher?.setCardBackgroundColor(getTextColorSecondary())
@@ -148,8 +138,6 @@ class PopupAddEvent(private val addSubjectMode: Boolean = false) :
         }
 
         viewModel.locationLiveData.observe(this) {
-            binding?.pickLocation?.visibility =
-                if (it.state == DataState.STATE.FETCH_FAILED) View.GONE else View.VISIBLE
             if (it.state == DataState.STATE.SUCCESS) {
                 binding?.pickLocationIcon?.setColorFilter(getColorPrimary())
                 binding?.pickLocationText?.setTextColor(getColorPrimary())
@@ -165,15 +153,6 @@ class PopupAddEvent(private val addSubjectMode: Boolean = false) :
             }
         }
 
-        viewModel.subjectLiveData.observe(this) {
-            if (it.state == DataState.STATE.SUCCESS) {
-                if (viewModel.contentModeLiveData.value == AddEventViewModel.ContentMode.SUBJECT) {
-                    binding?.name?.setText(it.data?.name)
-                }
-            }
-            applyContentModeUi(viewModel.contentModeLiveData.value ?: AddEventViewModel.ContentMode.CUSTOM, it)
-        }
-
         viewModel.timetableLiveData.observe(this) {
             binding?.pickTimetable?.visibility =
                 if (it.state == DataState.STATE.FETCH_FAILED) View.GONE else View.VISIBLE
@@ -187,51 +166,6 @@ class PopupAddEvent(private val addSubjectMode: Boolean = false) :
                 binding?.pickTimetable?.setCardBackgroundColor(getTextColorSecondary())
                 binding?.pickTimetableText?.setTextColor(getTextColorSecondary())
                 binding?.pickTimetableIcon?.clearColorFilter()
-            }
-        }
-
-        viewModel.timeRangeLiveDate.observe(this) {
-            if (viewModel.addModeLiveData.value != AddEventViewModel.AddMode.BATCH_PERIOD) return@observe
-            binding?.pickTime?.visibility =
-                if (it.state == DataState.STATE.FETCH_FAILED) View.GONE else View.VISIBLE
-            if (it.state == DataState.STATE.SUCCESS) {
-                binding?.pickTime?.setCardBackgroundColor(getColorPrimary())
-                binding?.pickTimeIcon?.setColorFilter(getColorPrimary())
-                binding?.timeShow?.setTextColor(getColorPrimary())
-                if (viewModel.timetableLiveData.value?.data != null) {
-                    it.data?.let { ct ->
-                        val dowArray = resources.getStringArray(R.array.dow1)
-                        val dowIndex = (ct.dow - 1).coerceIn(0, dowArray.size - 1)
-                        val t1 = dowArray[dowIndex].toString() +
-                                " " + ct.period.from.toString() + "-" + ct.period.to.toString()
-                        val set = HashSet<Int>()
-                        val frags = mutableListOf<String>()
-                        for (i in ct.weeks) {
-                            set.add(i)
-                        }
-                        for (s in set) {
-                            if (set.contains(s - 1)) continue
-                            var ts = s
-                            while (set.contains(ts + 1)) {
-                                ts++
-                            }
-                            when (ts) {
-                                s -> frags.add("$s")
-                                s + 1 -> {
-                                    frags.add("$s")
-                                    frags.add("$ts")
-                                }
-                                else -> frags.add("$s-$ts")
-                            }
-                        }
-                        binding?.timeShow?.text = "${frags.joinToString(", ")}周 $t1"
-                    }
-                }
-            } else {
-                binding?.timeShow?.text = getString(R.string.ade_pick_time)
-                binding?.pickTime?.setCardBackgroundColor(getTextColorSecondary())
-                binding?.timeShow?.setTextColor(getTextColorSecondary())
-                binding?.pickTimeIcon?.clearColorFilter()
             }
         }
 
@@ -258,53 +192,41 @@ class PopupAddEvent(private val addSubjectMode: Boolean = false) :
         }
 
         binding?.pickDate?.setOnClickListener {
-            val initDate = viewModel.customDateLiveData.value?.data
-            PopUpCalendarPicker()
-                .setInitValue(initDate)
-                .setOnConfirmListener(object : PopUpCalendarPicker.OnConfirmListener {
-                    override fun onConfirm(c: Calendar) {
-                        c.set(Calendar.HOUR_OF_DAY, 0)
-                        c.set(Calendar.MINUTE, 0)
-                        c.set(Calendar.SECOND, 0)
-                        c.set(Calendar.MILLISECOND, 0)
-                        viewModel.setCustomDate(c.timeInMillis)
-                    }
-                })
-                .show(childFragmentManager, "pick_custom_date")
+            if (viewModel.dateModeLiveData.value == AddEventViewModel.DateMode.WEEKLY) {
+                showCourseTimePicker(requireWeeks = true)
+            } else {
+                val initDate = viewModel.customDateLiveData.value?.data
+                PopUpCalendarPicker()
+                    .setInitValue(initDate)
+                    .setOnConfirmListener(object : PopUpCalendarPicker.OnConfirmListener {
+                        override fun onConfirm(c: Calendar) {
+                            c.set(Calendar.HOUR_OF_DAY, 0)
+                            c.set(Calendar.MINUTE, 0)
+                            c.set(Calendar.SECOND, 0)
+                            c.set(Calendar.MILLISECOND, 0)
+                            viewModel.setCustomDate(c.timeInMillis)
+                        }
+                    })
+                    .show(childFragmentManager, "pick_custom_date")
+            }
         }
 
         binding?.pickTime?.setOnClickListener {
-            when (viewModel.addModeLiveData.value ?: AddEventViewModel.AddMode.BATCH_PERIOD) {
-                AddEventViewModel.AddMode.BATCH_PERIOD -> {
-                    viewModel.timetableLiveData.value?.data?.let { tt ->
-                        PopUpPickCourseTime(tt)
-                            .setInitialValue(tt, viewModel.timeRangeLiveDate.value?.data)
-                            .setSelectListener(object : PopUpPickCourseTime.OnTimeSelectedListener {
-                                override fun onSelected(data: CourseTime) {
-                                    if (data.weeks.isEmpty()) {
-                                        viewModel.timeRangeLiveDate.value = DataState(DataState.STATE.NOTHING)
-                                    } else {
-                                        viewModel.timeRangeLiveDate.value = DataState(data)
-                                    }
-                                }
-                            }).show(childFragmentManager, "pick_course_time")
-                    }
-                }
-
-                AddEventViewModel.AddMode.FREE_RANGE -> {
-                    val initPeriod = viewModel.customTimePeriodLiveData.value?.data
-                    PopUpTimePeriodPicker()
-                        .setDialogTitle(R.string.ade_pick_time_range)
-                        .setInitialValue(initPeriod?.from, initPeriod?.to)
-                        .setOnDialogConformListener(object : PopUpTimePeriodPicker.OnDialogConformListener {
-                            override fun onClick(timePeriodInDay: TimePeriodInDay) {
-                                viewModel.setCustomTimePeriod(
-                                    TimeInDay(timePeriodInDay.from.hour, timePeriodInDay.from.minute),
-                                    TimeInDay(timePeriodInDay.to.hour, timePeriodInDay.to.minute)
-                                )
-                            }
-                        }).show(childFragmentManager, "pick_custom_time_range")
-                }
+            if (viewModel.timeModeLiveData.value == AddEventViewModel.TimeMode.PERIOD) {
+                showCourseTimePicker(requireWeeks = viewModel.dateModeLiveData.value == AddEventViewModel.DateMode.WEEKLY)
+            } else {
+                val initPeriod = viewModel.customTimePeriodLiveData.value?.data
+                PopUpTimePeriodPicker()
+                    .setDialogTitle(R.string.ade_pick_time_range)
+                    .setInitialValue(initPeriod?.from, initPeriod?.to)
+                    .setOnDialogConformListener(object : PopUpTimePeriodPicker.OnDialogConformListener {
+                        override fun onClick(timePeriodInDay: TimePeriodInDay) {
+                            viewModel.setCustomTimePeriod(
+                                TimeInDay(timePeriodInDay.from.hour, timePeriodInDay.from.minute),
+                                TimeInDay(timePeriodInDay.to.hour, timePeriodInDay.to.minute)
+                            )
+                        }
+                    }).show(childFragmentManager, "pick_custom_time_range")
             }
         }
 
@@ -368,144 +290,206 @@ class PopupAddEvent(private val addSubjectMode: Boolean = false) :
         viewModel.init(addSubjectMode, initTimetable, initSubject, initCourseTime)
     }
 
-    private fun applyModeUi(mode: AddEventViewModel.AddMode) {
-        val isBatch = mode == AddEventViewModel.AddMode.BATCH_PERIOD
-        binding?.contentSourceRow?.visibility = if (addSubjectMode) View.GONE else View.VISIBLE
-        binding?.pickDate?.visibility = if (isBatch) View.GONE else View.VISIBLE
-        if (isBatch) {
-            binding?.pickTime?.visibility =
-                if (viewModel.timeRangeLiveDate.value?.state == DataState.STATE.FETCH_FAILED) View.GONE else View.VISIBLE
-        } else {
-            binding?.pickTime?.visibility = View.VISIBLE
-        }
-        binding?.modeBatch?.setCardBackgroundColor(if (isBatch) getColorPrimary() else getTextColorSecondary())
-        binding?.modeBatchText?.setTextColor(if (isBatch) getColorPrimary() else getTextColorSecondary())
-        binding?.modeFree?.setCardBackgroundColor(if (isBatch) getTextColorSecondary() else getColorPrimary())
-        binding?.modeFreeText?.setTextColor(if (isBatch) getTextColorSecondary() else getColorPrimary())
-        binding?.agentTraceContainer?.visibility = View.GONE
-    }
-
-    private fun refreshTeacherVisibility(state: DataState<String>?) {
-        val hiddenByState = state?.state == DataState.STATE.FETCH_FAILED
-        binding?.pickTeacher?.visibility = if (hiddenByState) View.GONE else View.VISIBLE
-    }
-
-    private fun refreshTimeTextByMode(mode: AddEventViewModel.AddMode) {
-        if (mode == AddEventViewModel.AddMode.BATCH_PERIOD) {
-            if (viewModel.timeRangeLiveDate.value?.state != DataState.STATE.SUCCESS) {
-                binding?.timeShow?.text = getString(R.string.ade_pick_time)
-                binding?.pickTime?.setCardBackgroundColor(getTextColorSecondary())
-                binding?.timeShow?.setTextColor(getTextColorSecondary())
-                binding?.pickTimeIcon?.clearColorFilter()
-            }
-        } else {
-            val periodState = viewModel.customTimePeriodLiveData.value
-            if (periodState?.state == DataState.STATE.SUCCESS) {
-                binding?.timeShow?.text = formatTimePeriodLabel(periodState.data)
-                binding?.pickTime?.setCardBackgroundColor(getColorPrimary())
-                binding?.pickTimeIcon?.setColorFilter(getColorPrimary())
-                binding?.timeShow?.setTextColor(getColorPrimary())
-            } else {
-                binding?.timeShow?.text = getString(R.string.ade_pick_time_range)
-                binding?.pickTime?.setCardBackgroundColor(getTextColorSecondary())
-                binding?.pickTimeIcon?.clearColorFilter()
-                binding?.timeShow?.setTextColor(getTextColorSecondary())
-            }
-        }
-    }
-
-    private fun refreshSubjectChip(state: DataState<TermSubject>?) {
-        if (addSubjectMode) {
-            binding?.pickSubject?.visibility = View.GONE
-            return
-        }
-        binding?.pickSubject?.visibility = View.VISIBLE
-        if (viewModel.contentModeLiveData.value == AddEventViewModel.ContentMode.CUSTOM) {
-            binding?.pickSubjectText?.text = getString(R.string.ade_pick_subject)
-            binding?.pickSubjectIcon?.clearColorFilter()
-            return
-        }
-        if (viewModel.contentModeLiveData.value == AddEventViewModel.ContentMode.SUBJECT &&
-            state?.state == DataState.STATE.SUCCESS
-        ) {
-            binding?.pickSubjectIcon?.setColorFilter(getColorPrimary())
-            binding?.pickSubjectText?.text = state.data?.name ?: getString(R.string.ade_pick_subject)
-        } else {
-            binding?.pickSubjectText?.text = getString(R.string.ade_pick_subject)
-            binding?.pickSubjectIcon?.clearColorFilter()
+    private fun showCourseTimePicker(requireWeeks: Boolean) {
+        viewModel.timetableLiveData.value?.data?.let { tt ->
+            PopUpPickCourseTime(tt)
+                .setMode(if (requireWeeks) PopUpPickCourseTime.Mode.DATE_AND_PERIOD else PopUpPickCourseTime.Mode.PERIOD_ONLY)
+                .setInitialValue(tt, viewModel.timeRangeLiveDate.value?.data)
+                .setSelectListener(object : PopUpPickCourseTime.OnTimeSelectedListener {
+                    override fun onSelected(data: CourseTime) {
+                        if (requireWeeks && data.weeks.isEmpty()) {
+                            viewModel.timeRangeLiveDate.value = DataState(DataState.STATE.NOTHING)
+                        } else {
+                            viewModel.timeRangeLiveDate.value = DataState(data)
+                        }
+                    }
+                }).show(childFragmentManager, "pick_course_time")
         }
     }
 
     private fun applyContentModeUi(
         mode: AddEventViewModel.ContentMode,
-        state: DataState<TermSubject>?,
+        state: DataState<EventItem>?,
     ) {
         val isCustom = mode == AddEventViewModel.ContentMode.CUSTOM
         binding?.contentCustom?.setCardBackgroundColor(if (isCustom) getColorPrimary() else getTextColorSecondary())
         binding?.contentCustomText?.setTextColor(if (isCustom) getColorPrimary() else getTextColorSecondary())
         binding?.pickSubject?.setCardBackgroundColor(if (isCustom) getTextColorSecondary() else getColorPrimary())
         binding?.pickSubjectText?.setTextColor(if (isCustom) getTextColorSecondary() else getColorPrimary())
-        refreshSubjectChip(state)
+        binding?.pickSubjectIcon?.setColorFilter(if (isCustom) getTextColorSecondary() else getColorPrimary())
+        binding?.pickSubjectText?.text = if (state?.state == DataState.STATE.SUCCESS) {
+            state.data?.name ?: getString(R.string.ade_content_existing)
+        } else {
+            getString(R.string.ade_content_existing)
+        }
+        binding?.contentSourceRow?.visibility = if (addSubjectMode) View.GONE else View.VISIBLE
+    }
+
+    private fun applyDateModeUi(mode: AddEventViewModel.DateMode) {
+        val isSingle = mode == AddEventViewModel.DateMode.SINGLE
+        binding?.dateSingle?.setCardBackgroundColor(if (isSingle) getColorPrimary() else getTextColorSecondary())
+        binding?.dateSingleText?.setTextColor(if (isSingle) getColorPrimary() else getTextColorSecondary())
+        binding?.dateWeekly?.setCardBackgroundColor(if (isSingle) getTextColorSecondary() else getColorPrimary())
+        binding?.dateWeeklyText?.setTextColor(if (isSingle) getTextColorSecondary() else getColorPrimary())
+    }
+
+    private fun applyTimeModeUi(mode: AddEventViewModel.TimeMode) {
+        val isPeriod = mode == AddEventViewModel.TimeMode.PERIOD
+        binding?.modeBatch?.setCardBackgroundColor(if (isPeriod) getColorPrimary() else getTextColorSecondary())
+        binding?.modeBatchText?.setTextColor(if (isPeriod) getColorPrimary() else getTextColorSecondary())
+        binding?.modeFree?.setCardBackgroundColor(if (isPeriod) getTextColorSecondary() else getColorPrimary())
+        binding?.modeFreeText?.setTextColor(if (isPeriod) getTextColorSecondary() else getColorPrimary())
+        binding?.agentTraceContainer?.visibility = View.GONE
     }
 
     private fun refreshNameInputByContentMode(mode: AddEventViewModel.ContentMode) {
-        val wasSubjectMode = binding?.name?.isEnabled == false
-        binding?.name?.isEnabled = mode == AddEventViewModel.ContentMode.CUSTOM
-        binding?.name?.hint = if (mode == AddEventViewModel.ContentMode.SUBJECT) {
-            getString(R.string.ade_pick_subject)
-        } else {
-            getString(R.string.ade_namehint)
+        val isCustom = mode == AddEventViewModel.ContentMode.CUSTOM || addSubjectMode
+        binding?.name?.isEnabled = isCustom
+        binding?.name?.visibility = if (isCustom) View.VISIBLE else View.GONE
+        binding?.adeNamelayout?.visibility = if (isCustom) View.VISIBLE else View.GONE
+        binding?.name?.hint = getString(R.string.ade_namehint)
+    }
+
+    private fun refreshDateText() {
+        val mode = viewModel.dateModeLiveData.value ?: AddEventViewModel.DateMode.SINGLE
+        val selected = when (mode) {
+            AddEventViewModel.DateMode.SINGLE -> {
+                val state = viewModel.customDateLiveData.value
+                if (state?.state == DataState.STATE.SUCCESS) formatDateLabel(state.data ?: 0L) else null
+            }
+
+            AddEventViewModel.DateMode.WEEKLY -> {
+                val state = viewModel.timeRangeLiveDate.value
+                if (state?.state == DataState.STATE.SUCCESS) formatWeeklyLabel(state.data) else null
+            }
         }
-        if (mode == AddEventViewModel.ContentMode.CUSTOM && wasSubjectMode) {
-            binding?.name?.setText("")
+        val isSelected = !selected.isNullOrBlank()
+        binding?.pickDate?.setCardBackgroundColor(if (isSelected) getColorPrimary() else getTextColorSecondary())
+        binding?.pickDateIcon?.setColorFilter(if (isSelected) getColorPrimary() else getTextColorSecondary())
+        binding?.dateShow?.setTextColor(if (isSelected) getColorPrimary() else getTextColorSecondary())
+        binding?.dateShow?.text = selected ?: if (mode == AddEventViewModel.DateMode.WEEKLY) {
+            getString(R.string.ade_pick_weekly_date)
+        } else {
+            getString(R.string.ade_set_date)
         }
     }
 
-    private fun showSubjectPicker() {
-        val timetable = viewModel.timetableLiveData.value?.data ?: return
-        val customSubject = TermSubject().apply {
-            id = "__custom_schedule__"
-            name = getString(R.string.ade_content_custom)
-            timetableId = timetable.id
-            type = TermSubject.TYPE.TAG
+    private fun refreshTimeText() {
+        val mode = viewModel.timeModeLiveData.value ?: AddEventViewModel.TimeMode.PERIOD
+        val selected = when (mode) {
+            AddEventViewModel.TimeMode.CLOCK -> {
+                val state = viewModel.customTimePeriodLiveData.value
+                if (state?.state == DataState.STATE.SUCCESS) formatTimePeriodLabel(state.data) else null
+            }
+
+            AddEventViewModel.TimeMode.PERIOD -> {
+                val state = viewModel.timeRangeLiveDate.value
+                if (state?.state == DataState.STATE.SUCCESS) formatPeriodLabel(state.data) else null
+            }
         }
-        DialogSelectableLiveList<TermSubject>().setTitle(R.string.ade_pick_subject)
-            .setInitValue(viewModel.subjectLiveData.value?.data ?: customSubject)
-            .setDataLoader(object : DialogSelectableLiveList.DataLoader<TermSubject> {
-                override fun loadData(): LiveData<List<DialogSelectableLiveList.ItemData<TermSubject>>> {
-                    return SubjectRepository(requireActivity().application)
-                        .getSubjects(timetable.id)
-                        .switchMap { subjects ->
-                            val res = mutableListOf(
-                                DialogSelectableLiveList.ItemData(
-                                    getString(R.string.ade_content_custom),
-                                    customSubject,
-                                )
+        val isSelected = !selected.isNullOrBlank()
+        binding?.pickTime?.setCardBackgroundColor(if (isSelected) getColorPrimary() else getTextColorSecondary())
+        binding?.pickTimeIcon?.setColorFilter(if (isSelected) getColorPrimary() else getTextColorSecondary())
+        binding?.timeShow?.setTextColor(if (isSelected) getColorPrimary() else getTextColorSecondary())
+        binding?.timeShow?.text = selected ?: if (mode == AddEventViewModel.TimeMode.PERIOD) {
+            getString(R.string.ade_pick_time)
+        } else {
+            getString(R.string.ade_pick_time_range)
+        }
+    }
+
+    private fun showExistingEventPicker() {
+        val timetable = viewModel.timetableLiveData.value?.data ?: return
+        DialogSelectableLiveList<EventItem>().setTitle(R.string.ade_content_existing)
+            .setInitValue(viewModel.selectedEventLiveData.value?.data)
+            .setDataLoader(object : DialogSelectableLiveList.DataLoader<EventItem> {
+                override fun loadData(): LiveData<List<DialogSelectableLiveList.ItemData<EventItem>>> {
+                    return TimetableRepository(requireActivity().application)
+                        .getEventsOfTimetable(timetable.id)
+                        .switchMap { events ->
+                            MutableLiveData(
+                                events
+                                    .filter { it.type != EventItem.TYPE.TAG }
+                                    .distinctBy {
+                                        listOf(
+                                            it.name.trim(),
+                                            it.place.orEmpty().trim(),
+                                            it.teacher.orEmpty().trim(),
+                                            it.subjectId,
+                                            it.type.name,
+                                        ).joinToString("|")
+                                    }
+                                    .sortedWith(compareBy<EventItem> { it.name }.thenBy { it.from.time })
+                                    .map {
+                                        DialogSelectableLiveList.ItemData(formatEventTemplateLabel(it), it)
+                                    }
                             )
-                            for (subject in subjects) {
-                                if (subject.type != TermSubject.TYPE.TAG) {
-                                    res.add(DialogSelectableLiveList.ItemData(subject.name, subject))
-                                }
-                            }
-                            MutableLiveData(res)
                         }
                 }
             }).setOnConfirmListener(object :
-                DialogSelectableLiveList.OnConfirmListener<TermSubject> {
-                override fun onConfirm(title: String?, key: TermSubject) {
-                    if (key.id == customSubject.id) {
-                        viewModel.setContentMode(AddEventViewModel.ContentMode.CUSTOM)
-                    } else {
-                        viewModel.selectSubject(key)
-                    }
+                DialogSelectableLiveList.OnConfirmListener<EventItem> {
+                override fun onConfirm(title: String?, key: EventItem) {
+                    viewModel.selectExistingEvent(key)
+                    binding?.name?.setText(key.name)
                 }
-            }).show(childFragmentManager, "pick_subject")
+            }).show(childFragmentManager, "pick_existing_event")
     }
 
     private fun formatDateLabel(ms: Long): String {
         val c = Calendar.getInstance()
         c.timeInMillis = ms
         return "${c.get(Calendar.MONTH) + 1}月${c.get(Calendar.DAY_OF_MONTH)}日"
+    }
+
+    private fun formatWeeklyLabel(courseTime: CourseTime?): String {
+        if (courseTime == null) return ""
+        val dowArray = resources.getStringArray(R.array.dow1)
+        val dowIndex = (courseTime.dow - 1).coerceIn(0, dowArray.size - 1)
+        val weeks = formatWeeks(courseTime.weeks)
+        return if (weeks.isBlank()) {
+            dowArray[dowIndex]
+        } else {
+            "${weeks}周 ${dowArray[dowIndex]}"
+        }
+    }
+
+    private fun formatPeriodLabel(courseTime: CourseTime?): String {
+        if (courseTime == null) return ""
+        val timetable = viewModel.timetableLiveData.value?.data
+        val nums = timetable?.transformCourseNumber(courseTime.period)
+        return if (nums != null && nums.first > 0) {
+            "第${nums.first}-${nums.second}节 ${courseTime.period.from}-${courseTime.period.to}"
+        } else {
+            "${courseTime.period.from}-${courseTime.period.to}"
+        }
+    }
+
+    private fun formatWeeks(weeks: List<Int>): String {
+        val set = weeks.toSet()
+        val frags = mutableListOf<String>()
+        for (s in set.sorted()) {
+            if (set.contains(s - 1)) continue
+            var ts = s
+            while (set.contains(ts + 1)) {
+                ts++
+            }
+            when (ts) {
+                s -> frags.add("$s")
+                s + 1 -> {
+                    frags.add("$s")
+                    frags.add("$ts")
+                }
+
+                else -> frags.add("$s-$ts")
+            }
+        }
+        return frags.joinToString(", ")
+    }
+
+    private fun formatEventTemplateLabel(event: EventItem): String {
+        return listOf(event.name, event.place.orEmpty(), event.teacher.orEmpty())
+            .filter { it.isNotBlank() }
+            .joinToString(" / ")
     }
 
     private fun formatTimePeriodLabel(period: TimePeriodInDay?): String {

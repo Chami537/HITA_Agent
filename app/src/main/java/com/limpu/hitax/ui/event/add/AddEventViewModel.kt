@@ -21,20 +21,26 @@ class AddEventViewModel @Inject constructor(
     private val eventRepo: TimetableRepository,
     private val subjectRepo: SubjectRepository
 ) : ViewModel() {
-    enum class AddMode {
-        BATCH_PERIOD,
-        FREE_RANGE
-    }
-
     enum class ContentMode {
-        SUBJECT,
+        EXISTING,
         CUSTOM
     }
 
-    val addModeLiveData = MutableLiveData(AddMode.BATCH_PERIOD)
+    enum class DateMode {
+        SINGLE,
+        WEEKLY
+    }
+
+    enum class TimeMode {
+        CLOCK,
+        PERIOD
+    }
+
     val contentModeLiveData = MutableLiveData(ContentMode.CUSTOM)
+    val dateModeLiveData = MutableLiveData(DateMode.SINGLE)
+    val timeModeLiveData = MutableLiveData(TimeMode.PERIOD)
     val timetableLiveData = MutableLiveData<DataState<Timetable>>()
-    val subjectLiveData = MediatorLiveData<DataState<TermSubject>>()
+    val selectedEventLiveData = MutableLiveData<DataState<EventItem>>()
     val timeRangeLiveDate = MediatorLiveData<DataState<CourseTime>>()
     val customDateLiveData = MutableLiveData<DataState<Long>>()
     val customTimePeriodLiveData = MutableLiveData<DataState<TimePeriodInDay>>()
@@ -49,27 +55,14 @@ class AddEventViewModel @Inject constructor(
     var addSubject: Boolean = false
 
     init {
-        doneLiveData.addSource(addModeLiveData) {
-            checkDone()
-        }
-        doneLiveData.addSource(contentModeLiveData) {
-            checkDone()
-        }
-        doneLiveData.addSource(subjectLiveData) {
-            checkDone()
-        }
-        doneLiveData.addSource(nameLiveData) {
-            checkDone()
-        }
-        doneLiveData.addSource(timetableLiveData) {
-            checkDone()
-        }
-        doneLiveData.addSource(timeRangeLiveDate) {
-            checkDone()
-        }
-        doneLiveData.addSource(customFromToLiveData) {
-            checkDone()
-        }
+        doneLiveData.addSource(contentModeLiveData) { checkDone() }
+        doneLiveData.addSource(dateModeLiveData) { checkDone() }
+        doneLiveData.addSource(timeModeLiveData) { checkDone() }
+        doneLiveData.addSource(selectedEventLiveData) { checkDone() }
+        doneLiveData.addSource(nameLiveData) { checkDone() }
+        doneLiveData.addSource(timetableLiveData) { checkDone() }
+        doneLiveData.addSource(timeRangeLiveDate) { checkDone() }
+        doneLiveData.addSource(customFromToLiveData) { checkDone() }
 
         timeRangeLiveDate.addSource(timetableLiveData) {
             if (it.state == DataState.STATE.SUCCESS) {
@@ -86,6 +79,7 @@ class AddEventViewModel @Inject constructor(
 
         customDateLiveData.value = DataState(DataState.STATE.NOTHING)
         customTimePeriodLiveData.value = DataState(DataState.STATE.NOTHING)
+        selectedEventLiveData.value = DataState(DataState.STATE.NOTHING)
 
         customFromToLiveData.addSource(customDateLiveData) {
             refreshCustomFromTo()
@@ -93,71 +87,41 @@ class AddEventViewModel @Inject constructor(
         customFromToLiveData.addSource(customTimePeriodLiveData) {
             refreshCustomFromTo()
         }
-
-        subjectLiveData.addSource(timetableLiveData) {
-            refreshSubjectState()
-        }
-        subjectLiveData.addSource(contentModeLiveData) { mode ->
-            if (mode == ContentMode.CUSTOM) {
-                subjectLiveData.value = DataState(DataState.STATE.NOTHING)
-            } else {
-                refreshSubjectState()
-            }
-        }
-
-        teacherLiveData.addSource(subjectLiveData) {
-            if (it.state == DataState.STATE.SUCCESS
-                || it.state == DataState.STATE.SPECIAL
-                || it.state == DataState.STATE.NOTHING
-            ) {
-                if (teacherLiveData.value?.state != DataState.STATE.SUCCESS) {
-                    teacherLiveData.value = DataState(DataState.STATE.NOTHING)
-                }
-            } else {
-                teacherLiveData.value = DataState(DataState.STATE.FETCH_FAILED)
-            }
-        }
-        locationLiveData.addSource(subjectLiveData) {
-            if (it.state == DataState.STATE.SUCCESS
-                || it.state == DataState.STATE.SPECIAL
-                || it.state == DataState.STATE.NOTHING
-            ) {
-                if (locationLiveData.value?.state != DataState.STATE.SUCCESS) {
-                    locationLiveData.value = DataState(DataState.STATE.NOTHING)
-                }
-            } else {
-                locationLiveData.value = DataState(DataState.STATE.FETCH_FAILED)
-            }
-        }
-    }
-
-    fun setAddMode(mode: AddMode) {
-        if (addModeLiveData.value == mode) return
-        addModeLiveData.value = mode
-        checkDone()
     }
 
     fun setContentMode(mode: ContentMode) {
         if (contentModeLiveData.value == mode) return
-        val selectedSubjectName = subjectLiveData.value?.data?.name
         contentModeLiveData.value = mode
         if (mode == ContentMode.CUSTOM) {
-            subjectLiveData.value = DataState(DataState.STATE.NOTHING)
-            if (nameLiveData.value == selectedSubjectName) {
-                nameLiveData.value = ""
-            }
+            selectedEventLiveData.value = DataState(DataState.STATE.NOTHING)
+            nameLiveData.value = ""
+            locationLiveData.value = DataState(DataState.STATE.NOTHING)
+            teacherLiveData.value = DataState(DataState.STATE.NOTHING)
         }
         checkDone()
     }
 
-    fun selectSubject(subject: TermSubject) {
-        contentModeLiveData.value = ContentMode.SUBJECT
-        subjectLiveData.value = DataState(subject)
-        if (nameLiveData.value.isNullOrBlank() || nameLiveData.value == subjectLiveData.value?.data?.name) {
-            nameLiveData.value = subject.name
+    fun setDateMode(mode: DateMode) {
+        if (dateModeLiveData.value == mode) return
+        dateModeLiveData.value = mode
+        checkDone()
+    }
+
+    fun setTimeMode(mode: TimeMode) {
+        if (timeModeLiveData.value == mode) return
+        timeModeLiveData.value = mode
+        checkDone()
+    }
+
+    fun selectExistingEvent(event: EventItem) {
+        contentModeLiveData.value = ContentMode.EXISTING
+        selectedEventLiveData.value = DataState(event)
+        nameLiveData.value = event.name
+        if (!event.place.isNullOrBlank()) {
+            locationLiveData.value = DataState(event.place!!)
         }
-        if (!subject.teacher.isNullOrBlank()) {
-            teacherLiveData.value = DataState(subject.teacher!!)
+        if (!event.teacher.isNullOrBlank()) {
+            teacherLiveData.value = DataState(event.teacher!!)
         }
         checkDone()
     }
@@ -192,46 +156,25 @@ class AddEventViewModel @Inject constructor(
         }
     }
 
-    private fun refreshSubjectState() {
-        if (contentModeLiveData.value != ContentMode.SUBJECT) {
-            subjectLiveData.value = DataState(DataState.STATE.NOTHING)
-            return
-        }
-        if (addSubject) {
-            subjectLiveData.value = DataState(DataState.STATE.SPECIAL)
-            return
-        }
-        if (initSubject != null) {
-            subjectLiveData.value = DataState(initSubject!!)
-            initSubject = null
-            return
-        }
-        if (subjectLiveData.value?.state != DataState.STATE.SUCCESS
-            || subjectLiveData.value?.data?.timetableId != timetableLiveData.value?.data?.id
-        ) {
-            subjectLiveData.value = DataState(DataState.STATE.NOTHING)
-        }
-    }
-
     private fun checkDone() {
-        val mode = addModeLiveData.value ?: AddMode.BATCH_PERIOD
         val contentReady = when (contentModeLiveData.value ?: ContentMode.CUSTOM) {
-            ContentMode.SUBJECT -> subjectLiveData.value?.state == DataState.STATE.SUCCESS
+            ContentMode.EXISTING -> selectedEventLiveData.value?.state == DataState.STATE.SUCCESS
             ContentMode.CUSTOM -> !nameLiveData.value.isNullOrBlank()
         }
-        val baseReady = timetableLiveData.value?.state == DataState.STATE.SUCCESS
-            && contentReady
-        val done = when (mode) {
-            AddMode.BATCH_PERIOD -> {
-                baseReady
-                    && timeRangeLiveDate.value?.state == DataState.STATE.SUCCESS
-            }
-
-            AddMode.FREE_RANGE -> {
-                baseReady && customFromToLiveData.value?.state == DataState.STATE.SUCCESS
-            }
+        val dateReady = when (dateModeLiveData.value ?: DateMode.SINGLE) {
+            DateMode.SINGLE -> customDateLiveData.value?.state == DataState.STATE.SUCCESS
+            DateMode.WEEKLY -> timeRangeLiveDate.value?.state == DataState.STATE.SUCCESS &&
+                !timeRangeLiveDate.value?.data?.weeks.isNullOrEmpty()
         }
-        doneLiveData.value = done
+        val timeReady = when (timeModeLiveData.value ?: TimeMode.PERIOD) {
+            TimeMode.CLOCK -> customTimePeriodLiveData.value?.state == DataState.STATE.SUCCESS
+            TimeMode.PERIOD -> timeRangeLiveDate.value?.state == DataState.STATE.SUCCESS &&
+                isValidPeriod(timeRangeLiveDate.value?.data?.period)
+        }
+        doneLiveData.value = timetableLiveData.value?.state == DataState.STATE.SUCCESS &&
+            contentReady &&
+            dateReady &&
+            timeReady
     }
 
     var initSubject: TermSubject? = null
@@ -250,6 +193,12 @@ class AddEventViewModel @Inject constructor(
             timetableLiveData.value = DataState(DataState.STATE.NOTHING)
         } else {
             timetableLiveData.value = DataState(timetable)
+            courseTime?.let {
+                val from = timetable.getTimestamps(it.weeks.firstOrNull() ?: 1, it.dow, it.period).firstOrNull()
+                from?.let { ms ->
+                    customDateLiveData.value = DataState(startOfDay(ms))
+                }
+            }
         }
 
         if (courseTime == null) {
@@ -257,7 +206,13 @@ class AddEventViewModel @Inject constructor(
         } else {
             customTimePeriodLiveData.value = DataState(courseTime.period.clone())
         }
-        subject?.let { selectSubject(it) }
+        subject?.let {
+            setContentMode(ContentMode.CUSTOM)
+            nameLiveData.value = it.name
+            if (!it.teacher.isNullOrBlank()) {
+                teacherLiveData.value = DataState(it.teacher!!)
+            }
+        }
     }
 
     fun setCustomDate(dateMs: Long) {
@@ -271,49 +226,130 @@ class AddEventViewModel @Inject constructor(
     fun createEvent() {
         timetableLiveData.value?.data?.let { timetable ->
             val subjectToSave: TermSubject?
-            val subject: TermSubject?
-            if (contentModeLiveData.value == ContentMode.SUBJECT) {
-                subject = subjectLiveData.value?.data ?: return
+            val selectedEvent = selectedEventLiveData.value?.data
+            val content = if (contentModeLiveData.value == ContentMode.EXISTING && selectedEvent != null) {
                 subjectToSave = null
+                ScheduleEventCreator.Content(
+                    name = selectedEvent.name.trim(),
+                    place = locationLiveData.value?.data ?: selectedEvent.place.orEmpty(),
+                    teacher = teacherLiveData.value?.data ?: selectedEvent.teacher.orEmpty(),
+                    subjectId = selectedEvent.subjectId,
+                    type = selectedEvent.type,
+                )
             } else if (addSubject) {
-                subject = TermSubject().apply {
+                val subject = TermSubject().apply {
                     name = nameLiveData.value?.trim().orEmpty()
                     timetableId = timetable.id
                 }
                 subjectToSave = subject
+                ScheduleEventCreator.Content(
+                    name = subject.name,
+                    place = locationLiveData.value?.data ?: "",
+                    teacher = teacherLiveData.value?.data ?: "",
+                    subject = subject,
+                    type = EventItem.TYPE.CLASS,
+                )
             } else {
-                subject = null
                 subjectToSave = null
+                ScheduleEventCreator.Content(
+                    name = nameLiveData.value?.trim().orEmpty(),
+                    place = locationLiveData.value?.data ?: "",
+                    teacher = teacherLiveData.value?.data ?: "",
+                    type = EventItem.TYPE.OTHER,
+                )
             }
-            val content = ScheduleEventCreator.Content(
-                name = (subject?.name ?: nameLiveData.value)?.trim().orEmpty(),
-                place = locationLiveData.value?.data ?: "",
-                teacher = teacherLiveData.value?.data ?: subject?.teacher.orEmpty(),
-                subject = subject,
-                type = if (subject != null) EventItem.TYPE.CLASS else EventItem.TYPE.OTHER,
-            )
-            val result = when (addModeLiveData.value ?: AddMode.BATCH_PERIOD) {
-                AddMode.BATCH_PERIOD -> {
-                    val range = timeRangeLiveDate.value?.data ?: return
-                    ScheduleEventCreator.buildEvents(
-                        timetable = timetable,
-                        content = content,
-                        courseTime = range,
-                        source = EventItem.SOURCE_MANUAL,
-                    )
-                }
-
-                AddMode.FREE_RANGE -> {
-                    val fromTo = customFromToLiveData.value?.data ?: return
-                    ScheduleEventCreator.buildEvents(
-                        timetable = timetable,
-                        content = content,
-                        ranges = listOf(ScheduleEventCreator.FixedRange(fromTo.first, fromTo.second)),
-                        source = EventItem.SOURCE_MANUAL,
-                    )
-                }
-            }
+            val result = buildResult(timetable, content) ?: return
             ScheduleEventCreator.persistAsync(result, eventRepo, subjectRepo, subjectToSave)
         }
+    }
+
+    private fun buildResult(
+        timetable: Timetable,
+        content: ScheduleEventCreator.Content,
+    ): ScheduleEventCreator.Result? {
+        val dateMode = dateModeLiveData.value ?: DateMode.SINGLE
+        val timeMode = timeModeLiveData.value ?: TimeMode.PERIOD
+        return when {
+            dateMode == DateMode.WEEKLY && timeMode == TimeMode.PERIOD -> {
+                val courseTime = timeRangeLiveDate.value?.data ?: return null
+                ScheduleEventCreator.buildEvents(
+                    timetable = timetable,
+                    content = content,
+                    courseTime = courseTime,
+                    source = EventItem.SOURCE_MANUAL,
+                )
+            }
+
+            else -> {
+                val ranges = buildFixedRanges(timetable, dateMode, timeMode) ?: return null
+                ScheduleEventCreator.buildEvents(
+                    timetable = timetable,
+                    content = content,
+                    ranges = ranges,
+                    source = EventItem.SOURCE_MANUAL,
+                )
+            }
+        }
+    }
+
+    private fun buildFixedRanges(
+        timetable: Timetable,
+        dateMode: DateMode,
+        timeMode: TimeMode,
+    ): List<ScheduleEventCreator.FixedRange>? {
+        val period = when (timeMode) {
+            TimeMode.CLOCK -> customTimePeriodLiveData.value?.data ?: return null
+            TimeMode.PERIOD -> timeRangeLiveDate.value?.data?.period ?: return null
+        }
+        val courseNumbers = if (timeMode == TimeMode.PERIOD) {
+            timetable.transformCourseNumber(period)
+        } else {
+            0 to 0
+        }
+        return when (dateMode) {
+            DateMode.SINGLE -> {
+                val date = customDateLiveData.value?.data ?: return null
+                listOf(buildRange(date, period, courseNumbers))
+            }
+
+            DateMode.WEEKLY -> {
+                val courseTime = timeRangeLiveDate.value?.data ?: return null
+                courseTime.weeks.map { week ->
+                    val startOfDay = timetable.startTime.time +
+                        (week - 1).toLong() * 7L * 24L * 60L * 60L * 1000L +
+                        (courseTime.dow - 1).toLong() * 24L * 60L * 60L * 1000L
+                    buildRange(startOfDay, period, courseNumbers)
+                }
+            }
+        }
+    }
+
+    private fun buildRange(
+        startOfDayMs: Long,
+        period: TimePeriodInDay,
+        courseNumbers: Pair<Int, Int>,
+    ): ScheduleEventCreator.FixedRange {
+        val fromNumber = courseNumbers.first
+        val toNumber = courseNumbers.second
+        return ScheduleEventCreator.FixedRange(
+            fromMs = startOfDayMs + period.from.toMills(),
+            toMs = startOfDayMs + period.to.toMills(),
+            fromNumber = fromNumber,
+            lastNumber = if (fromNumber > 0 && toNumber >= fromNumber) toNumber - fromNumber + 1 else 0,
+        )
+    }
+
+    private fun startOfDay(ms: Long): Long {
+        return Calendar.getInstance().apply {
+            timeInMillis = ms
+            set(Calendar.HOUR_OF_DAY, 0)
+            set(Calendar.MINUTE, 0)
+            set(Calendar.SECOND, 0)
+            set(Calendar.MILLISECOND, 0)
+        }.timeInMillis
+    }
+
+    private fun isValidPeriod(period: TimePeriodInDay?): Boolean {
+        return period != null && period.to.toMills() > period.from.toMills()
     }
 }

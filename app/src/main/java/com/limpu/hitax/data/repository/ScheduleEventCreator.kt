@@ -15,6 +15,7 @@ object ScheduleEventCreator {
         val place: String = "",
         val teacher: String = "",
         val subject: TermSubject? = null,
+        val subjectId: String = subject?.id.orEmpty(),
         val type: EventItem.TYPE = if (subject != null) EventItem.TYPE.CLASS else EventItem.TYPE.OTHER,
     )
 
@@ -63,7 +64,7 @@ object ScheduleEventCreator {
                     this.source = source
                     name = content.name.trim()
                     timetableId = timetable.id
-                    subjectId = content.subject?.id.orEmpty()
+                    subjectId = content.subjectId
                     place = content.place
                     teacher = content.teacher
                     from = Timestamp(range.fromMs)

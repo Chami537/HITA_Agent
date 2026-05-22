@@ -143,6 +143,10 @@ class TimetableRepository @Inject constructor(val application: Application) {
         return eventItemDao.getClassesOfSubject(subjectId)
     }
 
+    fun getEventsOfTimetable(timetableId: String): LiveData<List<EventItem>> {
+        return eventItemDao.getEventsOfTimetable(timetableId)
+    }
+
     /**
      * 获取所有课表
      */
