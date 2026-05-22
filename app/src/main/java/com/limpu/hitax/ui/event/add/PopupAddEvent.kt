@@ -1,6 +1,7 @@
 package com.limpu.hitax.ui.event.add
 
 import android.annotation.SuppressLint
+import android.graphics.Color
 import android.text.Editable
 import android.text.TextWatcher
 import android.view.View
@@ -123,15 +124,15 @@ class PopupAddEvent(private val addSubjectMode: Boolean = false) :
 
         viewModel.teacherLiveData.observe(this) {
             if (it.state == DataState.STATE.SUCCESS) {
-                binding?.pickTeacherIcon?.setColorFilter(getColorPrimary())
-                binding?.pickTeacherText?.setTextColor(getColorPrimary())
-                binding?.pickTeacher?.setCardBackgroundColor(getColorPrimary())
+                binding?.pickTeacherIcon?.setColorFilter(selectedForegroundColor())
+                binding?.pickTeacherText?.setTextColor(selectedForegroundColor())
+                binding?.pickTeacher?.setCardBackgroundColor(selectedBackgroundColor())
                 binding?.pickTeacherText?.text = it.data
                 binding?.pickTeacherCancel?.visibility = View.VISIBLE
             } else {
                 binding?.pickTeacherText?.text = getString(R.string.ade_pick_teacher)
-                binding?.pickTeacher?.setCardBackgroundColor(getTextColorSecondary())
-                binding?.pickTeacherText?.setTextColor(getTextColorSecondary())
+                binding?.pickTeacher?.setCardBackgroundColor(unselectedBackgroundColor())
+                binding?.pickTeacherText?.setTextColor(unselectedForegroundColor())
                 binding?.pickTeacherCancel?.visibility = View.GONE
                 binding?.pickTeacherIcon?.clearColorFilter()
             }
@@ -139,15 +140,15 @@ class PopupAddEvent(private val addSubjectMode: Boolean = false) :
 
         viewModel.locationLiveData.observe(this) {
             if (it.state == DataState.STATE.SUCCESS) {
-                binding?.pickLocationIcon?.setColorFilter(getColorPrimary())
-                binding?.pickLocationText?.setTextColor(getColorPrimary())
-                binding?.pickLocation?.setCardBackgroundColor(getColorPrimary())
+                binding?.pickLocationIcon?.setColorFilter(selectedForegroundColor())
+                binding?.pickLocationText?.setTextColor(selectedForegroundColor())
+                binding?.pickLocation?.setCardBackgroundColor(selectedBackgroundColor())
                 binding?.pickLocationText?.text = it.data
                 binding?.pickLocationCancel?.visibility = View.VISIBLE
             } else {
                 binding?.pickLocationText?.text = getString(R.string.ade_pick_location)
-                binding?.pickLocation?.setCardBackgroundColor(getTextColorSecondary())
-                binding?.pickLocationText?.setTextColor(getTextColorSecondary())
+                binding?.pickLocation?.setCardBackgroundColor(unselectedBackgroundColor())
+                binding?.pickLocationText?.setTextColor(unselectedForegroundColor())
                 binding?.pickLocationIcon?.clearColorFilter()
                 binding?.pickLocationCancel?.visibility = View.GONE
             }
@@ -157,14 +158,14 @@ class PopupAddEvent(private val addSubjectMode: Boolean = false) :
             binding?.pickTimetable?.visibility =
                 if (it.state == DataState.STATE.FETCH_FAILED) View.GONE else View.VISIBLE
             if (it.state == DataState.STATE.SUCCESS) {
-                binding?.pickTimetableIcon?.setColorFilter(getColorPrimary())
-                binding?.pickTimetableText?.setTextColor(getColorPrimary())
-                binding?.pickTimetable?.setCardBackgroundColor(getColorPrimary())
+                binding?.pickTimetableIcon?.setColorFilter(selectedForegroundColor())
+                binding?.pickTimetableText?.setTextColor(selectedForegroundColor())
+                binding?.pickTimetable?.setCardBackgroundColor(selectedBackgroundColor())
                 binding?.pickTimetableText?.text = it.data?.name
             } else {
                 binding?.pickTimetableText?.text = getString(R.string.ade_pick_timetable)
-                binding?.pickTimetable?.setCardBackgroundColor(getTextColorSecondary())
-                binding?.pickTimetableText?.setTextColor(getTextColorSecondary())
+                binding?.pickTimetable?.setCardBackgroundColor(unselectedBackgroundColor())
+                binding?.pickTimetableText?.setTextColor(unselectedForegroundColor())
                 binding?.pickTimetableIcon?.clearColorFilter()
             }
         }
@@ -312,11 +313,11 @@ class PopupAddEvent(private val addSubjectMode: Boolean = false) :
         state: DataState<EventItem>?,
     ) {
         val isCustom = mode == AddEventViewModel.ContentMode.CUSTOM
-        binding?.contentCustom?.setCardBackgroundColor(if (isCustom) getColorPrimary() else getTextColorSecondary())
-        binding?.contentCustomText?.setTextColor(if (isCustom) getColorPrimary() else getTextColorSecondary())
-        binding?.pickSubject?.setCardBackgroundColor(if (isCustom) getTextColorSecondary() else getColorPrimary())
-        binding?.pickSubjectText?.setTextColor(if (isCustom) getTextColorSecondary() else getColorPrimary())
-        binding?.pickSubjectIcon?.setColorFilter(if (isCustom) getTextColorSecondary() else getColorPrimary())
+        binding?.contentCustom?.setCardBackgroundColor(if (isCustom) selectedBackgroundColor() else unselectedBackgroundColor())
+        binding?.contentCustomText?.setTextColor(if (isCustom) selectedForegroundColor() else unselectedForegroundColor())
+        binding?.pickSubject?.setCardBackgroundColor(if (isCustom) unselectedBackgroundColor() else selectedBackgroundColor())
+        binding?.pickSubjectText?.setTextColor(if (isCustom) unselectedForegroundColor() else selectedForegroundColor())
+        binding?.pickSubjectIcon?.setColorFilter(if (isCustom) unselectedForegroundColor() else selectedForegroundColor())
         binding?.pickSubjectText?.text = if (state?.state == DataState.STATE.SUCCESS) {
             state.data?.name ?: getString(R.string.ade_content_existing)
         } else {
@@ -327,18 +328,18 @@ class PopupAddEvent(private val addSubjectMode: Boolean = false) :
 
     private fun applyDateModeUi(mode: AddEventViewModel.DateMode) {
         val isSingle = mode == AddEventViewModel.DateMode.SINGLE
-        binding?.dateSingle?.setCardBackgroundColor(if (isSingle) getColorPrimary() else getTextColorSecondary())
-        binding?.dateSingleText?.setTextColor(if (isSingle) getColorPrimary() else getTextColorSecondary())
-        binding?.dateWeekly?.setCardBackgroundColor(if (isSingle) getTextColorSecondary() else getColorPrimary())
-        binding?.dateWeeklyText?.setTextColor(if (isSingle) getTextColorSecondary() else getColorPrimary())
+        binding?.dateSingle?.setCardBackgroundColor(if (isSingle) selectedBackgroundColor() else unselectedBackgroundColor())
+        binding?.dateSingleText?.setTextColor(if (isSingle) selectedForegroundColor() else unselectedForegroundColor())
+        binding?.dateWeekly?.setCardBackgroundColor(if (isSingle) unselectedBackgroundColor() else selectedBackgroundColor())
+        binding?.dateWeeklyText?.setTextColor(if (isSingle) unselectedForegroundColor() else selectedForegroundColor())
     }
 
     private fun applyTimeModeUi(mode: AddEventViewModel.TimeMode) {
         val isPeriod = mode == AddEventViewModel.TimeMode.PERIOD
-        binding?.modeBatch?.setCardBackgroundColor(if (isPeriod) getColorPrimary() else getTextColorSecondary())
-        binding?.modeBatchText?.setTextColor(if (isPeriod) getColorPrimary() else getTextColorSecondary())
-        binding?.modeFree?.setCardBackgroundColor(if (isPeriod) getTextColorSecondary() else getColorPrimary())
-        binding?.modeFreeText?.setTextColor(if (isPeriod) getTextColorSecondary() else getColorPrimary())
+        binding?.modeBatch?.setCardBackgroundColor(if (isPeriod) selectedBackgroundColor() else unselectedBackgroundColor())
+        binding?.modeBatchText?.setTextColor(if (isPeriod) selectedForegroundColor() else unselectedForegroundColor())
+        binding?.modeFree?.setCardBackgroundColor(if (isPeriod) unselectedBackgroundColor() else selectedBackgroundColor())
+        binding?.modeFreeText?.setTextColor(if (isPeriod) unselectedForegroundColor() else selectedForegroundColor())
         binding?.agentTraceContainer?.visibility = View.GONE
     }
 
@@ -364,9 +365,9 @@ class PopupAddEvent(private val addSubjectMode: Boolean = false) :
             }
         }
         val isSelected = !selected.isNullOrBlank()
-        binding?.pickDate?.setCardBackgroundColor(if (isSelected) getColorPrimary() else getTextColorSecondary())
-        binding?.pickDateIcon?.setColorFilter(if (isSelected) getColorPrimary() else getTextColorSecondary())
-        binding?.dateShow?.setTextColor(if (isSelected) getColorPrimary() else getTextColorSecondary())
+        binding?.pickDate?.setCardBackgroundColor(if (isSelected) selectedBackgroundColor() else unselectedBackgroundColor())
+        binding?.pickDateIcon?.setColorFilter(if (isSelected) selectedForegroundColor() else unselectedForegroundColor())
+        binding?.dateShow?.setTextColor(if (isSelected) selectedForegroundColor() else unselectedForegroundColor())
         binding?.dateShow?.text = selected ?: if (mode == AddEventViewModel.DateMode.WEEKLY) {
             getString(R.string.ade_pick_weekly_date)
         } else {
@@ -388,9 +389,9 @@ class PopupAddEvent(private val addSubjectMode: Boolean = false) :
             }
         }
         val isSelected = !selected.isNullOrBlank()
-        binding?.pickTime?.setCardBackgroundColor(if (isSelected) getColorPrimary() else getTextColorSecondary())
-        binding?.pickTimeIcon?.setColorFilter(if (isSelected) getColorPrimary() else getTextColorSecondary())
-        binding?.timeShow?.setTextColor(if (isSelected) getColorPrimary() else getTextColorSecondary())
+        binding?.pickTime?.setCardBackgroundColor(if (isSelected) selectedBackgroundColor() else unselectedBackgroundColor())
+        binding?.pickTimeIcon?.setColorFilter(if (isSelected) selectedForegroundColor() else unselectedForegroundColor())
+        binding?.timeShow?.setTextColor(if (isSelected) selectedForegroundColor() else unselectedForegroundColor())
         binding?.timeShow?.text = selected ?: if (mode == AddEventViewModel.TimeMode.PERIOD) {
             getString(R.string.ade_pick_time)
         } else {
@@ -491,6 +492,14 @@ class PopupAddEvent(private val addSubjectMode: Boolean = false) :
             .filter { it.isNotBlank() }
             .joinToString(" / ")
     }
+
+    private fun selectedBackgroundColor(): Int = getColorPrimary()
+
+    private fun selectedForegroundColor(): Int = Color.WHITE
+
+    private fun unselectedBackgroundColor(): Int = getColorControlNormal()
+
+    private fun unselectedForegroundColor(): Int = getTextColorSecondary()
 
     private fun formatTimePeriodLabel(period: TimePeriodInDay?): String {
         if (period == null) return getString(R.string.ade_pick_time_range)

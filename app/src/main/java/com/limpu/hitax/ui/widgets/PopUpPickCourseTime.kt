@@ -2,6 +2,7 @@ package com.limpu.hitax.ui.widgets
 
 import android.annotation.SuppressLint
 import android.content.Context
+import android.graphics.Color
 import android.view.*
 import android.widget.TextView
 import android.widget.Toast
@@ -254,7 +255,7 @@ class PopUpPickCourseTime(val timetable: Timetable) :
             holder.text.text = (position + 1).toString() + ""
             if (position == weeks.size) {
                 holder.card.setCardBackgroundColor(
-                    resolveColor(com.limpu.style.R.attr.textColorSecondary)
+                    resolveColor(com.limpu.style.R.attr.colorControlNormal)
                 )
                 holder.text.setTextColor(
                     resolveColor(com.limpu.style.R.attr.textColorSecondary)
@@ -270,14 +271,14 @@ class PopUpPickCourseTime(val timetable: Timetable) :
             } else {
                 if (!weeks[position]) {
                     holder.card.setCardBackgroundColor(
-                        resolveColor(com.limpu.style.R.attr.textColorSecondary)
+                        resolveColor(com.limpu.style.R.attr.colorControlNormal)
                     )
                     holder.text.setTextColor(
                         resolveColor(com.limpu.style.R.attr.textColorSecondary)
                     )
                 } else {
                     holder.card.setCardBackgroundColor(resolveColor(com.limpu.style.R.attr.colorPrimary))
-                    holder.text.setTextColor(resolveColor(com.limpu.style.R.attr.colorPrimary))
+                    holder.text.setTextColor(Color.WHITE)
                 }
                 holder.card.setOnClickListener {
                     weeks[position] = !weeks[position]
