@@ -48,6 +48,20 @@ class FragmentTimetablePanel : TransparentModeledBottomSheetDialog<TimetablePane
                 viewModel.triggerAutoReimportNow()
             }
         }
+        binding?.scrimSeekbar?.setOnSeekBarChangeListener(object : android.widget.SeekBar.OnSeekBarChangeListener {
+            override fun onProgressChanged(seekBar: android.widget.SeekBar?, progress: Int, fromUser: Boolean) {}
+            override fun onStartTrackingTouch(seekBar: android.widget.SeekBar?) {}
+            override fun onStopTrackingTouch(seekBar: android.widget.SeekBar?) {
+                seekBar?.let { viewModel.setScrimOpacity(it.progress) }
+            }
+        })
+        binding?.cardOpacitySeekbar?.setOnSeekBarChangeListener(object : android.widget.SeekBar.OnSeekBarChangeListener {
+            override fun onProgressChanged(seekBar: android.widget.SeekBar?, progress: Int, fromUser: Boolean) {}
+            override fun onStartTrackingTouch(seekBar: android.widget.SeekBar?) {}
+            override fun onStopTrackingTouch(seekBar: android.widget.SeekBar?) {
+                seekBar?.let { viewModel.setCardOpacity(it.progress) }
+            }
+        })
 
     }
 
@@ -70,6 +84,12 @@ class FragmentTimetablePanel : TransparentModeledBottomSheetDialog<TimetablePane
         }
         viewModel.autoReimportLiveData.observe(this) {
             binding?.autoReimport?.isChecked = it
+        }
+        viewModel.scrimOpacityLiveData.observe(this) {
+            binding?.scrimSeekbar?.progress = it
+        }
+        viewModel.cardOpacityLiveData.observe(this) {
+            binding?.cardOpacitySeekbar?.progress = it
         }
     }
 

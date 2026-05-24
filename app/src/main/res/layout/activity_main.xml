@@ -25,6 +25,20 @@
             android:visibility="gone"
             android:contentDescription="@string/timetable_wallpaper_description" />
 
+        <View
+            android:id="@+id/wallpaper_scrim"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:background="#00000000"
+            android:visibility="gone" />
+
+        <View
+            android:id="@+id/status_bar_scrim"
+            android:layout_width="match_parent"
+            android:layout_height="40dp"
+            android:background="@drawable/gradient_status_bar_scrim"
+            android:visibility="gone" />
+
         <com.google.android.material.appbar.AppBarLayout
             android:id="@+id/appbar"
             android:layout_width="match_parent"

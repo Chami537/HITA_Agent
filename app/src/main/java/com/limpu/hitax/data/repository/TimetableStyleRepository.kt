@@ -17,6 +17,8 @@ const val KEY_COLOR_ENABLE = "color_enable"
 const val KEY_FADE_ENABLE = "fade_enable"
 const val KEY_LABEL_PERIOD = "label_period"
 const val KEY_WALLPAPER_PATH = "wallpaper_path"
+const val KEY_WALLPAPER_SCRIM = "wallpaper_scrim"
+const val KEY_CARD_OPACITY = "card_opacity"
 
 class TimetableStyleRepository @Inject constructor(application: Application) {
     private val timetableStyleSP: SharedPreferences = application.getSharedPreferences(SP_NAME, Context.MODE_PRIVATE)
@@ -26,6 +28,8 @@ class TimetableStyleRepository @Inject constructor(application: Application) {
     val fadeEnableLiveData = timetableStyleSP.booleanLiveData(KEY_FADE_ENABLE, true)
     val periodLabelLiveData = timetableStyleSP.booleanLiveData(KEY_LABEL_PERIOD, false)
     val wallpaperPathLiveData = timetableStyleSP.stringLiveData(KEY_WALLPAPER_PATH, "")
+    val wallpaperScrimLiveData = timetableStyleSP.intLiveData(KEY_WALLPAPER_SCRIM, 30)
+    val cardOpacityLiveData = timetableStyleSP.intLiveData(KEY_CARD_OPACITY, 85)
 
 
     fun putData(key: String, value: Int) {
@@ -75,6 +79,13 @@ class TimetableStyleRepository @Inject constructor(application: Application) {
             val ts = sheet.value
             ts?.let {
                 it.usePeriodLabel = enabled
+                sheet.value = it
+            }
+        }
+        sheet.addSource(cardOpacityLiveData) { opacity ->
+            val ts = sheet.value
+            ts?.let {
+                it.cardOpacity = opacity
                 sheet.value = it
             }
         }

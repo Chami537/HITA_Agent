@@ -210,4 +210,54 @@
             tools:ignore="UseSwitchCompatOrMaterialXml" />
     </LinearLayout>
 
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:layout_marginStart="@dimen/space_6"
+        android:layout_marginTop="@dimen/space_2"
+        android:layout_marginEnd="@dimen/space_6"
+        android:layout_marginBottom="@dimen/space_4"
+        android:orientation="vertical">
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/wallpaper_scrim_opacity"
+            android:textColor="?attr/textColorPrimary"
+            android:textSize="14sp" />
+
+        <SeekBar
+            android:id="@+id/scrim_seekbar"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="@dimen/space_1"
+            android:max="80"
+            android:progress="30" />
+    </LinearLayout>
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:layout_marginStart="@dimen/space_6"
+        android:layout_marginTop="@dimen/space_2"
+        android:layout_marginEnd="@dimen/space_6"
+        android:layout_marginBottom="@dimen/space_4"
+        android:orientation="vertical">
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/card_opacity"
+            android:textColor="?attr/textColorPrimary"
+            android:textSize="14sp" />
+
+        <SeekBar
+            android:id="@+id/card_opacity_seekbar"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="@dimen/space_1"
+            android:max="100"
+            android:progress="85" />
+    </LinearLayout>
+
 </LinearLayout>

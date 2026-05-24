@@ -14,6 +14,8 @@ import com.limpu.hitax.data.repository.KEY_DRAW_BG_LINE
 import com.limpu.hitax.data.repository.KEY_FADE_ENABLE
 import com.limpu.hitax.data.repository.KEY_LABEL_PERIOD
 import com.limpu.hitax.data.repository.KEY_START_DATE
+import com.limpu.hitax.data.repository.KEY_CARD_OPACITY
+import com.limpu.hitax.data.repository.KEY_WALLPAPER_SCRIM
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
 
@@ -40,6 +42,10 @@ class TimetablePanelViewModel @Inject constructor(
         get() = timetableStyleRepository.periodLabelLiveData
     val autoReimportLiveData: SharedPreferenceBooleanLiveData
         get() = easSettingsRepository.autoReimportLiveData
+    val scrimOpacityLiveData: SharedPreferenceIntLiveData
+        get() = timetableStyleRepository.wallpaperScrimLiveData
+    val cardOpacityLiveData: SharedPreferenceIntLiveData
+        get() = timetableStyleRepository.cardOpacityLiveData
 
 
     fun changeStartDate(hour: Int, minute: Int) {
@@ -60,6 +66,14 @@ class TimetablePanelViewModel @Inject constructor(
     }
     fun setAutoReimportEnabled(enabled: Boolean) {
         easSettingsRepository.setAutoReimport(enabled)
+    }
+
+    fun setScrimOpacity(opacity: Int) {
+        timetableStyleRepository.putData(KEY_WALLPAPER_SCRIM, opacity)
+    }
+
+    fun setCardOpacity(opacity: Int) {
+        timetableStyleRepository.putData(KEY_CARD_OPACITY, opacity)
     }
 
     fun triggerAutoReimportNow() {

@@ -236,7 +236,7 @@
                 android:layout_marginTop="@dimen/space_2"
                 android:layout_marginEnd="@dimen/space_4"
                 android:layout_marginBottom="@dimen/space_4"
-                app:el_duration="200"
+                app:el_duration="300"
                 app:el_expanded="false"
                 app:el_parallax="0.5">
 

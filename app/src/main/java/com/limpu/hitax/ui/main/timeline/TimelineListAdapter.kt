@@ -327,62 +327,71 @@ class TimelineListAdapter(
         private var bt_bar_addEvent: ImageView
         var heads: Array<View>
         private fun collapseCard() {
-            val fromD: Float
-            val toD: Float
-            fromD = 180f
-            toD = 0f
-            val ra = RotateAnimation(
-                    fromD,
-                    toD,
-                    Animation.RELATIVE_TO_SELF,
-                    0.5f,
-                    Animation.RELATIVE_TO_SELF,
-                    0.5f
-            )
-            ra.interpolator = DecelerateInterpolator()
-            ra.duration = 200 //设置动画持续周期
-            ra.repeatCount = 0 //设置重复次数
-            ra.fillAfter = true //动画执行完后是否停留在执行完的状态
             if (head_expand.isExpanded) {
-                bt_bar_timetable.animation = ra
-                bt_bar_addEvent.animation = ra
-                bt_bar_timetable.startAnimation(ra)
-                bt_bar_addEvent.startAnimation(ra)
+                rotateArrows(180f, 0f)
+                val countingLayout = head_counting_layout
+                val contentHeight = countingLayout.height.coerceAtLeast(1)
+                countingLayout.animate()
+                    .translationY(-contentHeight.toFloat())
+                    .alpha(0f)
+                    .setDuration(250)
+                    .setInterpolator(DecelerateInterpolator())
+                    .withEndAction {
+                        countingLayout.visibility = View.INVISIBLE
+                        countingLayout.translationY = 0f
+                    }
+                    .start()
+                head_expand.toggle()
             }
-            head_expand.isExpanded = false
         }
 
         fun toggleHeadExpand() {
+            val card = itemView as androidx.cardview.widget.CardView
             if (!head_expand.isExpanded) {
+                card.setLayerType(View.LAYER_TYPE_HARDWARE, null)
+                card.postDelayed({ card.setLayerType(View.LAYER_TYPE_NONE, null) }, 400)
                 head_counting_layout.visibility = View.INVISIBLE
+                head_counting_layout.translationY = 0f
+                head_counting_layout.alpha = 1f
                 MaterialCircleAnimator.animShow(head_counting_layout, 800)
-            }
-
-            val fromD: Float
-            val toD: Float
-            if (!head_expand.isExpanded) {
-                fromD = 0f
-                toD = 180f
+                rotateAndToggle()
             } else {
-                fromD = 180f
-                toD = 0f
+                // 收起：ExpandableLayout 处理高度，内容同步上滑淡出
+                rotateArrows(180f, 0f)
+                val countingLayout = head_counting_layout
+                val contentHeight = countingLayout.height.coerceAtLeast(1)
+                countingLayout.animate()
+                    .translationY(-contentHeight.toFloat())
+                    .alpha(0f)
+                    .setDuration(300)
+                    .setInterpolator(DecelerateInterpolator())
+                    .withEndAction {
+                        countingLayout.visibility = View.INVISIBLE
+                        countingLayout.translationY = 0f
+                    }
+                    .start()
+                head_expand.toggle()
             }
+        }
+
+        private fun rotateArrows(fromD: Float, toD: Float) {
             val ra = RotateAnimation(
-                    fromD,
-                    toD,
-                    Animation.RELATIVE_TO_SELF,
-                    0.5f,
-                    Animation.RELATIVE_TO_SELF,
-                    0.5f
+                fromD, toD,
+                Animation.RELATIVE_TO_SELF, 0.5f,
+                Animation.RELATIVE_TO_SELF, 0.5f
             )
             ra.interpolator = DecelerateInterpolator()
-            ra.duration = 200 //设置动画持续周期
-            ra.repeatCount = 0 //设置重复次数
-            ra.fillAfter = true //动画执行完后是否停留在执行完的状态
+            ra.duration = 200
+            ra.repeatCount = 0
+            ra.fillAfter = true
             bt_bar_timetable.animation = ra
             bt_bar_addEvent.animation = ra
             bt_bar_timetable.startAnimation(ra)
             bt_bar_addEvent.startAnimation(ra)
+        }
+
+        private fun rotateAndToggle() {
+            rotateArrows(0f, 180f)
             head_expand.toggle()
         }
 

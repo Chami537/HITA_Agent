@@ -3,6 +3,8 @@ package com.limpu.hitax.ui.main
 import android.app.Activity
 import android.content.Intent
 import android.graphics.Color
+import android.graphics.RenderEffect
+import android.graphics.Shader
 import android.net.Uri
 import android.util.TypedValue
 import android.os.Build
@@ -324,9 +326,13 @@ class MainActivity : HiltBaseActivity<ActivityMainBinding>(),
 
         timetableStyleRepository.wallpaperPathLiveData.observe(this) { path ->
             val wallpaper = binding.wallpaper
+            val scrim = binding.wallpaperScrim
             if (path.isNullOrEmpty()) {
                 wallpaper.visibility = GONE
                 wallpaper.setImageDrawable(null)
+                wallpaper.setRenderEffect(null)
+                scrim.visibility = GONE
+                binding.statusBarScrim.visibility = GONE
                 binding.navView.setBackgroundColor(navColor)
             } else {
                 val filePath = path.removePrefix("local://")
@@ -337,11 +343,24 @@ class MainActivity : HiltBaseActivity<ActivityMainBinding>(),
                         .load(file)
                         .centerCrop()
                         .into(wallpaper)
+                    scrim.visibility = VISIBLE
+                    binding.statusBarScrim.visibility = VISIBLE
                     binding.navView.setBackgroundColor(navColorTranslucent)
+                    applyWallpaperBlur(wallpaper, timetableStyleRepository.wallpaperScrimLiveData.value ?: 30)
                 } else {
                     timetableStyleRepository.putData(KEY_WALLPAPER_PATH, "")
                     wallpaper.visibility = GONE
+                    wallpaper.setRenderEffect(null)
+                    scrim.visibility = GONE
+                    binding.statusBarScrim.visibility = GONE
                 }
+            }
+        }
+
+        timetableStyleRepository.wallpaperScrimLiveData.observe(this) { opacity ->
+            binding.wallpaperScrim.setBackgroundColor((opacity * 255 / 100) shl 24)
+            if (binding.wallpaper.visibility == VISIBLE) {
+                applyWallpaperBlur(binding.wallpaper, opacity)
             }
         }
 
@@ -420,6 +439,19 @@ class MainActivity : HiltBaseActivity<ActivityMainBinding>(),
                     override fun onFailed(window: PopUpLoginEAS) {}
                 }
             )
+        }
+    }
+
+    private fun applyWallpaperBlur(wallpaper: ImageView, opacity: Int) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            val blurRadius = opacity * 0.3f
+            if (blurRadius > 0f) {
+                wallpaper.setRenderEffect(
+                    RenderEffect.createBlurEffect(blurRadius, blurRadius, Shader.TileMode.CLAMP)
+                )
+            } else {
+                wallpaper.setRenderEffect(null)
+            }
         }
     }
 
