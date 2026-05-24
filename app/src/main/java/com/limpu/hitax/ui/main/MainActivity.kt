@@ -3,28 +3,38 @@ package com.limpu.hitax.ui.main
 import android.app.Activity
 import android.content.Intent
 import android.graphics.Color
+import android.net.Uri
+import android.util.TypedValue
 import android.os.Build
 import android.os.Bundle
 import com.limpu.hitax.utils.LogUtils
 import android.view.HapticFeedbackConstants
+import android.view.WindowManager
 import android.view.MenuItem
 import android.view.View
 import android.view.View.VISIBLE
 import android.view.ViewGroup
 import android.widget.ImageView
 import android.widget.TextView
+import android.widget.Toast
 import androidx.activity.OnBackPressedCallback
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.view.WindowCompat
 import androidx.activity.viewModels
+import androidx.appcompat.app.AlertDialog
 import androidx.core.view.GravityCompat
 import androidx.drawerlayout.widget.DrawerLayout.DrawerListener
 import androidx.drawerlayout.widget.DrawerLayout.GONE
 import androidx.lifecycle.Observer
 import androidx.fragment.app.Fragment
 import androidx.viewpager.widget.ViewPager.OnPageChangeListener
+import com.bumptech.glide.Glide
 import com.limpu.component.data.DataState
 import com.limpu.hitax.R
 import com.limpu.hitax.data.repository.EasSettingsRepository
 import com.limpu.hitax.data.repository.EASRepository
+import com.limpu.hitax.data.repository.KEY_WALLPAPER_PATH
+import com.limpu.hitax.data.repository.TimetableStyleRepository
 import com.limpu.hitax.databinding.ActivityMainBinding
 import com.limpu.hitax.ui.about.ActivityAbout
 import com.limpu.hitax.ui.about.UserAgreementDialog
@@ -44,6 +54,7 @@ import com.limpu.style.ThemeTools
 import com.limpu.style.base.BaseTabAdapter
 import com.limpu.style.widgets.PopUpText
 import dagger.hilt.android.AndroidEntryPoint
+import java.io.File
 import javax.inject.Inject
 
 /**
@@ -58,6 +69,9 @@ class MainActivity : HiltBaseActivity<ActivityMainBinding>(),
 
     @Inject
     lateinit var easRepository: EASRepository
+
+    @Inject
+    lateinit var timetableStyleRepository: TimetableStyleRepository
 
     protected val viewModel: MainViewModel by viewModels()
 
@@ -77,6 +91,15 @@ class MainActivity : HiltBaseActivity<ActivityMainBinding>(),
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setSupportActionBar(binding.toolbar)
+
+        // 状态栏全透明 + 内容延伸到状态栏区域，壁纸铺满
+        @Suppress("DEPRECATION")
+        window.apply {
+            clearFlags(WindowManager.LayoutParams.FLAG_TRANSLUCENT_STATUS)
+            addFlags(WindowManager.LayoutParams.FLAG_DRAWS_SYSTEM_BAR_BACKGROUNDS)
+            statusBarColor = Color.TRANSPARENT
+        }
+        WindowCompat.setDecorFitsSystemWindows(window, false)
     }
 
 
@@ -254,6 +277,28 @@ class MainActivity : HiltBaseActivity<ActivityMainBinding>(),
         }
         binding.drawerButton.setOnClickListener { binding.drawer.openDrawer(GravityCompat.END) }
 
+        binding.timetableWallpaper.setOnClickListener {
+            pickWallpaperLauncher.launch("image/*")
+        }
+        binding.timetableWallpaper.setOnLongClickListener {
+            AlertDialog.Builder(this)
+                .setTitle(R.string.timetable_wallpaper)
+                .setItems(arrayOf(getString(R.string.wallpaper_remove))) { _, _ ->
+                    // 删除壁纸文件
+                    Thread {
+                        filesDir.listFiles()?.filter {
+                            it.name.startsWith("timetable_wallpaper") && it.name.endsWith(".jpg")
+                        }?.forEach { it.delete() }
+                    }.start()
+                    timetableStyleRepository.putData(
+                        KEY_WALLPAPER_PATH,
+                        ""
+                    )
+                }
+                .show()
+            true
+        }
+
         binding.timetableSetting.setOnClickListener {
             FragmentTimetablePanel().show(supportFragmentManager, "panel")
         }
@@ -270,6 +315,36 @@ class MainActivity : HiltBaseActivity<ActivityMainBinding>(),
             ThemeTools.switchTheme(getThis())
             WidgetUtils.sendRefreshToAll(this)
         }
+
+        // 保存底部导航栏原始背景色
+        val typedValue = TypedValue()
+        theme.resolveAttribute(R.attr.backgroundColorBottom, typedValue, true)
+        val navColor = typedValue.data
+        val navColorTranslucent = (navColor and 0x00FFFFFF) or (0xB0 shl 24)
+
+        timetableStyleRepository.wallpaperPathLiveData.observe(this) { path ->
+            val wallpaper = binding.wallpaper
+            if (path.isNullOrEmpty()) {
+                wallpaper.visibility = GONE
+                wallpaper.setImageDrawable(null)
+                binding.navView.setBackgroundColor(navColor)
+            } else {
+                val filePath = path.removePrefix("local://")
+                val file = java.io.File(filePath)
+                if (file.exists()) {
+                    wallpaper.visibility = VISIBLE
+                    Glide.with(this)
+                        .load(file)
+                        .centerCrop()
+                        .into(wallpaper)
+                    binding.navView.setBackgroundColor(navColorTranslucent)
+                } else {
+                    timetableStyleRepository.putData(KEY_WALLPAPER_PATH, "")
+                    wallpaper.visibility = GONE
+                }
+            }
+        }
+
         viewModel.checkUpdateResult.observe(this) {
             if (it.state == DataState.STATE.SUCCESS) {
                 it.data?.let { cr ->
@@ -346,6 +421,44 @@ class MainActivity : HiltBaseActivity<ActivityMainBinding>(),
                 }
             )
         }
+    }
+
+    private val pickWallpaperLauncher = registerForActivityResult(
+        ActivityResultContracts.GetContent()
+    ) { uri: Uri? ->
+        uri?.let { saveWallpaperLocally(it) }
+    }
+
+    private fun saveWallpaperLocally(uri: Uri) {
+        Thread {
+            try {
+                // 删除旧壁纸文件，避免堆积
+                val oldPrefix = "timetable_wallpaper"
+                filesDir.listFiles()?.filter {
+                    it.name.startsWith(oldPrefix) && it.name.endsWith(".jpg")
+                }?.forEach { it.delete() }
+
+                val destFile = File(filesDir, "timetable_wallpaper_${System.currentTimeMillis()}.jpg")
+                val futureTarget = Glide.with(this)
+                    .asFile()
+                    .load(uri)
+                    .override(2048, 2048)
+                    .centerCrop()
+                    .submit()
+                val tempFile = futureTarget.get()
+                tempFile.copyTo(destFile, overwrite = true)
+                tempFile.delete()
+                val localPath = "local://${destFile.absolutePath}"
+                timetableStyleRepository.putData(
+                    KEY_WALLPAPER_PATH,
+                    localPath
+                )
+            } catch (e: Exception) {
+                runOnUiThread {
+                    Toast.makeText(this, R.string.wallpaper_save_failed, Toast.LENGTH_SHORT).show()
+                }
+            }
+        }.start()
     }
 
     private val onBackPressedCallback = object : OnBackPressedCallback(true) {

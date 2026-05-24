@@ -11,6 +11,7 @@ import com.limpu.hitax.data.model.timetable.EventItem
 import com.limpu.hitax.data.model.timetable.Timetable
 import com.limpu.hitax.data.repository.TimetableRepository
 import com.limpu.hitax.data.repository.TimetableStyleRepository
+import com.limpu.hitax.data.repository.KEY_WALLPAPER_PATH
 import com.limpu.hitax.ui.main.timetable.TimetableFragment.Companion.WEEK_MILLS
 import com.limpu.hitax.ui.main.timetable.TimetableFragment.Companion.WINDOW_SIZE
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -31,6 +32,8 @@ class TimetableViewModel @Inject constructor(
         get() = timetableStyleRepository.startTimeLiveData
     val periodLabelLiveData: LiveData<Boolean>
         get() = timetableStyleRepository.periodLabelLiveData
+    val wallpaperPathLiveData: LiveData<String>
+        get() = timetableStyleRepository.wallpaperPathLiveData
 
     var currentPageStartDate: MutableLiveData<Long>
     var currentIndex = 0
@@ -72,6 +75,10 @@ class TimetableViewModel @Inject constructor(
     fun startRefresh() {
         timetableRepository.ensureDefaultCustomTimetableAsync()
         timetableController.value = Trigger.actioning
+    }
+
+    fun clearWallpaperPath() {
+        timetableStyleRepository.putData(KEY_WALLPAPER_PATH, "")
     }
 
     fun addStartDate(offset: Long) {

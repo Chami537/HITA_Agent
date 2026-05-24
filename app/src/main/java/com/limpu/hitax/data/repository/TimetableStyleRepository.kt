@@ -7,6 +7,7 @@ import javax.inject.Inject
 import androidx.lifecycle.MediatorLiveData
 import com.limpu.component.data.booleanLiveData
 import com.limpu.component.data.intLiveData
+import com.limpu.component.data.stringLiveData
 import com.limpu.hitax.ui.main.timetable.TimetableStyleSheet
 
 private const val SP_NAME = "timetable_style"
@@ -15,6 +16,7 @@ const val KEY_DRAW_BG_LINE = "draw_bg_line"
 const val KEY_COLOR_ENABLE = "color_enable"
 const val KEY_FADE_ENABLE = "fade_enable"
 const val KEY_LABEL_PERIOD = "label_period"
+const val KEY_WALLPAPER_PATH = "wallpaper_path"
 
 class TimetableStyleRepository @Inject constructor(application: Application) {
     private val timetableStyleSP: SharedPreferences = application.getSharedPreferences(SP_NAME, Context.MODE_PRIVATE)
@@ -23,6 +25,7 @@ class TimetableStyleRepository @Inject constructor(application: Application) {
     val colorEnableLiveData = timetableStyleSP.booleanLiveData(KEY_COLOR_ENABLE, true)
     val fadeEnableLiveData = timetableStyleSP.booleanLiveData(KEY_FADE_ENABLE, true)
     val periodLabelLiveData = timetableStyleSP.booleanLiveData(KEY_LABEL_PERIOD, false)
+    val wallpaperPathLiveData = timetableStyleSP.stringLiveData(KEY_WALLPAPER_PATH, "")
 
 
     fun putData(key: String, value: Int) {
@@ -31,6 +34,10 @@ class TimetableStyleRepository @Inject constructor(application: Application) {
 
     fun putData(key: String, value: Boolean) {
         timetableStyleSP.edit().putBoolean(key, value).apply()
+    }
+
+    fun putData(key: String, value: String) {
+        timetableStyleSP.edit().putString(key, value).apply()
     }
 
     fun getStyleSheetLiveData(): MediatorLiveData<TimetableStyleSheet> {

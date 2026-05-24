@@ -18,7 +18,7 @@
             android:alpha="0.9"
             android:gravity="center"
             android:text="12月"
-            android:textColor="?attr/textColorPrimary"
+            android:textColor="#F0FFFFFF"
             android:textSize="8sp"
             android:visibility="gone"
             tools:ignore="HardcodedText" />
@@ -31,8 +31,13 @@
             android:alpha="0.9"
             android:gravity="center"
             android:text="16"
-            android:textColor="?attr/textColorSecondary"
-            android:textSize="11sp"
+            android:textColor="#F0FFFFFF"
+            android:textSize="13sp"
+            android:textStyle="bold"
+            android:shadowColor="#80000000"
+            android:shadowDx="0"
+            android:shadowDy="1"
+            android:shadowRadius="2.5"
             tools:ignore="HardcodedText,SmallSp" />
 
         <TextView
@@ -43,8 +48,13 @@
             android:alpha="0.9"
             android:gravity="center"
             android:text="17"
-            android:textColor="?attr/textColorSecondary"
-            android:textSize="11sp"
+            android:textColor="#F0FFFFFF"
+            android:textSize="13sp"
+            android:textStyle="bold"
+            android:shadowColor="#80000000"
+            android:shadowDx="0"
+            android:shadowDy="1"
+            android:shadowRadius="2.5"
             tools:ignore="HardcodedText,SmallSp" />
 
         <TextView
@@ -55,8 +65,13 @@
             android:alpha="0.9"
             android:gravity="center"
             android:text="18"
-            android:textColor="?attr/textColorSecondary"
-            android:textSize="11sp"
+            android:textColor="#F0FFFFFF"
+            android:textSize="13sp"
+            android:textStyle="bold"
+            android:shadowColor="#80000000"
+            android:shadowDx="0"
+            android:shadowDy="1"
+            android:shadowRadius="2.5"
             tools:ignore="HardcodedText,SmallSp" />
 
         <TextView
@@ -67,8 +82,13 @@
             android:alpha="0.9"
             android:gravity="center"
             android:text="19"
-            android:textColor="?attr/textColorSecondary"
-            android:textSize="11sp"
+            android:textColor="#F0FFFFFF"
+            android:textSize="13sp"
+            android:textStyle="bold"
+            android:shadowColor="#80000000"
+            android:shadowDx="0"
+            android:shadowDy="1"
+            android:shadowRadius="2.5"
             tools:ignore="HardcodedText,SmallSp" />
 
         <TextView
@@ -79,8 +99,13 @@
             android:alpha="0.9"
             android:gravity="center"
             android:text="20"
-            android:textColor="?attr/textColorSecondary"
-            android:textSize="11sp"
+            android:textColor="#F0FFFFFF"
+            android:textSize="13sp"
+            android:textStyle="bold"
+            android:shadowColor="#80000000"
+            android:shadowDx="0"
+            android:shadowDy="1"
+            android:shadowRadius="2.5"
             tools:ignore="HardcodedText,SmallSp" />
 
         <TextView
@@ -91,8 +116,13 @@
             android:alpha="0.9"
             android:gravity="center"
             android:text="21"
-            android:textColor="?attr/textColorSecondary"
-            android:textSize="11sp"
+            android:textColor="#F0FFFFFF"
+            android:textSize="13sp"
+            android:textStyle="bold"
+            android:shadowColor="#80000000"
+            android:shadowDx="0"
+            android:shadowDy="1"
+            android:shadowRadius="2.5"
             tools:ignore="HardcodedText,SmallSp" />
 
         <TextView
@@ -103,8 +133,13 @@
             android:alpha="0.9"
             android:gravity="center"
             android:text="22"
-            android:textColor="?attr/textColorSecondary"
-            android:textSize="11sp"
+            android:textColor="#F0FFFFFF"
+            android:textSize="13sp"
+            android:textStyle="bold"
+            android:shadowColor="#80000000"
+            android:shadowDx="0"
+            android:shadowDy="1"
+            android:shadowRadius="2.5"
             tools:ignore="HardcodedText,SmallSp" />
 
     </LinearLayout>

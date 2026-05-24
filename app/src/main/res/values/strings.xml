@@ -1,5 +1,10 @@
 <resources>
     <string name="app_name">HITA</string>
+    <string name="timetable_wallpaper">课表壁纸</string>
+    <string name="wallpaper_remove">移除壁纸</string>
+    <string name="wallpaper_save_failed">壁纸保存失败</string>
+    <string name="wallpaper_pick_title">设置课表壁纸</string>
+    <string name="timetable_wallpaper_description">课表背景壁纸</string>
 
     <string name="confirm">确定</string>
     <string name="cancel">取消</string>

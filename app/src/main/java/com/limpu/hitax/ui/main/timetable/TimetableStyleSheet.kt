@@ -12,7 +12,7 @@ class TimetableStyleSheet {
     var iconColor: String = "white"
     var isBoldText: Boolean = true
     var drawBGLine: Boolean = true
-    var cardIconEnabled: Boolean = true
+    var cardIconEnabled: Boolean = false
     var cardOpacity: Int = 95
     var cardHeight: Int = 180
     var usePeriodLabel: Boolean = false

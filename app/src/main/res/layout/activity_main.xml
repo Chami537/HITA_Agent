@@ -17,6 +17,14 @@
         android:layout_width="match_parent"
         android:layout_height="match_parent">
 
+        <ImageView
+            android:id="@+id/wallpaper"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:scaleType="centerCrop"
+            android:visibility="gone"
+            android:contentDescription="@string/timetable_wallpaper_description" />
+
         <com.google.android.material.appbar.AppBarLayout
             android:id="@+id/appbar"
             android:layout_width="match_parent"
@@ -175,11 +183,24 @@
                             android:layout_weight="1" />
 
                         <ImageView
-                            android:id="@+id/timetable_setting"
+                            android:id="@+id/timetable_wallpaper"
                             android:layout_width="56dp"
                             android:layout_height="56dp"
                             android:layout_gravity="center"
                             android:layout_marginEnd="-8dp"
+                            android:foreground="?attr/selectableItemBackgroundBorderless"
+                            android:padding="@dimen/space_4"
+                            android:theme="@style/button_ripple_control"
+                            android:tint="?attr/textColorSecondary"
+                            android:tintMode="src_in"
+                            app:srcCompat="@drawable/ic_wallpaper" />
+
+                        <ImageView
+                            android:id="@+id/timetable_setting"
+                            android:layout_width="56dp"
+                            android:layout_height="56dp"
+                            android:layout_gravity="center"
+                            android:layout_marginStart="-6dp"
                             android:foreground="?attr/selectableItemBackgroundBorderless"
                             android:padding="@dimen/space_4"
                             android:theme="@style/button_ripple_control"

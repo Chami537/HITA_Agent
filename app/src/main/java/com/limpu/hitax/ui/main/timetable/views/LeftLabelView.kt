@@ -66,6 +66,7 @@ class LeftLabelView : View {
         mLabelPaint.color = resolveLabelColor()
         mLabelPaint.textSize = labelSize.toFloat()
         mLabelPaint.textAlign = Paint.Align.CENTER
+        mLabelPaint.setShadowLayer(2.5f, 0f, 1f, 0x80000000.toInt())
         val centerX = width / 2f
         if (labelMode == LabelMode.PERIOD) {
             val periods = TimeTableView.timetableStructure

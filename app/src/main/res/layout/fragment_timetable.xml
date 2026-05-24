@@ -24,8 +24,9 @@
                 android:alpha="0.9"
                 android:gravity="center"
                 android:text="12月"
-                android:textColor="?attr/textColorPrimary"
-                android:textSize="10sp"
+                android:textColor="#F0FFFFFF"
+                android:textSize="11sp"
+                    android:textStyle="bold"
                 android:visibility="visible" />
 
             <FrameLayout
@@ -45,8 +46,13 @@
                     android:gravity="center"
                     android:singleLine="true"
                     android:text="@string/tt_monday"
-                    android:textColor="?attr/textColorPrimary"
-                    android:textSize="10sp" />
+                    android:textColor="#F0FFFFFF"
+                    android:textSize="11sp"
+                    android:textStyle="bold"
+                    android:shadowColor="#80000000"
+                    android:shadowDx="0"
+                    android:shadowDy="1"
+                    android:shadowRadius="2.5" />
             </FrameLayout>
 
             <FrameLayout
@@ -66,8 +72,13 @@
                     android:gravity="center"
                     android:singleLine="true"
                     android:text="@string/tt_tuesday"
-                    android:textColor="?attr/textColorPrimary"
-                    android:textSize="10sp" />
+                    android:textColor="#F0FFFFFF"
+                    android:textSize="11sp"
+                    android:textStyle="bold"
+                    android:shadowColor="#80000000"
+                    android:shadowDx="0"
+                    android:shadowDy="1"
+                    android:shadowRadius="2.5" />
 
             </FrameLayout>
 
@@ -88,8 +99,13 @@
                     android:gravity="center"
                     android:singleLine="true"
                     android:text="@string/tt_wednesday"
-                    android:textColor="?attr/textColorPrimary"
-                    android:textSize="10sp" />
+                    android:textColor="#F0FFFFFF"
+                    android:textSize="11sp"
+                    android:textStyle="bold"
+                    android:shadowColor="#80000000"
+                    android:shadowDx="0"
+                    android:shadowDy="1"
+                    android:shadowRadius="2.5" />
             </FrameLayout>
 
             <FrameLayout
@@ -109,8 +125,13 @@
                     android:gravity="center"
                     android:singleLine="true"
                     android:text="@string/tt_thursday"
-                    android:textColor="?attr/textColorPrimary"
-                    android:textSize="10sp" />
+                    android:textColor="#F0FFFFFF"
+                    android:textSize="11sp"
+                    android:textStyle="bold"
+                    android:shadowColor="#80000000"
+                    android:shadowDx="0"
+                    android:shadowDy="1"
+                    android:shadowRadius="2.5" />
             </FrameLayout>
 
             <FrameLayout
@@ -130,8 +151,13 @@
                     android:gravity="center"
                     android:singleLine="true"
                     android:text="@string/tt_friday"
-                    android:textColor="?attr/textColorPrimary"
-                    android:textSize="10sp" />
+                    android:textColor="#F0FFFFFF"
+                    android:textSize="11sp"
+                    android:textStyle="bold"
+                    android:shadowColor="#80000000"
+                    android:shadowDx="0"
+                    android:shadowDy="1"
+                    android:shadowRadius="2.5" />
             </FrameLayout>
 
             <FrameLayout
@@ -151,8 +177,13 @@
                     android:gravity="center"
                     android:singleLine="true"
                     android:text="@string/tt_saturday"
-                    android:textColor="?attr/textColorPrimary"
-                    android:textSize="10sp" />
+                    android:textColor="#F0FFFFFF"
+                    android:textSize="11sp"
+                    android:textStyle="bold"
+                    android:shadowColor="#80000000"
+                    android:shadowDx="0"
+                    android:shadowDy="1"
+                    android:shadowRadius="2.5" />
             </FrameLayout>
 
             <FrameLayout
@@ -172,8 +203,13 @@
                     android:gravity="center"
                     android:singleLine="true"
                     android:text="@string/tt_sunday"
-                    android:textColor="?attr/textColorPrimary"
-                    android:textSize="10sp" />
+                    android:textColor="#F0FFFFFF"
+                    android:textSize="11sp"
+                    android:textStyle="bold"
+                    android:shadowColor="#80000000"
+                    android:shadowDx="0"
+                    android:shadowDy="1"
+                    android:shadowRadius="2.5" />
             </FrameLayout>
 
         </LinearLayout>
@@ -194,8 +230,8 @@
                     android:layout_width="@dimen/timetable_label_width"
                     android:layout_height="match_parent"
                     android:layout_marginTop="@dimen/timetable_date_height"
-                    app:timeLabelColor="?attr/textColorSecondary"
-                    app:timeLabelSize="11sp" />
+                    app:timeLabelColor="#E8FFFFFF"
+                    app:timeLabelSize="12sp" />
 
                 <com.limpu.hitax.ui.widgets.WrapContentHeightViewPager
                     android:id="@+id/pager"
