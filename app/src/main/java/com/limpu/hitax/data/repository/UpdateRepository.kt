@@ -7,6 +7,7 @@ import javax.inject.Inject
 import androidx.lifecycle.map
 import com.limpu.component.data.DataState
 import com.limpu.hitax.data.model.GitHubRelease
+import com.limpu.hitax.data.model.ReleaseHistoryItem
 import com.limpu.hitax.data.source.web.GitHubWebSource
 import com.limpu.hitauser.data.model.CheckUpdateResult
 import java.util.Locale
@@ -14,6 +15,37 @@ import java.util.Locale
 class UpdateRepository @Inject constructor(
     private val githubWebSource: GitHubWebSource
 ) {
+    fun getReleaseHistory(
+        updateUrl: String,
+        allowPrerelease: Boolean,
+        limit: Int = 10
+    ): LiveData<DataState<List<ReleaseHistoryItem>>> {
+        val repo = parseGitHubRepo(updateUrl)
+            ?: return MutableLiveData(DataState(DataState.STATE.NOT_AVAILABLE))
+        return githubWebSource.listReleases(repo.owner, repo.repo).map { state ->
+            if (state.state != DataState.STATE.SUCCESS) {
+                return@map DataState(state.state)
+            }
+            val releases = state.data ?: return@map DataState(DataState.STATE.FETCH_FAILED)
+            val items = releases
+                .asSequence()
+                .filter { it.draft != true && (allowPrerelease || it.prerelease != true) }
+                .mapNotNull { release ->
+                    val version = ParsedVersion.parse(release.tagName ?: release.name)
+                        ?: return@mapNotNull null
+                    ReleaseHistoryItem(
+                        versionName = version.displayName(),
+                        releaseName = release.name ?: release.tagName ?: version.displayName(),
+                        markdown = buildReleaseMarkdown(release),
+                        htmlUrl = release.htmlUrl.orEmpty(),
+                        prerelease = release.prerelease == true,
+                    )
+                }
+                .take(limit)
+                .toList()
+            DataState(items)
+        }
+    }
 
     fun checkUpdateFromGitHub(
         currentVersionName: String,
@@ -33,14 +65,7 @@ class UpdateRepository @Inject constructor(
             val latestVersion = ParsedVersion.parse(best.tagName ?: best.name)
                 ?: return@map DataState(DataState.STATE.FETCH_FAILED)
 
-            val updateLogText = buildString {
-                if (best.prerelease == true) {
-                    append("预发布版本\n")
-                }
-                if (!best.body.isNullOrBlank()) {
-                    append(best.body.trim())
-                }
-            }.trim()
+            val updateLogText = buildReleaseMarkdown(best)
 
             val apkAsset = best.assets?.find {
                 it.name?.endsWith(".apk", ignoreCase = true) == true
@@ -86,14 +111,7 @@ class UpdateRepository @Inject constructor(
             val latestVersion = ParsedVersion.parse(best.tagName ?: best.name)
                 ?: return@map DataState(DataState.STATE.FETCH_FAILED)
 
-            val updateLogText = buildString {
-                if (best.prerelease == true) {
-                    append("预发布版本\n")
-                }
-                if (!best.body.isNullOrBlank()) {
-                    append(best.body.trim())
-                }
-            }.trim()
+            val updateLogText = buildReleaseMarkdown(best)
 
             val apkAsset = best.assets?.find {
                 it.name?.endsWith(".apk", ignoreCase = true) == true
@@ -138,6 +156,19 @@ class UpdateRepository @Inject constructor(
             shouldUpdate = builtInVersionCode > currentVersionCode
         }
         return DataState(result)
+    }
+
+    private fun buildReleaseMarkdown(release: GitHubRelease): String {
+        return buildString {
+            if (release.prerelease == true) {
+                append("预发布版本\n\n")
+            }
+            if (!release.body.isNullOrBlank()) {
+                append(release.body.trim())
+            } else {
+                append("暂无更新说明")
+            }
+        }.trim()
     }
 
     private fun selectBestRelease(

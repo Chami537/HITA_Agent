@@ -480,6 +480,9 @@
     <string name="update_log">更新日志：</string>
     <string name="version">版本：</string>
     <string name="label_activity_about_hita">关于</string>
+    <string name="release_history">历史版本</string>
+    <string name="release_history_empty">暂无历史版本信息</string>
+    <string name="release_history_failed">历史版本加载失败</string>
     <string name="new_version_available">检测到版本更新</string>
     <string name="already_up_to_date">已是最新版本！</string>
     <string name="update_available">检查到更新</string>

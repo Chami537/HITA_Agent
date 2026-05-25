@@ -31,6 +31,13 @@ class AboutViewModel @Inject constructor(
         return@switchMap staticRepo.getAboutPage()
     }
 
+    val releaseHistoryLiveData = refreshController.switchMap {
+        return@switchMap updateRepository.getReleaseHistory(
+            updateUrl = BuildConfig.UPDATE_URL,
+            allowPrerelease = BuildConfig.UPDATE_ALLOW_PRERELEASE
+        )
+    }
+
     private val checkUpdateTrigger = MutableLiveData<Long>()
     val checkUpdateResult = checkUpdateTrigger.switchMap { currentCode ->
         updateRepository.checkUpdateWithFallback(
