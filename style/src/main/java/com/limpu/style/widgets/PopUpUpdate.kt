@@ -1,5 +1,6 @@
 package com.limpu.style.widgets
 
+import android.content.DialogInterface
 import android.text.TextUtils
 import android.text.method.LinkMovementMethod
 import android.view.View
@@ -18,6 +19,7 @@ class PopUpUpdate : TransparentBottomSheetDialog<DialogBottomUpdateBinding>() {
     var init_title: Int? = null
     private var init_text: CharSequence? = null
     var onActionListener: OnActionListener? = null
+    private var actionHandled = false
 
     interface OnActionListener {
         fun onConfirm()
@@ -69,18 +71,35 @@ class PopUpUpdate : TransparentBottomSheetDialog<DialogBottomUpdateBinding>() {
             binding.cancel.visibility = View.GONE
         }
         binding.skip.setOnClickListener {
+            actionHandled = true
             onActionListener?.onSkip()
             dismiss()
         }
         binding.cancel.setOnClickListener {
+            actionHandled = true
             onActionListener?.onCancel()
             dismiss() }
         binding.confirm.setOnClickListener {
 
+                actionHandled = true
                 onActionListener?.onConfirm()
 
             dismiss()
         }
+    }
+
+    override fun onCancel(dialog: DialogInterface) {
+        actionHandled = true
+        onActionListener?.onCancel()
+        super.onCancel(dialog)
+    }
+
+    override fun onDismiss(dialog: DialogInterface) {
+        if (!actionHandled) {
+            actionHandled = true
+            onActionListener?.onCancel()
+        }
+        super.onDismiss(dialog)
     }
 
 

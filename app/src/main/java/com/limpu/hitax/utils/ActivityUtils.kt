@@ -61,6 +61,9 @@ import java.nio.charset.StandardCharsets
 
 
 object ActivityUtils {
+    private const val UPDATE_SKIP_PREF = "update_skip"
+    private const val UPDATE_DISMISSED_PREFIX = "dismissed_at_"
+    private const val UPDATE_DISMISS_COOLDOWN_MS = 7L * 24L * 60L * 60L * 1000L
 
     fun startOfficialTeacherActivity(from: Context, id: String, url: String, name: String) {
         val i = Intent(from, ActivityTeacherOfficial::class.java)
@@ -415,8 +418,11 @@ object ActivityUtils {
 
     fun showUpdateNotification(cr:CheckUpdateResult,activity: AppCompatActivity){
        val preference: SharedPreferences =
-            activity.application.getSharedPreferences("update_skip", Context.MODE_PRIVATE)
-        if(preference.getBoolean(cr.latestVersionCode.toString(),false)) return
+            activity.application.getSharedPreferences(UPDATE_SKIP_PREF, Context.MODE_PRIVATE)
+        val versionKey = cr.latestVersionCode.toString()
+        if(preference.getBoolean(versionKey,false)) return
+        val dismissedAt = preference.getLong(UPDATE_DISMISSED_PREFIX + versionKey, 0L)
+        if (System.currentTimeMillis() - dismissedAt < UPDATE_DISMISS_COOLDOWN_MS) return
         PopUpUpdate().setText(buildUpdateMarkdown(activity, cr))
             .setTitle(R.string.new_version_available)
             .setOnActionListener(object : PopUpUpdate.OnActionListener {
@@ -425,11 +431,13 @@ object ActivityUtils {
                 }
 
                 override fun onCancel() {
-
+                    preference.edit()
+                        .putLong(UPDATE_DISMISSED_PREFIX + versionKey, System.currentTimeMillis())
+                        .apply()
                 }
 
                 override fun onSkip() {
-                    preference.edit().putBoolean(cr.latestVersionCode.toString(),true).apply()
+                    preference.edit().putBoolean(versionKey,true).apply()
                 }
             }).show(activity.supportFragmentManager, "update")
     }
