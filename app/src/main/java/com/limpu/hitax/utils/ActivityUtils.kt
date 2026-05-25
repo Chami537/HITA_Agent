@@ -12,11 +12,20 @@ import android.database.Cursor
 import android.net.Uri
 import android.os.Build
 import android.os.Environment
+import android.os.Handler
+import android.os.Looper
+import android.util.TypedValue
 import android.view.View
 import android.widget.ImageView
+import android.widget.LinearLayout
+import android.widget.ProgressBar
+import android.widget.TextView
 import android.widget.Toast
+import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityOptionsCompat
+import androidx.core.view.setPadding
+import com.limpu.style.R as StyleR
 import com.limpu.hitax.R
 import com.limpu.hitax.data.model.eas.EASToken
 import com.limpu.hitax.data.repository.EASRepository
@@ -452,6 +461,8 @@ object ActivityUtils {
     private var lastDownloadId: Long = -1
     private var downloadReceiver: BroadcastReceiver? = null
     private var isDownloading: Boolean = false
+    private var downloadProgressDialog: AlertDialog? = null
+    private var downloadProgressHandler: Handler? = null
 
     private fun downloadAndInstall(activity: AppCompatActivity, cr: CheckUpdateResult) {
         if (isDownloading) {
@@ -470,6 +481,7 @@ object ActivityUtils {
                 .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
             val dm = activity.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
             lastDownloadId = dm.enqueue(request)
+            showDownloadProgressDialog(activity, dm, lastDownloadId, cr.latestVersionName)
 
             downloadReceiver?.let {
                 try { activity.unregisterReceiver(it) } catch (_: Exception) {}
@@ -503,6 +515,7 @@ object ActivityUtils {
                     }
 
                     isDownloading = false
+                    dismissDownloadProgressDialog()
 
                     try {
                         context.unregisterReceiver(this)
@@ -524,6 +537,131 @@ object ActivityUtils {
             LogUtils.e("Failed to start download", e)
             Toast.makeText(activity, R.string.download_failed, Toast.LENGTH_SHORT).show()
         }
+    }
+
+    private fun showDownloadProgressDialog(
+        activity: AppCompatActivity,
+        dm: DownloadManager,
+        downloadId: Long,
+        versionName: String
+    ) {
+        dismissDownloadProgressDialog()
+        val container = LinearLayout(activity).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(ImageUtils.dp2px(activity, 24f))
+        }
+        val message = TextView(activity).apply {
+            text = activity.getString(R.string.update_download_progress_waiting)
+            setTextColor(resolveColor(activity, StyleR.attr.textColorPrimary))
+        }
+        val progress = ProgressBar(activity, null, android.R.attr.progressBarStyleHorizontal).apply {
+            max = 100
+            isIndeterminate = true
+        }
+        container.addView(
+            message,
+            LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            )
+        )
+        container.addView(
+            progress,
+            LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply {
+                topMargin = ImageUtils.dp2px(activity, 16f)
+            }
+        )
+        val dialog = AlertDialog.Builder(activity)
+            .setTitle(activity.getString(R.string.update_download_progress_title, versionName))
+            .setView(container)
+            .setNegativeButton(R.string.button_cancel) { _, _ ->
+                dm.remove(downloadId)
+                isDownloading = false
+                dismissDownloadProgressDialog()
+            }
+            .create()
+        dialog.setOnDismissListener {
+            if (downloadProgressDialog === dialog) {
+                downloadProgressHandler?.removeCallbacksAndMessages(null)
+            }
+        }
+        downloadProgressDialog = dialog
+        dialog.show()
+
+        val handler = Handler(Looper.getMainLooper())
+        downloadProgressHandler = handler
+        val poll = object : Runnable {
+            override fun run() {
+                if (downloadProgressDialog !== dialog || !dialog.isShowing) return
+                val status = updateDownloadProgress(dm, downloadId, progress, message, activity)
+                if (status == DownloadManager.STATUS_SUCCESSFUL || status == DownloadManager.STATUS_FAILED) {
+                    return
+                }
+                handler.postDelayed(this, 500)
+            }
+        }
+        handler.post(poll)
+    }
+
+    private fun updateDownloadProgress(
+        dm: DownloadManager,
+        downloadId: Long,
+        progress: ProgressBar,
+        message: TextView,
+        context: Context
+    ): Int {
+        val query = DownloadManager.Query().setFilterById(downloadId)
+        dm.query(query)?.use { cursor ->
+            if (!cursor.moveToFirst()) return DownloadManager.STATUS_FAILED
+            val status = cursor.getInt(cursor.getColumnIndexOrThrow(DownloadManager.COLUMN_STATUS))
+            val downloaded = cursor.getLong(cursor.getColumnIndexOrThrow(DownloadManager.COLUMN_BYTES_DOWNLOADED_SO_FAR))
+            val total = cursor.getLong(cursor.getColumnIndexOrThrow(DownloadManager.COLUMN_TOTAL_SIZE_BYTES))
+            when (status) {
+                DownloadManager.STATUS_RUNNING, DownloadManager.STATUS_PAUSED, DownloadManager.STATUS_PENDING -> {
+                    if (total > 0) {
+                        val percent = ((downloaded * 100L) / total).toInt().coerceIn(0, 100)
+                        progress.isIndeterminate = false
+                        progress.progress = percent
+                        message.text = context.getString(R.string.update_download_progress_percent, percent)
+                    } else {
+                        progress.isIndeterminate = true
+                        message.text = context.getString(R.string.update_download_progress_waiting)
+                    }
+                }
+
+                DownloadManager.STATUS_SUCCESSFUL -> {
+                    progress.isIndeterminate = false
+                    progress.progress = 100
+                    message.text = context.getString(R.string.update_download_progress_done)
+                }
+
+                DownloadManager.STATUS_FAILED -> {
+                    progress.isIndeterminate = false
+                    message.text = context.getString(R.string.download_failed)
+                    isDownloading = false
+                }
+            }
+            return status
+        }
+        return DownloadManager.STATUS_FAILED
+    }
+
+    private fun dismissDownloadProgressDialog() {
+        downloadProgressHandler?.removeCallbacksAndMessages(null)
+        downloadProgressHandler = null
+        downloadProgressDialog?.let {
+            if (it.isShowing) it.dismiss()
+        }
+        downloadProgressDialog = null
+    }
+
+    private fun resolveColor(context: Context, attr: Int): Int {
+        val typedValue = TypedValue()
+        context.theme.resolveAttribute(attr, typedValue, true)
+        return typedValue.data
     }
 
     fun startNewsActivity(from: Context, url: String, title: String) {
