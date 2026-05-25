@@ -272,19 +272,21 @@
             android:id="@+id/pager"
             android:layout_width="match_parent"
             android:layout_height="match_parent"
-            android:layout_marginBottom="@dimen/space_14"
+            android:layout_marginBottom="@dimen/bottom_navigation_height"
             android:overScrollMode="never"
             app:layout_behavior="com.google.android.material.appbar.AppBarLayout$ScrollingViewBehavior" />
 
         <com.google.android.material.bottomnavigation.BottomNavigationView
             android:id="@+id/nav_view"
             android:layout_width="match_parent"
-            android:layout_height="72dp"
+            android:layout_height="@dimen/bottom_navigation_height"
             android:layout_gravity="bottom"
             android:background="?attr/backgroundColorBottom"
             app:itemActiveIndicatorStyle="@style/Widget.HITA.BottomNavigation.ActiveIndicator"
             app:itemIconSize="24dp"
             app:itemIconTint="@color/bottom_nav_item_color"
+            app:itemPaddingBottom="12dp"
+            app:itemPaddingTop="10dp"
             app:itemRippleColor="?attr/backgroundIconColorBottom"
             app:itemTextAppearanceActive="@style/TextAppearance.HITA.BottomNavigation"
             app:itemTextAppearanceInactive="@style/TextAppearance.HITA.BottomNavigation"

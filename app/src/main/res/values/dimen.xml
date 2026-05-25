@@ -16,6 +16,7 @@
     <dimen name="space_12">48dp</dimen>
     <dimen name="space_14">56dp</dimen>
     <dimen name="space_16">64dp</dimen>
+    <dimen name="bottom_navigation_height">80dp</dimen>
 
     <!-- ========================================== -->
     <!-- 圆角规范                                     -->
