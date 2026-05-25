@@ -13,6 +13,7 @@ import com.limpu.hitax.utils.LogUtils
 import com.limpu.hitax.data.AppDatabase
 import com.limpu.hitax.data.model.eas.TermItem
 import com.limpu.hitax.data.model.timetable.EventItem
+import com.limpu.hitax.data.model.timetable.SubjectColor
 import com.limpu.hitax.data.model.timetable.TimePeriodInDay
 import com.limpu.hitax.data.model.timetable.Timetable
 import com.limpu.hitax.ui.main.timetable.TimetableFragment.Companion.WEEK_MILLS
@@ -112,14 +113,18 @@ class TimetableRepository @Inject constructor(val application: Application) {
      */
     fun getEventsDuringWithColor(from: Long, to: Long): LiveData<List<EventItem>> {
         val res = MediatorLiveData<List<EventItem>>()
+        var colorSource: LiveData<List<SubjectColor>>? = null
         res.addSource(eventItemDao.getEventsDuring(from, to)) { events ->
+            colorSource?.let { res.removeSource(it) }
             val subjects = mutableSetOf<String>()
             for (e in events) {
                 if (e.subjectId.isNotBlank()) {
                     subjects.add(e.subjectId)
                 }
             }
-            res.addSource(subjectDao.getSubjectColorsWithId(subjects)) { colors ->
+            val nextColorSource = subjectDao.getSubjectColorsWithId(subjects)
+            colorSource = nextColorSource
+            res.addSource(nextColorSource) { colors ->
                 val map = mutableMapOf<String, Int>()
                 for (color in colors) {
                     map[color.id] = color.color
