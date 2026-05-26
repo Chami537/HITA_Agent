@@ -3,8 +3,6 @@ package com.limpu.hitax.ui.main
 import android.app.Activity
 import android.content.Intent
 import android.graphics.Color
-import android.graphics.RenderEffect
-import android.graphics.Shader
 import android.net.Uri
 import android.util.TypedValue
 import android.os.Build
@@ -289,7 +287,7 @@ class MainActivity : HiltBaseActivity<ActivityMainBinding>(),
                     // 删除壁纸文件
                     Thread {
                         filesDir.listFiles()?.filter {
-                            it.name.startsWith("timetable_wallpaper") && it.name.endsWith(".jpg")
+                            it.name.startsWith("timetable_wallpaper")
                         }?.forEach { it.delete() }
                     }.start()
                     timetableStyleRepository.putData(
@@ -330,7 +328,6 @@ class MainActivity : HiltBaseActivity<ActivityMainBinding>(),
             if (path.isNullOrEmpty()) {
                 wallpaper.visibility = GONE
                 wallpaper.setImageDrawable(null)
-                wallpaper.setRenderEffect(null)
                 scrim.visibility = GONE
                 binding.statusBarScrim.visibility = GONE
                 binding.navView.setBackgroundColor(navColor)
@@ -346,11 +343,9 @@ class MainActivity : HiltBaseActivity<ActivityMainBinding>(),
                     scrim.visibility = VISIBLE
                     binding.statusBarScrim.visibility = VISIBLE
                     binding.navView.setBackgroundColor(navColorTranslucent)
-                    applyWallpaperBlur(wallpaper, timetableStyleRepository.wallpaperScrimLiveData.value ?: 30)
                 } else {
                     timetableStyleRepository.putData(KEY_WALLPAPER_PATH, "")
                     wallpaper.visibility = GONE
-                    wallpaper.setRenderEffect(null)
                     scrim.visibility = GONE
                     binding.statusBarScrim.visibility = GONE
                 }
@@ -359,9 +354,6 @@ class MainActivity : HiltBaseActivity<ActivityMainBinding>(),
 
         timetableStyleRepository.wallpaperScrimLiveData.observe(this) { opacity ->
             binding.wallpaperScrim.setBackgroundColor((opacity * 255 / 100) shl 24)
-            if (binding.wallpaper.visibility == VISIBLE) {
-                applyWallpaperBlur(binding.wallpaper, opacity)
-            }
         }
 
         viewModel.checkUpdateResult.observe(this) {
@@ -442,19 +434,6 @@ class MainActivity : HiltBaseActivity<ActivityMainBinding>(),
         }
     }
 
-    private fun applyWallpaperBlur(wallpaper: ImageView, opacity: Int) {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            val blurRadius = opacity * 0.3f
-            if (blurRadius > 0f) {
-                wallpaper.setRenderEffect(
-                    RenderEffect.createBlurEffect(blurRadius, blurRadius, Shader.TileMode.CLAMP)
-                )
-            } else {
-                wallpaper.setRenderEffect(null)
-            }
-        }
-    }
-
     private val pickWallpaperLauncher = registerForActivityResult(
         ActivityResultContracts.GetContent()
     ) { uri: Uri? ->
@@ -467,19 +446,15 @@ class MainActivity : HiltBaseActivity<ActivityMainBinding>(),
                 // 删除旧壁纸文件，避免堆积
                 val oldPrefix = "timetable_wallpaper"
                 filesDir.listFiles()?.filter {
-                    it.name.startsWith(oldPrefix) && it.name.endsWith(".jpg")
+                    it.name.startsWith(oldPrefix)
                 }?.forEach { it.delete() }
 
-                val destFile = File(filesDir, "timetable_wallpaper_${System.currentTimeMillis()}.jpg")
-                val futureTarget = Glide.with(this)
-                    .asFile()
-                    .load(uri)
-                    .override(2048, 2048)
-                    .centerCrop()
-                    .submit()
-                val tempFile = futureTarget.get()
-                tempFile.copyTo(destFile, overwrite = true)
-                tempFile.delete()
+                val destFile = File(filesDir, "timetable_wallpaper_${System.currentTimeMillis()}")
+                contentResolver.openInputStream(uri)?.use { input ->
+                    destFile.outputStream().use { output ->
+                        input.copyTo(output)
+                    }
+                } ?: throw IllegalStateException("Cannot open wallpaper input stream")
                 val localPath = "local://${destFile.absolutePath}"
                 timetableStyleRepository.putData(
                     KEY_WALLPAPER_PATH,
