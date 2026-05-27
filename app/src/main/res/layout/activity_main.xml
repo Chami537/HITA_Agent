@@ -272,28 +272,16 @@
             android:id="@+id/pager"
             android:layout_width="match_parent"
             android:layout_height="match_parent"
-            android:layout_marginBottom="@dimen/bottom_navigation_height"
+            android:layout_marginBottom="70dp"
             android:overScrollMode="never"
             app:layout_behavior="com.google.android.material.appbar.AppBarLayout$ScrollingViewBehavior" />
 
-        <com.google.android.material.bottomnavigation.BottomNavigationView
-            android:id="@+id/nav_view"
-            android:layout_width="match_parent"
-            android:layout_height="@dimen/bottom_navigation_height"
-            android:layout_gravity="bottom"
-            android:background="?attr/backgroundColorBottom"
-            app:itemActiveIndicatorStyle="@style/Widget.HITA.BottomNavigation.ActiveIndicator"
-            app:itemIconSize="24dp"
-            app:itemIconTint="@color/bottom_nav_item_color"
-            app:itemPaddingBottom="2dp"
-            app:itemPaddingTop="10dp"
-            app:itemRippleColor="?attr/backgroundIconColorBottom"
-            app:itemTextAppearanceActive="@style/TextAppearance.HITA.BottomNavigation"
-            app:itemTextAppearanceInactive="@style/TextAppearance.HITA.BottomNavigation"
-            app:itemTextColor="@color/bottom_nav_item_color"
-            app:labelVisibilityMode="labeled"
-            app:menu="@menu/main_bottom_nav_menu"
-            app:elevation="0dp" />
+        <com.limpu.hitax.ui.widgets.FloatingPillTabBar
+            android:id="@+id/pill_tab_bar"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="bottom|center_horizontal"
+            android:layout_marginBottom="20dp" />
 
         <!--        app:itemFontFamily=""-->
 

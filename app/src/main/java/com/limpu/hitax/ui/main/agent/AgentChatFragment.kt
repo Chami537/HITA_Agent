@@ -144,6 +144,14 @@ class AgentChatFragment : HiltBaseFragment<FragmentAgentChatBinding>() {
         }
 
         ViewCompat.setOnApplyWindowInsetsListener(root) { _, insets ->
+            val statusBarHeight = insets.getInsets(WindowInsetsCompat.Type.statusBars()).top
+            root.setPadding(
+                root.paddingLeft,
+                statusBarHeight,
+                root.paddingRight,
+                root.paddingBottom
+            )
+
             val imeVisible = insets.isVisible(WindowInsetsCompat.Type.ime())
             val rootLocation = IntArray(2)
             root.getLocationOnScreen(rootLocation)

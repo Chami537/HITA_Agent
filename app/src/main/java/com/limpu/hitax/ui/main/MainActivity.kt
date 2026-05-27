@@ -4,9 +4,9 @@ import android.app.Activity
 import android.content.Intent
 import android.graphics.Color
 import android.net.Uri
-import android.util.TypedValue
 import android.os.Build
 import android.os.Bundle
+import kotlin.math.abs
 import com.limpu.hitax.utils.LogUtils
 import android.view.HapticFeedbackConstants
 import android.view.WindowManager
@@ -215,7 +215,15 @@ class MainActivity : HiltBaseActivity<ActivityMainBinding>(),
 
     override fun initViews() {
         setUpDrawer()
-        //  binding.title.text = binding.navView.menu.getItem(0).title
+        // Set up floating pill tab bar
+        binding.pillTabBar.setTabs(
+            listOf(
+                com.limpu.hitax.ui.widgets.FloatingPillTabBar.TabItem(R.drawable.ic_nav_today, getString(R.string.title_timeline)),
+                com.limpu.hitax.ui.widgets.FloatingPillTabBar.TabItem(R.drawable.ic_nav_timetable, getString(R.string.title_timetable)),
+                com.limpu.hitax.ui.widgets.FloatingPillTabBar.TabItem(R.drawable.ic_baseline_toys_24, getString(R.string.title_agent)),
+                com.limpu.hitax.ui.widgets.FloatingPillTabBar.TabItem(R.drawable.ic_nav_navigation, getString(R.string.title_navigation))
+            )
+        )
         binding.pager.adapter = object : BaseTabAdapter(supportFragmentManager, 4) {
             override fun initItem(position: Int): Fragment {
                 return when (position) {
@@ -231,6 +239,10 @@ class MainActivity : HiltBaseActivity<ActivityMainBinding>(),
             }
         }
         binding.pager.offscreenPageLimit = 4
+        binding.pager.setPageTransformer(true) { page, position ->
+            page.alpha = (1 - 0.45f * abs(position)).coerceIn(0f, 1f)
+            page.translationX = 0f
+        }
         binding.pager.addOnPageChangeListener(object : OnPageChangeListener {
             override fun onPageScrolled(
                 position: Int,
@@ -240,12 +252,7 @@ class MainActivity : HiltBaseActivity<ActivityMainBinding>(),
             }
 
             override fun onPageSelected(position: Int) {
-                binding.navView.selectedItemId = when (position) {
-                    0 -> R.id.navigation_timeline
-                    1 -> R.id.navigation_timetable
-                    2 -> R.id.navigation_agent
-                    else -> R.id.navigation_navigation
-                }
+                binding.pillTabBar.setSelectedTab(position)
                 binding.agentLayout.visibility = GONE
                 binding.timetableLayout.visibility = GONE
                 binding.navigationLayout.visibility = GONE
@@ -264,16 +271,9 @@ class MainActivity : HiltBaseActivity<ActivityMainBinding>(),
 
             override fun onPageScrollStateChanged(state: Int) {}
         })
-        binding.navView.setOnItemSelectedListener { item ->
-            binding.navView.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
-            binding.pager.currentItem = when (item.itemId) {
-                R.id.navigation_timeline -> 0
-                R.id.navigation_timetable -> 1
-                R.id.navigation_agent -> 2
-                R.id.navigation_navigation -> 3
-                else -> binding.pager.currentItem
-            }
-            true
+        binding.pillTabBar.setOnTabSelectedListener { position ->
+            binding.pillTabBar.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
+            binding.pager.currentItem = position
         }
         binding.drawerButton.setOnClickListener { binding.drawer.openDrawer(GravityCompat.END) }
 
@@ -316,12 +316,6 @@ class MainActivity : HiltBaseActivity<ActivityMainBinding>(),
             WidgetUtils.sendRefreshToAll(this)
         }
 
-        // 保存底部导航栏原始背景色
-        val typedValue = TypedValue()
-        theme.resolveAttribute(R.attr.backgroundColorBottom, typedValue, true)
-        val navColor = typedValue.data
-        val navColorTranslucent = (navColor and 0x00FFFFFF) or (0xB0 shl 24)
-
         timetableStyleRepository.wallpaperPathLiveData.observe(this) { path ->
             val wallpaper = binding.wallpaper
             val scrim = binding.wallpaperScrim
@@ -330,7 +324,7 @@ class MainActivity : HiltBaseActivity<ActivityMainBinding>(),
                 wallpaper.setImageDrawable(null)
                 scrim.visibility = GONE
                 binding.statusBarScrim.visibility = GONE
-                binding.navView.setBackgroundColor(navColor)
+                binding.pillTabBar.alpha = 1f
             } else {
                 val filePath = path.removePrefix("local://")
                 val file = java.io.File(filePath)
@@ -342,7 +336,7 @@ class MainActivity : HiltBaseActivity<ActivityMainBinding>(),
                         .into(wallpaper)
                     scrim.visibility = VISIBLE
                     binding.statusBarScrim.visibility = VISIBLE
-                    binding.navView.setBackgroundColor(navColorTranslucent)
+                    binding.pillTabBar.alpha = 0.72f
                 } else {
                     timetableStyleRepository.putData(KEY_WALLPAPER_PATH, "")
                     wallpaper.visibility = GONE
