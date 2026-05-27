@@ -13,6 +13,7 @@ import android.widget.ImageView
 import android.widget.TextView
 import com.limpu.hitax.R
 import com.limpu.hitax.data.model.timetable.EventItem
+import com.limpu.hitax.ui.main.timetable.ColorContrast
 import com.limpu.hitax.ui.main.timetable.TimetableStyleSheet
 import kotlin.math.roundToInt
 
@@ -60,7 +61,10 @@ class TimeTableBlockView constructor(
         } else {
             card.backgroundTintList = ColorStateList.valueOf(getColor(R.attr.colorPrimary))
         }
+        val effectiveBg = if (styleSheet.isColorEnabled) event.color
+                          else getColor(R.attr.colorPrimary)
         when (styleSheet.cardTitleColor) {
+            "auto" -> title?.setTextColor(ColorContrast.contrastText(effectiveBg))
             "subject" -> if (styleSheet.isColorEnabled) {
                 title?.setTextColor(event.color)
             } else title?.setTextColor(getColor(R.attr.colorPrimary))
@@ -69,6 +73,7 @@ class TimeTableBlockView constructor(
             "primary" -> title?.setTextColor(getColor(R.attr.colorPrimary))
         }
         when (styleSheet.subTitleColor) {
+            "auto" -> subtitle?.setTextColor(ColorContrast.contrastText(effectiveBg))
             "subject" -> if (styleSheet.isColorEnabled) {
                 subtitle?.setTextColor(event.color)
             } else subtitle?.setTextColor(getColor(R.attr.colorPrimary))
@@ -80,6 +85,7 @@ class TimeTableBlockView constructor(
             icon?.visibility = VISIBLE
             icon?.setColorFilter(Color.WHITE)
             when (styleSheet.iconColor) {
+                "auto" -> icon?.setColorFilter(ColorContrast.contrastText(effectiveBg))
                 "subject" -> if (styleSheet.isColorEnabled) {
                     icon?.setColorFilter(event.color)
                 } else icon?.setColorFilter(getColor(R.attr.colorPrimary))
