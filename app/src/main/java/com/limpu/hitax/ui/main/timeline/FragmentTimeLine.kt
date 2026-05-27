@@ -15,7 +15,6 @@ import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.limpu.hitax.R
 import com.limpu.hitax.data.model.timetable.EventItem
-import com.limpu.hitax.data.repository.TimetableStyleRepository
 import androidx.fragment.app.viewModels
 import com.limpu.hitax.databinding.FragmentTimelineBinding
 import com.limpu.hitax.ui.base.HiltBaseFragmentWithReceiver
@@ -28,13 +27,11 @@ import com.limpu.hitax.utils.TimeTools.TTY_WK_FOLLOWING
 import com.limpu.style.base.BaseListAdapter
 import dagger.hilt.android.AndroidEntryPoint
 import java.util.*
-import javax.inject.Inject
 import kotlin.Comparator
 
 @AndroidEntryPoint
 class FragmentTimeLine : HiltBaseFragmentWithReceiver<FragmentTimelineBinding>() {
 
-    @Inject lateinit var timetableStyleRepository: TimetableStyleRepository
     protected val viewModel: FragmentTimelineViewModel by viewModels()
     private var listAdapter: TimelineListAdapter? = null
     private var topListAdapter: TimelineTopListAdapter? = null
@@ -108,9 +105,6 @@ class FragmentTimeLine : HiltBaseFragmentWithReceiver<FragmentTimelineBinding>()
                 hint?.let { HintUtils.clickHint(requireContext(), it) }
             }
         })
-        timetableStyleRepository.wallpaperLabelColorLiveData.observe(viewLifecycleOwner) { color ->
-            listAdapter?.timeTextColor = color
-        }
         binding?.extendHeader?.findViewById<RecyclerView>(R.id.top_list)?.let {  list->
             list.adapter = topListAdapter
             list.layoutManager = LinearLayoutManager(requireContext())
