@@ -180,7 +180,7 @@
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
-                android:background="@android:color/transparent"
+                android:background="@drawable/bg_input_field"
                 android:hint="@string/ade_namehint"
                 android:inputType="text"
                 android:maxLines="1"
@@ -218,6 +218,8 @@
                 android:clickable="true"
                 android:focusable="true"
                 android:foreground="?attr/selectableItemBackgroundBorderless"
+                android:paddingStart="@dimen/space_3"
+                android:paddingEnd="@dimen/space_3"
                 app:cardCornerRadius="8dp"
                 app:cardElevation="0dp">
 
@@ -239,6 +241,8 @@
                 android:clickable="true"
                 android:focusable="true"
                 android:foreground="?attr/selectableItemBackgroundBorderless"
+                android:paddingStart="@dimen/space_3"
+                android:paddingEnd="@dimen/space_3"
                 app:cardCornerRadius="8dp"
                 app:cardElevation="0dp">
 
@@ -317,6 +321,8 @@
                 android:clickable="true"
                 android:focusable="true"
                 android:foreground="?attr/selectableItemBackgroundBorderless"
+                android:paddingStart="@dimen/space_3"
+                android:paddingEnd="@dimen/space_3"
                 app:cardCornerRadius="8dp"
                 app:cardElevation="0dp">
 
@@ -338,6 +344,8 @@
                 android:clickable="true"
                 android:focusable="true"
                 android:foreground="?attr/selectableItemBackgroundBorderless"
+                android:paddingStart="@dimen/space_3"
+                android:paddingEnd="@dimen/space_3"
                 app:cardCornerRadius="8dp"
                 app:cardElevation="0dp">
 

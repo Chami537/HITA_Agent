@@ -14,6 +14,7 @@ class TimetableStyleSheet {
     var drawBGLine: Boolean = true
     var cardIconEnabled: Boolean = false
     var cardOpacity: Int = 95
+        get() = field.coerceIn(20, 100)
     var cardHeight: Int = 180
     var usePeriodLabel: Boolean = false
     var startTime: Int = 800

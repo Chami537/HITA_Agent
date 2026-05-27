@@ -99,7 +99,8 @@ class TimeTableBlockView constructor(
         }
         title?.text = event.name
         subtitle?.text = if (TextUtils.isEmpty(event.place)) "" else event.place
-        card.background.mutate().alpha = (255 * (styleSheet.cardOpacity.toFloat() / 100)).toInt()
+        val clampedOpacity = styleSheet.cardOpacity.coerceIn(20, 100)
+        card.background.mutate().alpha = (255 * (clampedOpacity.toFloat() / 100)).toInt()
         if (styleSheet.isBoldText) {
             title?.typeface = Typeface.DEFAULT_BOLD
             subtitle?.typeface = Typeface.DEFAULT_BOLD

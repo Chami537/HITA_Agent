@@ -171,7 +171,7 @@ class TimelineListAdapter(
             if (timelineHolder.tv_time != null) timelineHolder.tv_time.text = if (isUpcomingExamReminder) {
                 SpecialEventReminderUtils.formatExamDateTime(event)
             } else {
-                "${TextTools.getChatTimeText(mContext, event.from)}-${TextTools.getChatTimeText(mContext, event.to)}"
+                "${TimeTools.printTime(event.from.time)}-${TimeTools.printTime(event.to.time)}"
             }
             timelineHolder.tv_time?.setTextColor(secondaryTextColor)
             if (timelineHolder.tv_duration != null) {

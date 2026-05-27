@@ -12,8 +12,8 @@
         app:timeline_alignment="middle"
         app:timeline_drawInternal="false"
         app:timeline_indicatorColor="?attr/colorAccent"
-        app:timeline_indicatorSize="8dp"
-        app:timeline_lineColor="@color/primary_subtle"
+        app:timeline_indicatorSize="5dp"
+        app:timeline_lineColor="@color/outline_variant"
         app:timeline_lineStyle="linear"
         app:timeline_lineWidth="@dimen/timeline_width" />
 

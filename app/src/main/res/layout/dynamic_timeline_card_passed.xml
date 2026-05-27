@@ -13,11 +13,11 @@
         app:timeline_alignment="middle"
         app:timeline_drawInternal="true"
         app:timeline_indicatorColor="?attr/backgroundIconColorBottom"
-        app:timeline_indicatorSize="8dp"
+        app:timeline_indicatorSize="5dp"
         app:timeline_internalColor="?attr/backgroundColorBottom"
         app:timeline_internalDrawable="@drawable/ic_circle_done"
         app:timeline_internalPadding="0dp"
-        app:timeline_lineColor="?attr/backgroundIconColorBottom"
+        app:timeline_lineColor="@color/outline_variant"
         app:timeline_lineStyle="linear"
         app:timeline_lineWidth="@dimen/timeline_width"
         app:timeline_type="middle" />
