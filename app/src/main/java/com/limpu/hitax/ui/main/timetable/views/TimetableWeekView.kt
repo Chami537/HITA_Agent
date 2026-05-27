@@ -14,6 +14,7 @@ class TimetableWeekView: LinearLayout{
 
     private var timetableView: TimeTableView? = null
     private val topDateTexts = arrayOfNulls<TextView>(8) //顶部日期文本
+    var wallpaperDateColor: Int = android.graphics.Color.WHITE
 
     constructor(context: Context?, attrs: AttributeSet) : super(context, attrs)
     constructor(context: Context?) : super(context)
@@ -55,10 +56,15 @@ class TimetableWeekView: LinearLayout{
         else timetableView?.notifyRefresh(startDate, events, style)
     }
 
+    fun setDateTextColor(color: Int) {
+        for (i in 0..7) {
+            topDateTexts[i]?.setTextColor(color)
+        }
+    }
+
     fun setDateTexts(date: Long) {
         val startDate = Calendar.getInstance()
         startDate.timeInMillis = date
-        /*显示上方日期*/
         topDateTexts[0]?.text =
             context.resources.getStringArray(R.array.months)[startDate[Calendar.MONTH]]
         val temp = Calendar.getInstance()
@@ -66,6 +72,13 @@ class TimetableWeekView: LinearLayout{
             temp.time = startDate.time
             temp.add(Calendar.DATE, k - 1)
             topDateTexts[k]!!.text = temp[Calendar.DAY_OF_MONTH].toString()
+        }
+        applyDateColor()
+    }
+
+    private fun applyDateColor() {
+        for (i in 0..7) {
+            topDateTexts[i]?.setTextColor(wallpaperDateColor)
         }
     }
 

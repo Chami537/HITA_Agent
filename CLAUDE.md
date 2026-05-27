@@ -143,6 +143,34 @@ refactor/xxx    # 重构（不改行为）
 - [ ] 硬编码的字符串优先放 `strings.xml`
 - [ ] Commit message 说明「做了什么、为什么」
 
+### Release 发布
+
+**触发条件**：用户明确说 "发 release" 时才做。
+
+**流程**：
+1. 更新 `app/build.gradle` 中的 `appVersionCodeValue` 和 `appVersionNameValue`
+2. `git commit` + `git push origin` + `git push upstream`
+3. 两侧创建 release + 上传 APK（注意加版本化文件名）：
+```bash
+gh release create v<version> --repo Chami537/HITA_Agent --target <branch> --title "v<version>" --notes "..."
+gh release create v<version> --repo HIT-A/HITA_Android --target <branch> --title "v<version>" --notes "..."
+gh release upload v<version> app/build/outputs/apk/release/app-release.apk#HITA_v<version>.apk --repo Chami537/HITA_Agent
+gh release upload v<version> app/build/outputs/apk/release/app-release.apk#HITA_v<version>.apk --repo HIT-A/HITA_Android
+```
+
+**Release notes 模板**：
+```
+## 新增
+- xxx
+
+## 修复
+- xxx
+
+## 优化
+- xxx
+```
+简洁为上，每项一行，说明做了什么即可。不写技术实现细节。
+
 ### 常见陷阱
 - **EAS HTML 解析**：三校区（深圳/本部/威海）的 HTML 结构不同，改 EAS 相关代码要同时确认三校区
 - **数据库迁移**：Room schema 变更需要升 `@Database` version + 写 migration，否则老用户安装会 crash

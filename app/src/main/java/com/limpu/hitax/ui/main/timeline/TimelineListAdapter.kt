@@ -40,6 +40,7 @@ class TimelineListAdapter(
     private var nextEvent: EventItem? = null
     var upcomingExamEvents: List<EventItem> = emptyList()
     private var nowProgress: Float = 0f
+    var timeTextColor: Int = android.graphics.Color.WHITE
 
 
     private var onHintConfirmedListener: OnHintConfirmedListener? = null
@@ -173,7 +174,9 @@ class TimelineListAdapter(
             } else {
                 "${TimeTools.printTime(event.from.time)}-${TimeTools.printTime(event.to.time)}"
             }
-            timelineHolder.tv_time?.setTextColor(secondaryTextColor)
+            timelineHolder.tv_time?.setTextColor(
+                if (isUpcomingExamReminder) secondaryTextColor else timeTextColor
+            )
             if (timelineHolder.tv_duration != null) {
                 val duration: Int =
                         (((event.to.time - event.from.time) / 1000).toInt())

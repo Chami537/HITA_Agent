@@ -102,6 +102,11 @@ class LeftLabelView : View {
         invalidate()
     }
 
+    fun applyLabelColor(color: Int) {
+        labelColor = color
+        invalidate()
+    }
+
     private fun resolveLabelColor(): Int {
         if (labelColor != 0) return labelColor
         val typedValue = TypedValue()

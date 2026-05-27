@@ -21,7 +21,7 @@ abstract class HiltBaseFragmentWithReceiver<V : ViewBinding> : HiltBaseFragment<
         super.onDestroy()
         if (receiverRegistered) {
             try {
-                requireContext().unregisterReceiver(receiver)
+                context?.unregisterReceiver(receiver)
             } catch (_: Exception) { }
             receiverRegistered = false
         }

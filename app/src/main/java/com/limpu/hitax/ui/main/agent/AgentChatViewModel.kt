@@ -3,6 +3,7 @@ package com.limpu.hitax.ui.main.agent
 import android.app.Application
 import android.net.Uri
 import android.os.Looper
+import android.util.Base64
 import androidx.lifecycle.LiveData
 import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.ViewModel
@@ -19,8 +20,14 @@ import com.limpu.hitax.agent.timetable.TimetableAgentOutput
 import com.limpu.hitax.data.AppDatabase
 import com.limpu.hitax.data.model.chat.ChatMessageEntity
 import com.limpu.hitax.data.model.chat.ChatSession
+import com.limpu.hitax.utils.LogUtils
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import java.io.File
+import java.io.PrintWriter
+import java.io.StringWriter
 import java.util.concurrent.Executors
 import javax.inject.Inject
 
@@ -443,4 +450,442 @@ class AgentChatViewModel @Inject constructor(
             )
         }
     }
+
+    // region File attachment processing
+
+    private sealed class LocalParseResult {
+        data class Success(val content: String) : LocalParseResult()
+        data class Error(val error: String) : LocalParseResult()
+    }
+
+    companion object {
+        private const val MAX_FILE_SIZE = 20 * 1024 * 1024
+        private const val MAX_IMAGE_SIZE = 10 * 1024 * 1024
+    }
+
+    fun sendWithAttachment(
+        text: String,
+        uri: Uri,
+        agentProvider: AgentProvider<TimetableAgentInput, TimetableAgentOutput>,
+    ) {
+        setLoading(true)
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val fileName = getFileName(uri)
+
+                val fileSize = application.contentResolver.openInputStream(uri)?.use { it.available() } ?: 0
+                if (fileSize == 0) {
+                    withContext(Dispatchers.Main) {
+                        setLoading(false)
+                        addMessage(AgentChatMessage(
+                            role = AgentChatMessage.Role.ASSISTANT,
+                            text = "无法打开文件，请重试"
+                        ))
+                    }
+                    return@launch
+                }
+
+                val maxSize = when {
+                    fileName.endsWith(".jpg", true) ||
+                    fileName.endsWith(".jpeg", true) ||
+                    fileName.endsWith(".png", true) ||
+                    fileName.endsWith(".gif", true) ||
+                    fileName.endsWith(".bmp", true) ||
+                    fileName.endsWith(".webp", true) -> MAX_IMAGE_SIZE
+                    fileName.endsWith(".mp4", true) ||
+                    fileName.endsWith(".mov", true) ||
+                    fileName.endsWith(".avi", true) ||
+                    fileName.endsWith(".mkv", true) ||
+                    fileName.endsWith(".webm", true) -> MAX_IMAGE_SIZE
+                    else -> MAX_FILE_SIZE
+                }
+
+                if (fileSize > maxSize) {
+                    withContext(Dispatchers.Main) {
+                        setLoading(false)
+                        addMessage(AgentChatMessage(
+                            role = AgentChatMessage.Role.ASSISTANT,
+                            text = "文件过大！\n当前文件：${fileName} (${formatFileSize(fileSize)})\n限制：${formatFileSize(maxSize)}\n\n建议：\n- 图片/视频请压缩到10MB以下\n- 文档请控制在20MB以下"
+                        ))
+                    }
+                    return@launch
+                }
+
+                val mimeType = getMimeType(fileName)
+                val needLocalParse = when {
+                    fileSize < 100 * 1024 && isTextFile(fileName) -> true
+                    fileName.endsWith(".docx", true) -> true
+                    fileName.endsWith(".xlsx", true) -> true
+                    fileName.endsWith(".pptx", true) -> true
+                    fileName.endsWith(".pdf", true) -> true
+                    else -> false
+                }
+                val needCloudAI = mimeType.startsWith("image/") || mimeType.startsWith("video/")
+
+                if (!needLocalParse && !needCloudAI) {
+                    withContext(Dispatchers.Main) {
+                        setLoading(false)
+                        addMessage(AgentChatMessage(
+                            role = AgentChatMessage.Role.ASSISTANT,
+                            text = "不支持的文件类型：${fileName}\n\n支持的格式：\n- 文档：Word、Excel、PowerPoint（本地解析）\n- 文档：PDF（云端AI解析）\n- 图片：JPG、PNG、GIF、WebP\n- 视频：MP4、MOV"
+                        ))
+                    }
+                    return@launch
+                }
+
+                val cacheDir = application.cacheDir
+                val tempFile = File(cacheDir, fileName)
+                application.contentResolver.openInputStream(uri)?.use { input ->
+                    tempFile.outputStream().use { output ->
+                        val buffer = ByteArray(8192)
+                        var bytesRead: Int
+                        while (input.read(buffer).also { bytesRead = it } > 0) {
+                            output.write(buffer, 0, bytesRead)
+                        }
+                    }
+                }
+
+                val result = when {
+                    fileSize < 100 * 1024 && isTextFile(fileName) -> {
+                        val fileText = tempFile.readText(Charsets.UTF_8)
+                        LocalParseResult.Success("【文本文件】\n$fileText")
+                    }
+                    fileName.endsWith(".pdf", true) -> parsePdfFile(tempFile)
+                    fileName.endsWith(".docx", true) -> parseDocxFile(tempFile)
+                    fileName.endsWith(".xlsx", true) -> parseExcelFile(tempFile)
+                    fileName.endsWith(".pptx", true) -> parsePptxFile(tempFile)
+                    mimeType.startsWith("image/") || mimeType.startsWith("video/") -> null
+                    else -> LocalParseResult.Error("不支持的文件类型")
+                }
+
+                val base64Content = if (result == null && needCloudAI) {
+                    try {
+                        val fileBytes = tempFile.readBytes()
+                        Base64.encodeToString(fileBytes, Base64.NO_WRAP)
+                    } catch (e: OutOfMemoryError) {
+                        withContext(Dispatchers.Main) {
+                            setLoading(false)
+                            addMessage(AgentChatMessage(
+                                role = AgentChatMessage.Role.ASSISTANT,
+                                text = "文件过大，无法处理。\n\n建议：\n1. 图片请压缩后重新上传（建议小于5MB）\n2. 视频请剪辑后重新上传（建议小于10MB）\n3. 或使用截图功能"
+                            ))
+                        }
+                        return@launch
+                    }
+                } else null
+
+                tempFile.delete()
+
+                withContext(Dispatchers.Main) {
+                    when (result) {
+                        is LocalParseResult.Success -> {
+                            val maxLength = 5000
+                            val content = if (result.content.length > maxLength) {
+                                result.content.take(maxLength) + "\n\n...(内容过长，仅显示前${maxLength}字)"
+                            } else result.content
+                            val fullText = "$text\n\n[附件: $fileName]\n$content"
+                            addMessage(AgentChatMessage(role = AgentChatMessage.Role.USER, text = fullText))
+                            sendToLlm(fullText, agentProvider)
+                        }
+                        is LocalParseResult.Error -> {
+                            if (needCloudAI && base64Content != null) {
+                                val messageWithFile = "$text\n\n[附件: $fileName]"
+                                addMessage(AgentChatMessage(role = AgentChatMessage.Role.USER, text = messageWithFile))
+                                sendToLlmWithAttachment(text, fileName, base64Content, mimeType, agentProvider)
+                            } else {
+                                setLoading(false)
+                                addMessage(AgentChatMessage(
+                                    role = AgentChatMessage.Role.ASSISTANT,
+                                    text = "附件解析失败：${result.error}\n\n建议：请复制文件内容粘贴到对话框中"
+                                ))
+                            }
+                        }
+                        null -> {
+                            if (base64Content != null) {
+                                val messageWithFile = "$text\n\n[附件: $fileName]"
+                                addMessage(AgentChatMessage(role = AgentChatMessage.Role.USER, text = messageWithFile))
+                                sendToLlmWithAttachment(text, fileName, base64Content, mimeType, agentProvider)
+                            } else {
+                                setLoading(false)
+                                addMessage(AgentChatMessage(
+                                    role = AgentChatMessage.Role.ASSISTANT,
+                                    text = "不支持的文件类型，请尝试图片或视频"
+                                ))
+                            }
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                LogUtils.e("附件处理异常", e)
+                withContext(Dispatchers.Main) {
+                    setLoading(false)
+                    addMessage(AgentChatMessage(
+                        role = AgentChatMessage.Role.ASSISTANT,
+                        text = "附件处理失败：${e.message}"
+                    ))
+                }
+            } catch (e: OutOfMemoryError) {
+                LogUtils.e("内存不足异常", e)
+                withContext(Dispatchers.Main) {
+                    setLoading(false)
+                    addMessage(AgentChatMessage(
+                        role = AgentChatMessage.Role.ASSISTANT,
+                        text = "内存不足，请尝试更小的文件"
+                    ))
+                }
+            }
+        }
+    }
+
+    private fun getFileName(uri: Uri): String {
+        val path = uri.path
+        if (path != null && path.contains("/")) {
+            val nameFromPath = path.substringAfterLast("/")
+            if (nameFromPath.contains(".") && !nameFromPath.endsWith(".mht")) {
+                return nameFromPath
+            }
+        }
+        val cursor = application.contentResolver.query(uri, null, null, null, null)
+        cursor?.use {
+            if (it.moveToFirst()) {
+                val nameIndex = it.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME)
+                if (nameIndex >= 0) {
+                    val displayName = it.getString(nameIndex)
+                    if (displayName.endsWith(".mht", true) && displayName.contains(".pdf", true)) {
+                        val pdfIndex = displayName.indexOf(".pdf", ignoreCase = true)
+                        if (pdfIndex > 0) {
+                            return displayName.substring(0, pdfIndex + 4)
+                        }
+                    }
+                    return displayName
+                }
+            }
+        }
+        return uri.lastPathSegment ?: "file"
+    }
+
+    private fun formatFileSize(bytes: Int): String = when {
+        bytes < 1024 -> "$bytes B"
+        bytes < 1024 * 1024 -> "${bytes / 1024} KB"
+        bytes < 1024 * 1024 * 1024 -> "${bytes / (1024 * 1024)} MB"
+        else -> "${bytes / (1024 * 1024 * 1024)} GB"
+    }
+
+    private fun isTextFile(fileName: String): Boolean {
+        val textExtensions = listOf(".txt", ".md", ".json", ".xml", ".csv", ".html", ".htm")
+        return textExtensions.any { fileName.endsWith(it, true) }
+    }
+
+    private fun getMimeType(fileName: String): String {
+        val mimeTypeFromFile = when {
+            fileName.endsWith(".pdf", true) -> "application/pdf"
+            fileName.endsWith(".docx", true) -> "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+            fileName.endsWith(".doc", true) && !fileName.endsWith(".docx", true) -> "application/msword"
+            fileName.endsWith(".xlsx", true) -> "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            fileName.endsWith(".xls", true) && !fileName.endsWith(".xlsx", true) -> "application/vnd.ms-excel"
+            fileName.endsWith(".pptx", true) -> "application/vnd.openxmlformats-officedocument.presentationml.presentation"
+            fileName.endsWith(".ppt", true) && !fileName.endsWith(".pptx", true) -> "application/vnd.ms-powerpoint"
+            fileName.endsWith(".jpg", true) || fileName.endsWith(".jpeg", true) -> "image/jpeg"
+            fileName.endsWith(".png", true) -> "image/png"
+            fileName.endsWith(".gif", true) -> "image/gif"
+            fileName.endsWith(".webp", true) -> "image/webp"
+            fileName.endsWith(".mp4", true) -> "video/mp4"
+            fileName.endsWith(".mov", true) -> "video/quicktime"
+            fileName.endsWith(".mp3", true) -> "audio/mpeg"
+            else -> null
+        }
+        return mimeTypeFromFile ?: "application/octet-stream"
+    }
+
+    private fun parsePdfFile(file: File): LocalParseResult {
+        var parser: com.tom_roush.pdfbox.pdmodel.PDDocument? = null
+        return try {
+            parser = com.tom_roush.pdfbox.pdmodel.PDDocument.load(file)
+            val totalPages = parser.numberOfPages
+            val maxPages = 10
+            val pagesToParse = minOf(totalPages, maxPages)
+            val text = StringBuilder()
+            text.append("【PDF文档】\n")
+            if (totalPages > maxPages) {
+                text.append("总页数：${totalPages}（仅解析前${maxPages}页）\n\n内容：\n")
+            } else {
+                text.append("页数：${totalPages}\n\n内容：\n")
+            }
+            val stripper = com.tom_roush.pdfbox.text.PDFTextStripper()
+            stripper.startPage = 1
+            stripper.endPage = pagesToParse
+            stripper.setSortByPosition(true)
+            val pdfText = stripper.getText(parser)
+            val maxLength = 5000
+            if (pdfText.length > maxLength) {
+                text.append(pdfText.take(maxLength))
+                text.append("\n\n...(内容过长，仅显示前${maxLength}字)")
+            } else {
+                text.append(pdfText)
+            }
+            parser.close()
+            LocalParseResult.Success(text.toString())
+        } catch (e: OutOfMemoryError) {
+            LogUtils.e("PDF内存不足", e)
+            parser?.close()
+            LocalParseResult.Error("内存不足，请尝试更小的PDF文件")
+        } catch (e: Exception) {
+            LogUtils.e("PDF解析失败: ${e.message}", e)
+            parser?.close()
+            LocalParseResult.Error("错误：${e.message}\n\n建议：截图上传或复制PDF中的文本")
+        }
+    }
+
+    private fun parseDocxFile(file: File): LocalParseResult {
+        return try {
+            if (!file.exists()) return LocalParseResult.Error("文件不存在，请重试")
+            val text = extractDocxTextDirectly(file)
+            LocalParseResult.Success("【Word文档】\n$text")
+        } catch (e: OutOfMemoryError) {
+            LogUtils.e("DOCX内存不足", e)
+            LocalParseResult.Error("内存不足，请尝试更小的文件")
+        } catch (e: Exception) {
+            LogUtils.e("DOCX解析失败: ${e.message}", e)
+            LocalParseResult.Error("错误：${e.message}\n\n建议：复制文档中的文本粘贴到聊天框")
+        }
+    }
+
+    private fun extractDocxTextDirectly(file: File): String {
+        val result = StringBuilder()
+        val MAX_LENGTH = 5000
+        java.util.zip.ZipInputStream(file.inputStream()).use { zip ->
+            var entry = zip.nextEntry
+            while (entry != null) {
+                if (entry.name == "word/document.xml") {
+                    val xmlContent = zip.reader().readText()
+                    val textPattern = Regex("<w:t[^>]*>(.*?)</w:t>", RegexOption.DOT_MATCHES_ALL)
+                    val matches = textPattern.findAll(xmlContent).toList()
+                    var inParagraph = false
+                    for (match in matches) {
+                        val text = match.groupValues[1]
+                            .replace("&lt;", "<")
+                            .replace("&gt;", ">")
+                            .replace("&amp;", "&")
+                            .replace("&quot;", "\"")
+                            .replace("&apos;", "'")
+                            .trim()
+                        if (text.isNotEmpty()) {
+                            if (!inParagraph) {
+                                if (result.isNotEmpty()) result.append("\n")
+                                inParagraph = true
+                            }
+                            result.append(text).append(" ")
+                            if (result.length > MAX_LENGTH) break
+                        }
+                    }
+                    break
+                }
+                entry = zip.nextEntry
+            }
+        }
+        val processed = result.toString()
+            .replace(Regex("\\s+"), " ")
+            .replace(Regex("\\n\\s*\\n"), "\n")
+            .trim()
+        return if (processed.length > MAX_LENGTH) {
+            processed.take(MAX_LENGTH) + "\n\n...(内容过长，仅显示前${MAX_LENGTH}字)"
+        } else processed
+    }
+
+    private fun parseExcelFile(file: File): LocalParseResult {
+        return try {
+            val fis = java.io.FileInputStream(file)
+            val workbook = org.apache.poi.xssf.usermodel.XSSFWorkbook(fis)
+            val text = StringBuilder()
+            text.append("【Excel表格】\n工作表数量：${workbook.numberOfSheets}\n\n")
+            val sheet = workbook.getSheetAt(0)
+            text.append("工作表1：${sheet.sheetName}\n")
+            var rowCount = 0
+            val maxRows = 100
+            val maxCols = 20
+            for (row in sheet) {
+                if (rowCount >= maxRows) {
+                    text.append("\n...(行数过多，仅显示前${maxRows}行)")
+                    break
+                }
+                val rowData = StringBuilder()
+                var colCount = 0
+                for (cell in row) {
+                    if (colCount >= maxCols) {
+                        rowData.append(" ...(列数过多)")
+                        break
+                    }
+                    val cellValue = when (cell.cellTypeEnum) {
+                        org.apache.poi.ss.usermodel.CellType.STRING -> cell.stringCellValue
+                        org.apache.poi.ss.usermodel.CellType.NUMERIC -> cell.numericCellValue.toString()
+                        org.apache.poi.ss.usermodel.CellType.BOOLEAN -> cell.booleanCellValue.toString()
+                        org.apache.poi.ss.usermodel.CellType.FORMULA -> cell.cellFormula
+                        else -> ""
+                    }
+                    if (cellValue.isNotEmpty()) rowData.append("[$cellValue] ")
+                    colCount++
+                }
+                if (rowData.isNotEmpty()) text.append("第${rowCount + 1}行：$rowData\n")
+                rowCount++
+            }
+            workbook.close()
+            fis.close()
+            LocalParseResult.Success(text.toString())
+        } catch (e: OutOfMemoryError) {
+            LogUtils.e("Excel内存不足", e)
+            LocalParseResult.Error("内存不足，请尝试更小的文件")
+        } catch (e: Exception) {
+            LogUtils.e("Excel解析失败: ${e.message}", e)
+            LocalParseResult.Error("错误：${e.message}")
+        }
+    }
+
+    private fun parsePptxFile(file: File): LocalParseResult {
+        return try {
+            val fis = java.io.FileInputStream(file)
+            val slideShow = org.apache.poi.xslf.usermodel.XMLSlideShow(fis)
+            val text = StringBuilder()
+            text.append("【PowerPoint演示文稿】\n幻灯片数量：${slideShow.slides.size}\n\n")
+            var slideCount = 0
+            val maxLength = 5000
+            var charCount = 0
+            for (slide in slideShow.slides) {
+                slideCount++
+                text.append("幻灯片${slideCount}：\n")
+                val slideText = StringBuilder()
+                for (shape in slide.shapes) {
+                    if (shape is org.apache.poi.xslf.usermodel.XSLFTextShape) {
+                        val shapeText = shape.text
+                        if (shapeText.isNotEmpty()) {
+                            if (charCount + shapeText.length > maxLength) {
+                                slideText.append(shapeText.take(maxLength - charCount))
+                                charCount = maxLength
+                                break
+                            }
+                            slideText.append(shapeText).append("\n")
+                            charCount += shapeText.length
+                        }
+                    }
+                }
+                if (slideText.isNotEmpty()) {
+                    text.append(slideText.toString()).append("\n")
+                }
+                if (charCount >= maxLength) {
+                    text.append("\n...(内容过长，仅显示前${maxLength}字符)")
+                    break
+                }
+            }
+            slideShow.close()
+            fis.close()
+            LocalParseResult.Success(text.toString())
+        } catch (e: OutOfMemoryError) {
+            LogUtils.e("PPTX内存不足", e)
+            LocalParseResult.Error("内存不足，请尝试更小的文件")
+        } catch (e: Exception) {
+            LogUtils.e("PPTX解析失败: ${e.message}", e)
+            LocalParseResult.Error("错误：${e.message}")
+        }
+    }
+
+    // endregion
 }

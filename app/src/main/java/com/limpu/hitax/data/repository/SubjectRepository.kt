@@ -170,8 +170,12 @@ class SubjectRepository @Inject constructor(application: Application) {
      */
     fun getProgressOfSubject(subjectId: String, ts: Long): LiveData<Pair<Int, Int>> {
         val res = MediatorLiveData<Pair<Int, Int>>()
+        var innerSource: LiveData<Int>? = null
         res.addSource(eventItemDao.countClassesOfSubject(subjectId)) { total ->
-            res.addSource(eventItemDao.countClassesBeforeTimeOfSubject(subjectId, ts)) { finished ->
+            innerSource?.let { res.removeSource(it) }
+            val next = eventItemDao.countClassesBeforeTimeOfSubject(subjectId, ts)
+            innerSource = next
+            res.addSource(next) { finished ->
                 res.value = Pair(finished, total)
             }
         }

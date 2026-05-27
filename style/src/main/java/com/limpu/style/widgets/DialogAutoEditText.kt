@@ -38,6 +38,7 @@ class DialogAutoEditText : TransparentDialog<DialogAutoEditTextBinding>() {
     var listLiveData: MediatorLiveData<List<String>> = MediatorLiveData()
     var onConfirmListener: OnConfirmListener? = null
     var dataLoader: DataLoader? = null
+    private var currentQuerySource: LiveData<List<String>>? = null
 
     interface OnConfirmListener {
         fun OnConfirm(content: String)
@@ -97,12 +98,15 @@ class DialogAutoEditText : TransparentDialog<DialogAutoEditTextBinding>() {
             }
 
             override fun afterTextChanged(s: Editable?) {
-                dataLoader?.let {
+                dataLoader?.let { loader ->
                     if(s.isNullOrEmpty()) {
                         listLiveData.value = mutableListOf()
                         return
                     }
-                    listLiveData.addSource(it.loadData(s.toString())) { dt ->
+                    currentQuerySource?.let { listLiveData.removeSource(it) }
+                    val newSource = loader.loadData(s.toString())
+                    currentQuerySource = newSource
+                    listLiveData.addSource(newSource) { dt ->
                         listLiveData.value = dt
                     }
                 }

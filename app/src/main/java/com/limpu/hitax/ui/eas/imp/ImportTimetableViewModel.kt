@@ -35,6 +35,8 @@ class ImportTimetableViewModel @Inject constructor(
     val isUndergraduateLiveData = MutableLiveData<Boolean>()
     val scheduleStructureLiveData: MediatorLiveData<DataState<MutableList<TimePeriodInDay>>> =
         MediatorLiveData()
+    private var scheduleInnerSource1: LiveData<DataState<MutableList<TimePeriodInDay>>>? = null
+    private var scheduleInnerSource2: LiveData<DataState<MutableList<TimePeriodInDay>>>? = null
 
     init {
         startDateLiveData.value = DataState(Calendar.getInstance())
@@ -59,25 +61,23 @@ class ImportTimetableViewModel @Inject constructor(
             benbuCalibrationConfirmedLiveData.value = term?.let { isBenbuCalibrationConfirmed(it) } ?: true
         }
 
-        scheduleStructureLiveData.addSource(selectedTermLiveData) {
+        scheduleStructureLiveData.addSource(selectedTermLiveData) { term ->
+            scheduleInnerSource1?.let { scheduleStructureLiveData.removeSource(it) }
+            if (term == null) return@addSource
             isUndergraduateLiveData.value?.let { isu ->
-                scheduleStructureLiveData.addSource(
-                    easRepo.getScheduleStructure(
-                        it!!,
-                        isu
-                    )
-                ) { itt ->
+                val src = easRepo.getScheduleStructure(term, isu)
+                scheduleInnerSource1 = src
+                scheduleStructureLiveData.addSource(src) { itt ->
                     scheduleStructureLiveData.value = itt
                 }
             }
         }
-        scheduleStructureLiveData.addSource(isUndergraduateLiveData) {
+        scheduleStructureLiveData.addSource(isUndergraduateLiveData) { isu ->
+            scheduleInnerSource2?.let { scheduleStructureLiveData.removeSource(it) }
             selectedTermLiveData.value?.let { st ->
-                scheduleStructureLiveData.addSource(
-                    easRepo.getScheduleStructure(
-                        st, it
-                    )
-                ) { itt ->
+                val src = easRepo.getScheduleStructure(st, isu)
+                scheduleInnerSource2 = src
+                scheduleStructureLiveData.addSource(src) { itt ->
                     scheduleStructureLiveData.value = itt
                 }
             }

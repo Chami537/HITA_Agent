@@ -28,7 +28,11 @@ import androidx.drawerlayout.widget.DrawerLayout.GONE
 import androidx.lifecycle.Observer
 import androidx.fragment.app.Fragment
 import androidx.viewpager.widget.ViewPager.OnPageChangeListener
+import android.graphics.drawable.Drawable
 import com.bumptech.glide.Glide
+import com.bumptech.glide.request.target.CustomTarget
+import com.bumptech.glide.request.transition.Transition
+import com.limpu.hitax.utils.WallpaperColorAnalyzer
 import com.limpu.component.data.DataState
 import com.limpu.hitax.R
 import com.limpu.hitax.data.repository.EasSettingsRepository
@@ -325,15 +329,32 @@ class MainActivity : HiltBaseActivity<ActivityMainBinding>(),
                 scrim.visibility = GONE
                 binding.statusBarScrim.visibility = GONE
                 binding.pillTabBar.alpha = 1f
+                timetableStyleRepository.wallpaperDateColorLiveData.value = android.graphics.Color.WHITE
+                timetableStyleRepository.wallpaperLabelColorLiveData.value = android.graphics.Color.WHITE
             } else {
                 val filePath = path.removePrefix("local://")
                 val file = java.io.File(filePath)
                 if (file.exists()) {
                     wallpaper.visibility = VISIBLE
                     Glide.with(this)
+                        .asBitmap()
                         .load(file)
                         .centerCrop()
-                        .into(wallpaper)
+                        .into(object : CustomTarget<android.graphics.Bitmap>() {
+                            override fun onResourceReady(
+                                resource: android.graphics.Bitmap,
+                                transition: Transition<in android.graphics.Bitmap>?
+                            ) {
+                                wallpaper.setImageBitmap(resource)
+                                val dateColor = WallpaperColorAnalyzer.sampleRegion(resource, 0f, 0f, 1f, 0.12f)
+                                val labelColor = WallpaperColorAnalyzer.sampleRegion(resource, 0f, 0.12f, 0.08f, 0.88f)
+                                timetableStyleRepository.wallpaperDateColorLiveData.value = dateColor
+                                timetableStyleRepository.wallpaperLabelColorLiveData.value = labelColor
+                            }
+                            override fun onLoadCleared(placeholder: Drawable?) {
+                                wallpaper.setImageDrawable(placeholder)
+                            }
+                        })
                     scrim.visibility = VISIBLE
                     binding.statusBarScrim.visibility = VISIBLE
                     binding.pillTabBar.alpha = 0.72f

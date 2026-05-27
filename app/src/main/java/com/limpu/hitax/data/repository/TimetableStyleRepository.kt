@@ -3,8 +3,10 @@ package com.limpu.hitax.data.repository
 import android.app.Application
 import android.content.Context
 import android.content.SharedPreferences
+import android.graphics.Color
 import javax.inject.Inject
 import androidx.lifecycle.MediatorLiveData
+import androidx.lifecycle.MutableLiveData
 import com.limpu.component.data.booleanLiveData
 import com.limpu.component.data.intLiveData
 import com.limpu.component.data.stringLiveData
@@ -30,6 +32,8 @@ class TimetableStyleRepository @Inject constructor(application: Application) {
     val wallpaperPathLiveData = timetableStyleSP.stringLiveData(KEY_WALLPAPER_PATH, "")
     val wallpaperScrimLiveData = timetableStyleSP.intLiveData(KEY_WALLPAPER_SCRIM, 30)
     val cardOpacityLiveData = timetableStyleSP.intLiveData(KEY_CARD_OPACITY, 85)
+    val wallpaperDateColorLiveData = MutableLiveData(Color.WHITE)
+    val wallpaperLabelColorLiveData = MutableLiveData(Color.WHITE)
 
 
     fun putData(key: String, value: Int) {

@@ -34,6 +34,10 @@ class TimetableViewModel @Inject constructor(
         get() = timetableStyleRepository.periodLabelLiveData
     val wallpaperPathLiveData: LiveData<String>
         get() = timetableStyleRepository.wallpaperPathLiveData
+    val wallpaperDateColorLiveData: LiveData<Int>
+        get() = timetableStyleRepository.wallpaperDateColorLiveData
+    val wallpaperLabelColorLiveData: LiveData<Int>
+        get() = timetableStyleRepository.wallpaperLabelColorLiveData
 
     var currentPageStartDate: MutableLiveData<Long>
     var currentIndex = 0

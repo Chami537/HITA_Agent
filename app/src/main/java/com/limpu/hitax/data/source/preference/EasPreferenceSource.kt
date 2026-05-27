@@ -3,6 +3,8 @@ package com.limpu.hitax.data.source.preference
 import android.annotation.SuppressLint
 import android.content.Context
 import android.content.SharedPreferences
+import androidx.security.crypto.EncryptedSharedPreferences
+import androidx.security.crypto.MasterKeys
 import com.google.gson.Gson
 import com.limpu.hitax.data.model.eas.EASToken
 
@@ -16,7 +18,13 @@ private const val SP_NAME_EAS_TOKEN = "local_eas_token"
 
 class EasPreferenceSource(context: Context) {
     private val preference: SharedPreferences =
-        context.getSharedPreferences(SP_NAME_EAS_TOKEN, Context.MODE_PRIVATE)
+        EncryptedSharedPreferences.create(
+            SP_NAME_EAS_TOKEN,
+            MasterKeys.getOrCreate(MasterKeys.AES256_GCM_SPEC),
+            context,
+            EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
+            EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
+        )
 
     fun saveEasToken(token: EASToken) {
         preference.edit()
@@ -47,6 +55,8 @@ class EasPreferenceSource(context: Context) {
         preference.edit()
             .putString("accessToken", null)
             .putString("refreshToken", null)
+            .putString("password", null)
+            .putString("electronicExpToken", null)
             .putString("cookies", null)
             .apply()
     }

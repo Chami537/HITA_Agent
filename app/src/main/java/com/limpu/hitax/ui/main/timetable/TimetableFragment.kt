@@ -131,6 +131,15 @@ class TimetableFragment : HiltBaseFragment<FragmentTimetableBinding>() {
         viewModel.startTimeLiveData.observe(this) {
             binding?.labels?.setStartDate(it / 100, it % 100)
         }
+        viewModel.wallpaperDateColorLiveData.observe(viewLifecycleOwner) { color ->
+            for (i in 0 until WINDOW_SIZE) {
+                views[i]?.wallpaperDateColor = color
+                views[i]?.setDateTextColor(color)
+            }
+        }
+        viewModel.wallpaperLabelColorLiveData.observe(viewLifecycleOwner) { color ->
+            binding?.labels?.applyLabelColor(color)
+        }
         viewModel.periodLabelLiveData.observe(this) { enabled ->
             binding?.labels?.setLabelMode(
                 if (enabled) LeftLabelView.LabelMode.PERIOD else LeftLabelView.LabelMode.TIME
@@ -289,6 +298,9 @@ class TimetableFragment : HiltBaseFragment<FragmentTimetableBinding>() {
             if (views[pos] == null) {
                 views[pos] = TimetableWeekView(context)
                 views[pos]?.init()
+                viewModel.wallpaperDateColorLiveData.value?.let {
+                    views[pos]?.wallpaperDateColor = it
+                }
                 viewModel.windowStartData[pos].value = viewModel.windowStartData[pos].value
                 viewModel.windowEventsData[pos].value?.let {
                     views[pos]?.refresh(
