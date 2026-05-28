@@ -224,6 +224,8 @@ private fun AgentChatScreen(
     val density = LocalDensity.current
     val keyboardController = LocalSoftwareKeyboardController.current
     val imeVisible = WindowInsets.ime.getBottom(density) > 0
+    val inputBottomPadding = if (imeVisible) 32.dp else 92.dp
+    val listBottomPadding = if (imeVisible) 72.dp else 96.dp
     val markwon = remember(context) {
         val builder = Markwon.builder(context)
             .usePlugin(LinkifyPlugin.create())
@@ -341,7 +343,7 @@ private fun AgentChatScreen(
                 start = tokens.spacing.sm,
                 top = tokens.spacing.sm,
                 end = tokens.spacing.sm,
-                bottom = if (imeVisible) tokens.spacing.lg else 96.dp
+                bottom = listBottomPadding
             )
         ) {
             itemsIndexed(
@@ -373,7 +375,7 @@ private fun AgentChatScreen(
                 .padding(
                     start = tokens.spacing.md,
                     end = tokens.spacing.md,
-                    bottom = if (imeVisible) tokens.spacing.md else 92.dp
+                    bottom = inputBottomPadding
                 ),
             verticalAlignment = Alignment.CenterVertically
         ) {
