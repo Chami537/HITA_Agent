@@ -247,7 +247,7 @@ private fun AgentChatScreen(
     }
     val keyboardBottomPx = maxOf(composeImeBottomPx, visibleKeyboardBottomPx)
     val keyboardBottomPadding = with(density) { keyboardBottomPx.toDp() }
-    val inputBottomPadding = if (keyboardBottomPx > 0) keyboardBottomPadding + 24.dp else 92.dp
+    val inputBottomPadding = if (keyboardBottomPx > 0) keyboardBottomPadding else 92.dp
     val listBottomPadding = if (keyboardBottomPx > 0) keyboardBottomPadding + 96.dp else 96.dp
     val markwon = remember(context) {
         val builder = Markwon.builder(context)
