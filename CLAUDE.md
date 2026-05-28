@@ -108,7 +108,18 @@ Defined in `app/build.gradle`:
 
 ## Development Workflow
 
-### 每次会话开始时
+### 每次会话开始时 — Claude 必须执行
+
+先拉取上游：
+
+```bash
+git fetch upstream
+git log HEAD..upstream/$(git branch --show-current) --oneline
+```
+
+有差异 → 报告用户，等用户决定 merge/rebase 后再继续。
+
+### 每次会话开始时 — 用户提供
 告诉 Claude：
 1. 要做什么功能（一句话目标）
 2. 涉及哪些文件/模块（如果知道的话）

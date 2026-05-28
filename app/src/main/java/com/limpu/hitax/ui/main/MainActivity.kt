@@ -18,10 +18,13 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.appcompat.app.AlertDialog
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -550,6 +553,7 @@ private fun MainScreen(
         Column(
             modifier = Modifier
                 .fillMaxSize()
+                .padding(top = 6.dp)
                 .graphicsLayer {
                     translationX = contentOffset
                     scaleX = contentScale
@@ -572,10 +576,12 @@ private fun MainScreen(
                 onAgentShortcut = onAgentShortcut,
                 onAddEvent = onAddEvent,
             )
+            Spacer(Modifier.height(8.dp))
             Box(
                 modifier = Modifier
                     .weight(1f)
                     .fillMaxWidth()
+                    .padding(bottom = 70.dp)
             ) {
                 MainFragmentPager(
                     selectedTab = selectedTab,
@@ -643,9 +649,10 @@ private fun MainTopBar(
         modifier = Modifier
             .fillMaxWidth()
             .statusBarsPadding()
-            .height(56.dp)
+            .height(64.dp)
+            .padding(bottom = 4.dp)
             .padding(start = HitaTheme.tokens.spacing.sm),
-        verticalAlignment = Alignment.CenterVertically
+        verticalAlignment = Alignment.Bottom
     ) {
         when (selectedTab) {
             0 -> ToolbarTitle(todayTitle)
@@ -833,6 +840,11 @@ private fun MainFragmentPager(
     )
 }
 
+private val CapsuleBlue = Color(0xFF3390EC)
+private val ActiveBlue = Color(0xFF0088CC)
+private val CapsuleTabWidth = 68.dp
+private val CapsuleTabIconSize = 18.dp
+
 @Composable
 private fun MainPillTabBar(
     selectedTab: Int,
@@ -840,53 +852,81 @@ private fun MainPillTabBar(
     onSelectTab: (Int) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val tabs = listOf(
-        MainTabSpec(R.string.title_timeline, R.drawable.ic_nav_today),
-        MainTabSpec(R.string.title_timetable, R.drawable.ic_nav_timetable),
-        MainTabSpec(R.string.title_agent, R.drawable.ic_baseline_toys_24),
-        MainTabSpec(R.string.title_navigation, R.drawable.ic_nav_navigation),
-    )
+    val tabs = remember {
+        listOf(
+            MainTabSpec(R.string.title_timeline, R.drawable.ic_nav_today),
+            MainTabSpec(R.string.title_timetable, R.drawable.ic_nav_timetable),
+            MainTabSpec(R.string.title_agent, R.drawable.ic_baseline_toys_24),
+            MainTabSpec(R.string.title_navigation, R.drawable.ic_nav_navigation),
+        )
+    }
     val view = LocalView.current
+    val density = LocalDensity.current
+    val tabWidthPx = with(density) { CapsuleTabWidth.toPx() }
+
+    val indicatorOffsetPx by animateFloatAsState(
+        targetValue = selectedTab * tabWidthPx,
+        animationSpec = spring(dampingRatio = 0.85f, stiffness = 350f),
+        label = "pill_offset"
+    )
+
     Surface(
         modifier = modifier.alpha(alpha),
         shape = RoundedCornerShape(28.dp),
-        color = Color(0xCC111111),
-        shadowElevation = 8.dp
+        color = Color.White,
+        shadowElevation = 6.dp
     ) {
-        Row(
-            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            tabs.forEachIndexed { index, tab ->
-                val active = index == selectedTab
-                Column(
-                    modifier = Modifier
-                        .width(62.dp)
-                        .clip(RoundedCornerShape(22.dp))
-                        .background(if (active) Color.White.copy(alpha = 0.18f) else Color.Transparent)
-                        .clickable {
-                            view.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
-                            onSelectTab(index)
-                        }
-                        .padding(horizontal = 8.dp, vertical = 4.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally
-                ) {
-                    Icon(
-                        painter = painterResource(tab.iconRes),
-                        contentDescription = null,
-                        tint = if (active) Color.White else Color.White.copy(alpha = 0.62f),
-                        modifier = Modifier.size(26.dp)
+        Box(modifier = Modifier.padding(horizontal = 4.dp, vertical = 4.dp)) {
+            Surface(
+                modifier = Modifier
+                    .graphicsLayer { translationX = indicatorOffsetPx }
+                    .width(CapsuleTabWidth)
+                    .height(44.dp),
+                shape = RoundedCornerShape(22.dp),
+                color = CapsuleBlue.copy(alpha = 0.12f)
+            ) {}
+
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                tabs.forEachIndexed { index, tab ->
+                    val active = index == selectedTab
+
+                    val tint by animateColorAsState(
+                        targetValue = if (active) ActiveBlue else Color.Black,
+                        animationSpec = spring(dampingRatio = 0.85f, stiffness = 350f),
+                        label = "tab_tint_$index"
                     )
-                    Text(
-                        text = stringResource(tab.titleRes),
-                        color = Color.White.copy(alpha = if (active) 1f else 0.58f),
-                        fontSize = 10.sp,
-                        lineHeight = 10.sp,
-                        fontWeight = if (active) FontWeight.Bold else FontWeight.Normal,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.padding(top = 1.dp)
-                    )
+
+                    Column(
+                        modifier = Modifier
+                            .width(CapsuleTabWidth)
+                            .clip(RoundedCornerShape(22.dp))
+                            .clickable(
+                                indication = null,
+                                interactionSource = remember { MutableInteractionSource() }
+                            ) {
+                                view.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
+                                onSelectTab(index)
+                            }
+                            .padding(horizontal = 8.dp, vertical = 4.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Icon(
+                            painter = painterResource(tab.iconRes),
+                            contentDescription = null,
+                            tint = tint,
+                            modifier = Modifier.size(CapsuleTabIconSize)
+                        )
+                        Text(
+                            text = stringResource(tab.titleRes),
+                            color = tint,
+                            fontSize = 10.sp,
+                            lineHeight = 10.sp,
+                            fontWeight = if (active) FontWeight.Bold else FontWeight.Normal,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.padding(top = 3.dp)
+                        )
+                    }
                 }
             }
         }
