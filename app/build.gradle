@@ -17,7 +17,7 @@ if (keystorePropertiesFile.exists()) {
 android {
     signingConfigs {
         release {
-            if (keystorePropertiesFile.exists()) {
+            if (keystorePropertiesFile.exists() && keystoreProperties['storeFile']) {
                 storeFile file(keystoreProperties['storeFile'])
                 storePassword keystoreProperties['storePassword']
                 keyAlias keystoreProperties['keyAlias']
@@ -51,7 +51,7 @@ android {
         buildConfigField "long", "UPDATE_VERSION_CODE", "${appVersionCodeValue}L"
         buildConfigField "String", "UPDATE_LOG", '""'
         buildConfigField "boolean", "UPDATE_ALLOW_PRERELEASE", "true"
-        buildConfigField "String", "MINIMAX_API_KEY", "\"${keystoreProperties.getProperty('minimaxApiKey', '')}\""
+        buildConfigField "String", "DEEPSEEK_API_KEY", "\"${keystoreProperties.getProperty('deepseekApiKey', '')}\""
         buildConfigField "String", "ZHIPU_API_KEY", "\"${keystoreProperties.getProperty('zhipuApiKey', '')}\""
     }
 

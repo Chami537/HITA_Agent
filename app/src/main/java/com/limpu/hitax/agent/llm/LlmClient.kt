@@ -9,7 +9,7 @@ import retrofit2.http.Body
 import retrofit2.http.Header
 import retrofit2.http.POST
 
-interface MiniMaxApiService {
+interface LlmApiService {
     @POST("v1/chat/completions")
     fun chatCompletion(
         @Header("Authorization") authorization: String,
@@ -75,11 +75,11 @@ data class ZhipuUsage(
 )
 
 object LlmClient {
-    private const val BASE_URL = "https://api.minimaxi.com/"
+    private const val BASE_URL = "https://api.deepseek.com/"
 
-    val MODEL = "MiniMax-M2.7"
+    val MODEL = "deepseek-v4-flash"
 
-    val service: MiniMaxApiService by lazy {
+    val service: LlmApiService by lazy {
         val client = OkHttpClient.Builder()
             .connectTimeout(30, java.util.concurrent.TimeUnit.SECONDS)
             .readTimeout(60, java.util.concurrent.TimeUnit.SECONDS)
@@ -91,10 +91,10 @@ object LlmClient {
             .client(client)
             .addConverterFactory(GsonConverterFactory.create())
             .build()
-            .create(MiniMaxApiService::class.java)
+            .create(LlmApiService::class.java)
     }
 
-    fun authHeader(): String = BuildConfig.MINIMAX_API_KEY
+    fun authHeader(): String = "Bearer ${BuildConfig.DEEPSEEK_API_KEY}"
 }
 
 object ZhipuClient {

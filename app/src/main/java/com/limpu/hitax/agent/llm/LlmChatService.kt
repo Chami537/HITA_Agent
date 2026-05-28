@@ -99,11 +99,11 @@ object LlmChatService {
                 } catch (e: Exception) {
                     retryCount++
                     if (retryCount >= maxRetries) {
-                        LogUtils.e("MiniMax API error in step ${step + 1} after $maxRetries attempts: ${e.javaClass.simpleName}: ${e.message}", e)
+                        LogUtils.e("DeepSeek API error in step ${step + 1} after $maxRetries attempts: ${e.javaClass.simpleName}: ${e.message}", e)
                         return null
                     }
                     val delayMs = 2000L * retryCount
-                    LogUtils.w("MiniMax network error in step ${step + 1}, attempt $retryCount/$maxRetries (${e.javaClass.simpleName}), retrying in ${delayMs}ms...")
+                    LogUtils.w("DeepSeek network error in step ${step + 1}, attempt $retryCount/$maxRetries (${e.javaClass.simpleName}), retrying in ${delayMs}ms...")
                     delay(delayMs)
                     continue
                 }
@@ -113,7 +113,7 @@ object LlmChatService {
                 if (code == 529 || code == 503 || code == 429) {
                     retryCount++
                     val delayMs = 3000L * retryCount
-                    LogUtils.w("MiniMax HTTP $code in step ${step + 1}, attempt $retryCount/$maxRetries, retrying after ${delayMs}ms...")
+                    LogUtils.w("DeepSeek HTTP $code in step ${step + 1}, attempt $retryCount/$maxRetries, retrying after ${delayMs}ms...")
                     delay(delayMs)
                 } else {
                     break
@@ -123,23 +123,23 @@ object LlmChatService {
 
             if (!finalResponse.isSuccessful) {
                 val errorBody = finalResponse.errorBody()?.string()
-                LogUtils.e( "MiniMax HTTP ${finalResponse.code()} in step ${step + 1}: $errorBody")
+                LogUtils.e( "DeepSeek HTTP ${finalResponse.code()} in step ${step + 1}: $errorBody")
                 return null
             }
 
             val body = finalResponse.body()
             if (body == null) {
-                LogUtils.e("MiniMax body is null in step ${step + 1}")
+                LogUtils.e("DeepSeek body is null in step ${step + 1}")
                 return null
             }
             val choice = body.choices?.firstOrNull()
             if (choice == null) {
-                LogUtils.e("MiniMax choices empty in step ${step + 1}")
+                LogUtils.e("DeepSeek choices empty in step ${step + 1}")
                 return null
             }
             val content = choice.message?.content
             if (content == null) {
-                LogUtils.e("MiniMax content null in step ${step + 1}, message=${choice.message}")
+                LogUtils.e("DeepSeek content null in step ${step + 1}, message=${choice.message}")
                 return null
             }
 
@@ -272,7 +272,7 @@ private suspend fun emitResultToMain(
 /**
  * 处理带附件的消息，使用智谱多模态API理解附件内容
  * 仅用于图片和视频理解，文档类文件优先本地处理
- * 然后将理解结果添加到对话历史，继续使用 miniMAX 进行对话
+ * 然后将理解结果添加到对话历史，继续使用 DeepSeek 进行对话
  */
 suspend fun LlmChatService.chatWithAttachment(
     history: List<ChatMessage>,
@@ -393,7 +393,7 @@ suspend fun LlmChatService.chatWithAttachment(
                 newHistory[newHistory.size - 1] = ChatMessage(role = "user", content = enhancedUserMessage)
             }
 
-            // 3. 使用 miniMAX 继续对话
+            // 3. 使用 DeepSeek 继续对话
             LlmChatService.chat(
                 history = newHistory,
                 timetableId = timetableId,
