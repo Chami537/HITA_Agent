@@ -272,7 +272,6 @@ private fun buildHeaderState(
         .asReversed()
         .firstOrNull { !SpecialEventReminderUtils.isExamEvent(it) && it.containsTimeStamp(now) }
     val nextEvent = todayEvents
-        .asReversed()
         .firstOrNull { !SpecialEventReminderUtils.isExamEvent(it) && it.happensAfterTimeStamp(now) }
 
     val title: String

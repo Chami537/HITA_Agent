@@ -859,36 +859,33 @@ private fun MainPillTabBar(
         ) {
             tabs.forEachIndexed { index, tab ->
                 val active = index == selectedTab
-                Row(
+                Column(
                     modifier = Modifier
+                        .width(62.dp)
                         .clip(RoundedCornerShape(22.dp))
                         .background(if (active) Color.White.copy(alpha = 0.18f) else Color.Transparent)
                         .clickable {
                             view.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
                             onSelectTab(index)
                         }
-                        .padding(
-                            horizontal = if (active) 12.dp else 8.dp,
-                            vertical = 8.dp
-                        ),
-                    verticalAlignment = Alignment.CenterVertically
+                        .padding(horizontal = 8.dp, vertical = 7.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
                 ) {
                     Icon(
                         painter = painterResource(tab.iconRes),
                         contentDescription = null,
-                        tint = if (active) Color.White else Color.White.copy(alpha = 0.5f),
-                        modifier = Modifier.size(22.dp)
+                        tint = if (active) Color.White else Color.White.copy(alpha = 0.62f),
+                        modifier = Modifier.size(26.dp)
                     )
-                    AnimatedVisibility(visible = active) {
-                        Text(
-                            text = stringResource(tab.titleRes),
-                            color = Color.White,
-                            fontSize = 13.sp,
-                            fontWeight = FontWeight.Bold,
-                            maxLines = 1,
-                            modifier = Modifier.padding(start = 6.dp)
-                        )
-                    }
+                    Text(
+                        text = stringResource(tab.titleRes),
+                        color = Color.White.copy(alpha = if (active) 1f else 0.58f),
+                        fontSize = 10.sp,
+                        fontWeight = if (active) FontWeight.Bold else FontWeight.Normal,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.padding(top = 3.dp)
+                    )
                 }
             }
         }
