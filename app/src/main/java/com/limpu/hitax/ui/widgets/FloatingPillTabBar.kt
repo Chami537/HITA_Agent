@@ -6,13 +6,15 @@ import android.animation.ValueAnimator
 import android.content.Context
 import android.content.res.ColorStateList
 import android.graphics.Color
+import android.graphics.Outline
 import android.graphics.Typeface
-import android.graphics.drawable.Drawable
+import android.graphics.drawable.GradientDrawable
 import android.util.AttributeSet
 import android.util.TypedValue
 import android.view.Gravity
-import android.view.ViewTreeObserver
-import android.view.animation.OvershootInterpolator
+import android.view.View
+import android.view.ViewOutlineProvider
+import android.view.animation.DecelerateInterpolator
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
@@ -21,11 +23,8 @@ import com.limpu.hitax.R
 /**
  * 浮动胶囊式底部标签栏，仿 Telegram 风格。
  *
- * 动画策略：FLIP（First-Last-Invert-Play）
- * 1. 记录切换前各 item 位置
- * 2. 瞬间应用 active/inactive 布局
- * 3. 用 translationX/Y 补偿偏移 → 视觉上回到旧位置
- * 4. 同一 ValueAnimator 驱动：位置回弹 + label 缩放 + 图标 tint + 背景 alpha
+ * 每个 tab 纵向排列：icon 在上，文字在下，始终可见。
+ * clipToOutline 裁剪子项到胶囊曲线，实现完美贴合。
  */
 class FloatingPillTabBar @JvmOverloads constructor(
     context: Context,
@@ -51,29 +50,57 @@ class FloatingPillTabBar @JvmOverloads constructor(
     private val inactiveColor = 0x80FFFFFF.toInt()
     private val activeTint = ColorStateList.valueOf(activeColor)
     private val inactiveTint = ColorStateList.valueOf(inactiveColor)
+    private val inactiveTextAlpha = 0.5f
 
-    private val iconSize = dp(22)
-    private val pad = dp(8)
-    private val padLeftActive = dp(12)
-    private val padRightActive = dp(16)
+    private val iconSize = dp(18)
+    private val itemWidth = dp(60)
+    private val itemPadH = dp(6)
+    private val itemPadV = dp(7)
     private val gapItems = dp(2)
-    private val gapIconLabel = dp(6)
+    private val gapIconLabel = dp(3)
     private val pillElevation = dp(4).toFloat()
+    private val activeScale = 1.08f
+    private val barPadV = dp(1)
 
-    private val animDuration = 350L
-    private val spring = OvershootInterpolator(1.2f)
+    private val animDuration = 400L
+    private val smooth = DecelerateInterpolator()
 
-    // Pre-load drawables to avoid inflation during animation
-    private val activeBgDrawable: Drawable by lazy {
-        context.getDrawable(R.drawable.bg_pill_item_active)!!
+    private val activeBgColor = Color.argb(0xD9, 0x2A, 0xAB, 0xEE)
+
+    private fun createActiveBg(pos: Int): GradientDrawable {
+        val large = dp(999).toFloat()
+        val small = dp(10).toFloat()
+        val lastIdx = tabItems.size - 1
+        return GradientDrawable().apply {
+            setColor(activeBgColor)
+            cornerRadii = when {
+                pos == 0 && pos == lastIdx ->
+                    floatArrayOf(large, large, large, large, large, large, large, large)
+                pos == 0 ->
+                    floatArrayOf(large, large, small, small, small, small, large, large)
+                pos == lastIdx ->
+                    floatArrayOf(small, small, large, large, large, large, small, small)
+                else ->
+                    floatArrayOf(small, small, small, small, small, small, small, small)
+            }
+        }
     }
 
     init {
         orientation = HORIZONTAL
         gravity = Gravity.CENTER_VERTICAL
         setBackgroundResource(R.drawable.bg_pill_bar)
-        setPadding(dp(8), dp(6), dp(8), dp(6))
+        // 只有垂直内边距，水平方向由 clipToOutline 裁剪贴合
+        setPadding(0, barPadV, 0, barPadV)
         elevation = dp(8).toFloat()
+
+        clipToOutline = true
+        outlineProvider = object : ViewOutlineProvider() {
+            override fun getOutline(view: View, outline: Outline) {
+                val radius = view.height / 2f
+                outline.setRoundRect(0, 0, view.width, view.height, radius)
+            }
+        }
     }
 
     fun setTabs(items: List<TabItem>) {
@@ -85,11 +112,10 @@ class FloatingPillTabBar @JvmOverloads constructor(
         labelViews.clear()
 
         items.forEachIndexed { index, item ->
-            // Each tab is a FrameLayout-like: LinearLayout with background overlay + content
             val itemLayout = LinearLayout(context).apply {
-                orientation = HORIZONTAL
-                gravity = Gravity.CENTER_VERTICAL
-                setPadding(pad, pad, pad, pad)
+                orientation = VERTICAL
+                gravity = Gravity.CENTER
+                setPadding(itemPadH, itemPadV, itemPadH, itemPadV)
                 isClickable = true
                 isFocusable = true
                 setOnClickListener {
@@ -105,24 +131,25 @@ class FloatingPillTabBar @JvmOverloads constructor(
 
             val label = TextView(context).apply {
                 text = item.label
-                textSize = 13f
+                textSize = 10f
                 setTextColor(Color.WHITE)
-                typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD, false)
+                typeface = Typeface.DEFAULT
                 maxLines = 1
-                visibility = GONE
-                alpha = 0f
-                scaleX = 0f
-                scaleY = 0f
+                alpha = inactiveTextAlpha
                 val lp = LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT)
-                lp.leftMargin = gapIconLabel
+                lp.topMargin = gapIconLabel
                 layoutParams = lp
             }
 
             itemLayout.addView(icon)
             itemLayout.addView(label)
 
-            val lp = LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT)
-            if (index < items.size - 1) lp.rightMargin = gapItems
+            val isFirst = index == 0
+            val isLast = index == items.size - 1
+            val lp = LayoutParams(itemWidth, LayoutParams.WRAP_CONTENT)
+            // 首尾 item 贴边，中间 item 有间距；clipToOutline 裁剪边缘到曲线
+            lp.leftMargin = if (isFirst) 0 else gapItems
+            lp.rightMargin = if (isLast) 0 else 0
             itemLayout.layoutParams = lp
 
             addView(itemLayout)
@@ -131,8 +158,7 @@ class FloatingPillTabBar @JvmOverloads constructor(
             labelViews.add(label)
         }
 
-        // Init first tab as active
-        applyActiveLayout(0)
+        applyActiveFull(0)
     }
 
     fun selectTab(position: Int) {
@@ -148,75 +174,35 @@ class FloatingPillTabBar @JvmOverloads constructor(
     }
 
     fun setSelectedTab(position: Int) {
-        if (position !in tabItems.indices || position == selectedPosition) return
+        if (position !in tabItems.indices || position == selectedPosition || isAnimating) return
         val oldPos = selectedPosition
         selectedPosition = position
         applyInactiveFull(oldPos)
-        applyActiveLayout(position)
+        applyActiveFull(position)
     }
 
     // ──────────────────────────────────────
-    //  FLIP animation
+    //  Animation
     // ──────────────────────────────────────
 
     private fun animateSwitch(from: Int, to: Int) {
         isAnimating = true
 
-        // === FIRST: record current positions ===
-        val oldLefts = itemViews.map { it.left.toFloat() }
+        // 旧项瞬间失活，不参与动画（避免任何旧项闪烁）
+        applyInactiveFull(from)
 
-        // === LAST: apply layout changes ===
-        applyInactiveLayoutOnly(from)
-        applyActiveLayoutOnly(to)
-
-        // Intercept pre-draw to capture new positions + apply compensation before render
-        viewTreeObserver.addOnPreDrawListener(object : ViewTreeObserver.OnPreDrawListener {
-            override fun onPreDraw(): Boolean {
-                viewTreeObserver.removeOnPreDrawListener(this)
-
-                val newLefts = itemViews.map { it.left.toFloat() }
-
-                // === INVERT: translate back to old positions ===
-                for (i in itemViews.indices) {
-                    itemViews[i].translationX = oldLefts[i] - newLefts[i]
-                }
-
-                // === PLAY: start unified animation ===
-                startFlipAnimation(from, to, oldLefts, newLefts)
-                return true
-            }
-        })
-    }
-
-    private fun startFlipAnimation(
-        from: Int, to: Int,
-        oldLefts: List<Float>, newLefts: List<Float>
-    ) {
-        val oldLabel = labelViews[from]
-        val newLabel = labelViews[to]
-        val oldIcon = iconViews[from]
-        val newIcon = iconViews[to]
-        val oldItem = itemViews[from]
+        // 新项渐入动画
         val newItem = itemViews[to]
+        val newIcon = iconViews[to]
+        val newLabel = labelViews[to]
 
-        // Old: copy active background to allow independent alpha animation
-        val oldBg = activeBgDrawable.constantState?.newDrawable()?.mutate()
-        oldItem.background = oldBg
-
-        // New: set background, initially transparent, icon already at active tint
-        val newBg = activeBgDrawable.constantState?.newDrawable()?.mutate()
+        val newBg = createActiveBg(to)
         newItem.background = newBg
-        newBg?.alpha = 0
+        newBg.alpha = 0
         newItem.elevation = pillElevation
-
-        newLabel.alpha = 0f
-        newLabel.scaleX = 0f
-        newLabel.scaleY = 0f
-        newIcon.imageTintList = activeTint
-
-        oldLabel.alpha = 1f
-        oldLabel.scaleX = 1f
-        oldLabel.scaleY = 1f
+        newItem.scaleX = 1f
+        newItem.scaleY = 1f
+        newLabel.alpha = inactiveTextAlpha
 
         val aR = (activeColor shr 16) and 0xFF
         val aG = (activeColor shr 8) and 0xFF
@@ -225,39 +211,31 @@ class FloatingPillTabBar @JvmOverloads constructor(
         val iG = (inactiveColor shr 8) and 0xFF
         val iB = inactiveColor and 0xFF
 
-        val oldDrw = oldIcon.drawable
         val newDrw = newIcon.drawable
 
         ValueAnimator.ofFloat(0f, 1f).apply {
             duration = animDuration
-            interpolator = spring
+            interpolator = null
             addUpdateListener {
-                val t = animatedValue as Float
+                val raw = animatedValue as Float
+                val f = smooth.getInterpolation(raw)
+                val s = easeOutBack(raw)
 
-                // ── Position: slide items to final layout ──
-                for (i in itemViews.indices) {
-                    itemViews[i].translationX = (oldLefts[i] - newLefts[i]) * (1f - t)
-                }
-
-                // ── Old: collapse ──
-                oldLabel.alpha = 1f - t
-                oldLabel.scaleX = 1f - t
-                oldLabel.scaleY = 1f - t
-                oldBg?.alpha = ((1f - t) * 255).toInt().coerceIn(0, 255)
-                oldDrw.setTint(argb(lerpByte(aR, iR, t), lerpByte(aG, iG, t), lerpByte(aB, iB, t)))
-
-                // ── New: expand ──
-                newLabel.alpha = t
-                newLabel.scaleX = t
-                newLabel.scaleY = t
-                newBg?.alpha = (t * 255).toInt().coerceIn(0, 255)
-                newDrw.setTint(argb(lerpByte(iR, aR, t), lerpByte(iG, aG, t), lerpByte(iB, aB, t)))
+                newBg.alpha = (f * 255).toInt().coerceIn(0, 255)
+                newDrw.setTint(argb(lerpByte(iR, aR, f), lerpByte(iG, aG, f), lerpByte(iB, aB, f)))
+                newLabel.alpha = inactiveTextAlpha + f * (1f - inactiveTextAlpha)
+                newItem.scaleX = 1f + (activeScale - 1f) * s
+                newItem.scaleY = 1f + (activeScale - 1f) * s
             }
             addListener(object : AnimatorListenerAdapter() {
                 override fun onAnimationEnd(animation: Animator) {
-                    itemViews.forEach { it.translationX = 0f }
-                    applyInactiveFull(from)
-                    applyActiveFull(to)
+                    // newBg 已渲染正确，保留不动，仅最终化非背景属性
+                    newItem.elevation = pillElevation
+                    newItem.scaleX = activeScale
+                    newItem.scaleY = activeScale
+                    newIcon.imageTintList = activeTint
+                    newLabel.alpha = 1f
+                    newLabel.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD, false)
                     isAnimating = false
                 }
             })
@@ -269,48 +247,28 @@ class FloatingPillTabBar @JvmOverloads constructor(
     //  State helpers
     // ──────────────────────────────────────
 
-    /** Layout-only: padding + visibility (triggers measure/layout) */
-    private fun applyActiveLayoutOnly(pos: Int) {
-        val item = itemViews[pos]
-        item.setPadding(padLeftActive, pad, padRightActive, pad)
-        labelViews[pos].visibility = VISIBLE
-    }
-
-    private fun applyInactiveLayoutOnly(pos: Int) {
-        val item = itemViews[pos]
-        item.setPadding(pad, pad, pad, pad)
-        labelViews[pos].visibility = GONE
-    }
-
-    /** Full apply (layout + visuals) for initial state or finalize */
     private fun applyActiveFull(pos: Int) {
         val item = itemViews[pos]
-        item.setPadding(padLeftActive, pad, padRightActive, pad)
-        item.setBackgroundResource(R.drawable.bg_pill_item_active)
+        item.background = createActiveBg(pos)
         item.elevation = pillElevation
+        item.scaleX = activeScale
+        item.scaleY = activeScale
         iconViews[pos].imageTintList = activeTint
         val label = labelViews[pos]
-        label.visibility = VISIBLE
         label.alpha = 1f
-        label.scaleX = 1f
-        label.scaleY = 1f
-    }
-
-    private fun applyActiveLayout(pos: Int) {
-        applyActiveFull(pos)
+        label.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD, false)
     }
 
     private fun applyInactiveFull(pos: Int) {
         val item = itemViews[pos]
         item.setBackgroundResource(0)
         item.elevation = 0f
-        item.setPadding(pad, pad, pad, pad)
+        item.scaleX = 1f
+        item.scaleY = 1f
         iconViews[pos].imageTintList = inactiveTint
         val label = labelViews[pos]
-        label.visibility = GONE
-        label.alpha = 0f
-        label.scaleX = 1f
-        label.scaleY = 1f
+        label.alpha = inactiveTextAlpha
+        label.typeface = Typeface.DEFAULT
     }
 
     // ──────────────────────────────────────
@@ -322,6 +280,14 @@ class FloatingPillTabBar @JvmOverloads constructor(
 
     private fun argb(r: Int, g: Int, b: Int): Int =
         (0xFF shl 24) or (r shl 16) or (g shl 8) or b
+
+    /** easeOutBack：末端轻微回弹，仅用于 scale */
+    private fun easeOutBack(t: Float): Float {
+        val c1 = 1.70158f
+        val c3 = c1 + 1f
+        val t1 = t - 1f
+        return (1f + c3 * t1 * t1 * t1 + c1 * t1 * t1).coerceIn(0f, 1.05f)
+    }
 
     private fun dp(value: Int): Int = TypedValue.applyDimension(
         TypedValue.COMPLEX_UNIT_DIP, value.toFloat(), resources.displayMetrics
