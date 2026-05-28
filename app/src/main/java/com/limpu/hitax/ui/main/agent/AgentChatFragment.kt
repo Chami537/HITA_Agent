@@ -2,6 +2,7 @@ package com.limpu.hitax.ui.main.agent
 
 import android.app.AlertDialog
 import android.content.Intent
+import android.graphics.Rect
 import android.net.Uri
 import android.os.Bundle
 import android.provider.OpenableColumns
@@ -48,6 +49,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextField
 import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.livedata.observeAsState
@@ -63,6 +65,7 @@ import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -221,11 +224,31 @@ private fun AgentChatScreen(
     val listState = rememberLazyListState()
     val context = LocalContext.current
     val density = LocalDensity.current
+    val view = LocalView.current
     val keyboardController = LocalSoftwareKeyboardController.current
-    val imeBottomPx = WindowInsets.ime.getBottom(density)
-    val imeBottomPadding = with(density) { imeBottomPx.toDp() }
-    val inputBottomPadding = if (imeBottomPx > 0) imeBottomPadding + 24.dp else 92.dp
-    val listBottomPadding = if (imeBottomPx > 0) imeBottomPadding + 96.dp else 96.dp
+    val composeImeBottomPx = WindowInsets.ime.getBottom(density)
+    val keyboardVisibilityThresholdPx = with(density) { 100.dp.roundToPx() }
+    var visibleKeyboardBottomPx by remember { mutableIntStateOf(0) }
+    DisposableEffect(view, keyboardVisibilityThresholdPx) {
+        val rootView = view.rootView
+        val rect = Rect()
+        val listener = android.view.ViewTreeObserver.OnGlobalLayoutListener {
+            rootView.getWindowVisibleDisplayFrame(rect)
+            val bottomInset = (rootView.height - rect.bottom).coerceAtLeast(0)
+            visibleKeyboardBottomPx = if (bottomInset > keyboardVisibilityThresholdPx) bottomInset else 0
+        }
+        rootView.viewTreeObserver.addOnGlobalLayoutListener(listener)
+        onDispose {
+            val observer = rootView.viewTreeObserver
+            if (observer.isAlive) {
+                observer.removeOnGlobalLayoutListener(listener)
+            }
+        }
+    }
+    val keyboardBottomPx = maxOf(composeImeBottomPx, visibleKeyboardBottomPx)
+    val keyboardBottomPadding = with(density) { keyboardBottomPx.toDp() }
+    val inputBottomPadding = if (keyboardBottomPx > 0) keyboardBottomPadding + 24.dp else 92.dp
+    val listBottomPadding = if (keyboardBottomPx > 0) keyboardBottomPadding + 96.dp else 96.dp
     val markwon = remember(context) {
         val builder = Markwon.builder(context)
             .usePlugin(LinkifyPlugin.create())
