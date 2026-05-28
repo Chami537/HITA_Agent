@@ -639,8 +639,8 @@ private fun MainTopBar(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .height(64.dp)
             .statusBarsPadding()
+            .height(64.dp)
             .padding(start = HitaTheme.tokens.spacing.sm),
         verticalAlignment = Alignment.Bottom
     ) {
