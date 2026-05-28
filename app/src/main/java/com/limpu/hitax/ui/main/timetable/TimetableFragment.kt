@@ -9,6 +9,9 @@ import android.view.View
 import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.widget.PopupMenu
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -44,11 +47,13 @@ import androidx.compose.runtime.livedata.observeAsState
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.PathEffect
@@ -88,6 +93,7 @@ import com.limpu.hitax.utils.TimeTools
 import dagger.hilt.android.AndroidEntryPoint
 import tyrantgit.explosionfield.ExplosionField
 import java.util.Calendar
+import kotlinx.coroutines.launch
 import kotlin.math.abs
 import kotlin.math.roundToInt
 
@@ -364,21 +370,64 @@ private fun TimetableWeekContent(
     val scrollState = rememberScrollState()
     val tableHeight = with(density) { timetableHeight(style).toDp() }
     var tableWidthPx by remember { mutableStateOf(0) }
-    var dragAmount by remember { mutableStateOf(0f) }
+    var contentWidthPx by remember { mutableStateOf(0f) }
+    val coroutineScope = rememberCoroutineScope()
+    var dragAccum by remember { mutableStateOf(0f) }
+    val animOffset = remember { Animatable(0f) }
+    var isAnimating by remember { mutableStateOf(false) }
+
+    val displayOffset = if (isAnimating) animOffset.value else dragAccum
+    val displayAlpha = if (contentWidthPx > 0f) {
+        (1f - (abs(displayOffset) / contentWidthPx).coerceIn(0f, 1f))
+    } else 1f
 
     Column(
         modifier = Modifier
             .fillMaxSize()
+            .graphicsLayer {
+                translationX = displayOffset
+                alpha = displayAlpha
+            }
+            .onSizeChanged { contentWidthPx = it.width.toFloat() }
             .pointerInput(startDate) {
                 detectHorizontalDragGestures(
                     onDragEnd = {
-                        when {
-                            dragAmount > 120f -> onPrevWeek()
-                            dragAmount < -120f -> onNextWeek()
+                        if (isAnimating) return@detectHorizontalDragGestures
+                        coroutineScope.launch {
+                            val threshold = contentWidthPx * 0.15f
+                            val cur = dragAccum
+                            dragAccum = 0f
+                            when {
+                                cur > threshold -> {
+                                    isAnimating = true
+                                    animOffset.snapTo(cur)
+                                    animOffset.animateTo(contentWidthPx, tween(150))
+                                    onPrevWeek()
+                                    animOffset.snapTo(-contentWidthPx)
+                                    animOffset.animateTo(0f, tween(150))
+                                    isAnimating = false
+                                }
+                                cur < -threshold -> {
+                                    isAnimating = true
+                                    animOffset.snapTo(cur)
+                                    animOffset.animateTo(-contentWidthPx, tween(150))
+                                    onNextWeek()
+                                    animOffset.snapTo(contentWidthPx)
+                                    animOffset.animateTo(0f, tween(150))
+                                    isAnimating = false
+                                }
+                                cur != 0f -> {
+                                    isAnimating = true
+                                    animOffset.snapTo(cur)
+                                    animOffset.animateTo(0f, spring())
+                                    isAnimating = false
+                                }
+                            }
                         }
-                        dragAmount = 0f
                     },
-                    onHorizontalDrag = { _, drag -> dragAmount += drag }
+                    onHorizontalDrag = { _, drag ->
+                        dragAccum = (dragAccum + drag).coerceIn(-contentWidthPx, contentWidthPx)
+                    }
                 )
             }
     ) {
@@ -446,7 +495,7 @@ private fun TimetableDowHeader(startDate: Long, monthColor: Color) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .height(HitaTheme.tokens.componentSize.timetableDateHeight)
+            .height(36.dp)
             .padding(bottom = HitaTheme.tokens.spacing.xs),
         verticalAlignment = Alignment.CenterVertically
     ) {
@@ -459,18 +508,20 @@ private fun TimetableDowHeader(startDate: Long, monthColor: Color) {
             modifier = Modifier.width(HitaTheme.tokens.componentSize.timetableLabelWidth)
         )
         dows.forEach { dow ->
-            Box(modifier = Modifier.weight(1f), contentAlignment = Alignment.Center) {
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .size(26.dp)
+                    .clip(CircleShape)
+                    .background(MaterialTheme.colorScheme.surface),
+                contentAlignment = Alignment.Center
+            ) {
                 Text(
                     text = dow,
                     color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.94f),
-                    fontSize = 11.sp,
+                    fontSize = 10.sp,
                     fontWeight = FontWeight.Bold,
                     textAlign = TextAlign.Center,
-                    modifier = Modifier
-                        .size(28.dp)
-                        .clip(CircleShape)
-                        .background(MaterialTheme.colorScheme.surface)
-                        .padding(top = 6.dp)
                 )
             }
         }

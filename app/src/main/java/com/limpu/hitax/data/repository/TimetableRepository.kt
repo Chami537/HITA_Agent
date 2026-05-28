@@ -5,9 +5,9 @@ import androidx.annotation.WorkerThread
 import javax.inject.Inject
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.LiveData
-import androidx.lifecycle.MediatorLiveData
 import androidx.lifecycle.MutableLiveData
 import com.limpu.component.data.DataState
+import com.limpu.component.data.MTransformations
 import com.limpu.hitax.R
 import com.limpu.hitax.utils.LogUtils
 import com.limpu.hitax.data.AppDatabase
@@ -112,19 +112,15 @@ class TimetableRepository @Inject constructor(val application: Application) {
      * 获取[from,to)内的事件，包含颜色
      */
     fun getEventsDuringWithColor(from: Long, to: Long): LiveData<List<EventItem>> {
-        val res = MediatorLiveData<List<EventItem>>()
-        var colorSource: LiveData<List<SubjectColor>>? = null
-        res.addSource(eventItemDao.getEventsDuring(from, to)) { events ->
-            colorSource?.let { res.removeSource(it) }
+        return MTransformations.switchMap(eventItemDao.getEventsDuring(from, to)) { events ->
             val subjects = mutableSetOf<String>()
             for (e in events) {
                 if (e.subjectId.isNotBlank()) {
                     subjects.add(e.subjectId)
                 }
             }
-            val nextColorSource = subjectDao.getSubjectColorsWithId(subjects)
-            colorSource = nextColorSource
-            res.addSource(nextColorSource) { colors ->
+            val colorSource = subjectDao.getSubjectColorsWithId(subjects)
+            MTransformations.map(colorSource) { colors ->
                 val map = mutableMapOf<String, Int>()
                 for (color in colors) {
                     map[color.id] = color.color
@@ -138,10 +134,9 @@ class TimetableRepository @Inject constructor(val application: Application) {
                         }
                     }
                 }
-                res.value = events
+                events
             }
         }
-        return res
     }
 
     fun getClassesOfSubject(subjectId: String): LiveData<List<EventItem>> {
@@ -201,15 +196,9 @@ class TimetableRepository @Inject constructor(val application: Application) {
      * 获得某学期（本地可能没有）的当前周数
      */
     fun getCurrentWeekOfTimetable(termItem: TermItem?): LiveData<Int> {
-        val result = MediatorLiveData<Int>()
-        result.addSource(timetableDao.getTimetableByEASCode(termItem?.getCode() ?: "")) {
-            it?.let {
-                result.value = it.getWeekNumber(System.currentTimeMillis())
-            } ?: kotlin.run {
-                result.value = 1
-            }
+        return MTransformations.map(timetableDao.getTimetableByEASCode(termItem?.getCode() ?: "")) {
+            it?.getWeekNumber(System.currentTimeMillis()) ?: 1
         }
-        return result
     }
 
     fun getRecentTimetable(): LiveData<Timetable?> {

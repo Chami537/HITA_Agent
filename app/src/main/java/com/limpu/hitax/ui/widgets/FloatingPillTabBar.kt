@@ -188,7 +188,7 @@ class FloatingPillTabBar @JvmOverloads constructor(
     private fun animateSwitch(from: Int, to: Int) {
         isAnimating = true
 
-        // 旧项瞬间失活，不参与动画（避免任何旧项闪烁）
+        // 旧项瞬间失活，不参与动画
         applyInactiveFull(from)
 
         // 新项渐入动画
@@ -196,22 +196,22 @@ class FloatingPillTabBar @JvmOverloads constructor(
         val newIcon = iconViews[to]
         val newLabel = labelViews[to]
 
+        // alpha 先于 setBackground，避免 clipToOutline 下 GradientDrawable 一帧全透闪烁
         val newBg = createActiveBg(to)
-        newItem.background = newBg
         newBg.alpha = 0
-        newItem.elevation = pillElevation
+        newItem.background = newBg
+
+        // 预置 active tint，用 icon alpha 做渐显，避免 setTint/imageTintList 竞争
+        newIcon.imageTintList = activeTint
+        newIcon.alpha = inactiveTextAlpha
+        newItem.elevation = 0f
         newItem.scaleX = 1f
         newItem.scaleY = 1f
         newLabel.alpha = inactiveTextAlpha
 
-        val aR = (activeColor shr 16) and 0xFF
-        val aG = (activeColor shr 8) and 0xFF
-        val aB = activeColor and 0xFF
-        val iR = (inactiveColor shr 16) and 0xFF
-        val iG = (inactiveColor shr 8) and 0xFF
-        val iB = inactiveColor and 0xFF
-
-        val newDrw = newIcon.drawable
+        // elevation 延迟：前 60% 动画保持 elevation=0，后 40% 线性升到 pillElevation
+        val elevationDelayFrac = 0.6f
+        val elevRampDenom = 1f - elevationDelayFrac
 
         ValueAnimator.ofFloat(0f, 1f).apply {
             duration = animDuration
@@ -222,18 +222,20 @@ class FloatingPillTabBar @JvmOverloads constructor(
                 val s = easeOutBack(raw)
 
                 newBg.alpha = (f * 255).toInt().coerceIn(0, 255)
-                newDrw.setTint(argb(lerpByte(iR, aR, f), lerpByte(iG, aG, f), lerpByte(iB, aB, f)))
+                newIcon.alpha = inactiveTextAlpha + f * (1f - inactiveTextAlpha)
                 newLabel.alpha = inactiveTextAlpha + f * (1f - inactiveTextAlpha)
                 newItem.scaleX = 1f + (activeScale - 1f) * s
                 newItem.scaleY = 1f + (activeScale - 1f) * s
+                // elevation 等背景可见后再出现，避免透明背景+可见阴影闪烁
+                val elevF = ((raw - elevationDelayFrac) / elevRampDenom).coerceIn(0f, 1f)
+                newItem.elevation = pillElevation * elevF
             }
             addListener(object : AnimatorListenerAdapter() {
                 override fun onAnimationEnd(animation: Animator) {
-                    // newBg 已渲染正确，保留不动，仅最终化非背景属性
                     newItem.elevation = pillElevation
                     newItem.scaleX = activeScale
                     newItem.scaleY = activeScale
-                    newIcon.imageTintList = activeTint
+                    newIcon.alpha = 1f
                     newLabel.alpha = 1f
                     newLabel.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD, false)
                     isAnimating = false
@@ -253,7 +255,9 @@ class FloatingPillTabBar @JvmOverloads constructor(
         item.elevation = pillElevation
         item.scaleX = activeScale
         item.scaleY = activeScale
-        iconViews[pos].imageTintList = activeTint
+        val icon = iconViews[pos]
+        icon.imageTintList = activeTint
+        icon.alpha = 1f
         val label = labelViews[pos]
         label.alpha = 1f
         label.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD, false)
@@ -265,7 +269,9 @@ class FloatingPillTabBar @JvmOverloads constructor(
         item.elevation = 0f
         item.scaleX = 1f
         item.scaleY = 1f
-        iconViews[pos].imageTintList = inactiveTint
+        val icon = iconViews[pos]
+        icon.imageTintList = inactiveTint
+        icon.alpha = 1f
         val label = labelViews[pos]
         label.alpha = inactiveTextAlpha
         label.typeface = Typeface.DEFAULT
@@ -274,12 +280,6 @@ class FloatingPillTabBar @JvmOverloads constructor(
     // ──────────────────────────────────────
     //  Utils
     // ──────────────────────────────────────
-
-    private fun lerpByte(a: Int, b: Int, t: Float): Int =
-        (a + ((b - a) * t).toInt()).coerceIn(0, 255)
-
-    private fun argb(r: Int, g: Int, b: Int): Int =
-        (0xFF shl 24) or (r shl 16) or (g shl 8) or b
 
     /** easeOutBack：末端轻微回弹，仅用于 scale */
     private fun easeOutBack(t: Float): Float {

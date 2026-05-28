@@ -136,11 +136,8 @@ class FragmentTimeLine : HiltBaseFragmentWithReceiver<ComposeViewBinding>() {
                 TimelineScreen(
                     viewModel = viewModel,
                     onTitleChanged = { mainPageController?.setTimelineTitleText(it) },
-                    onEventClick = { EventsUtils.showEventItem(requireContext(), it) },
-                    onHintConfirmed = {
-                        HintUtils.clickHint(requireContext(), it)
-                        viewModel.startRefresh()
-                    },
+                    onEventClick = { context?.let { ctx -> EventsUtils.showEventItem(ctx, it) } },
+                    onHintConfirmed = { context?.let { ctx -> HintUtils.clickHint(ctx, it) }; viewModel.startRefresh() },
                     onRefreshWidget = { activity?.let(WidgetUtils::sendRefreshToAll) },
                 )
             }
@@ -383,7 +380,7 @@ private fun buildHeaderState(
 
 private fun isBetween(calendar: Calendar, from: TimeInDay, to: TimeInDay): Boolean {
     val now = TimeInDay(calendar)
-    return now > from && now < to
+    return now >= from && now < to
 }
 
 private fun formatExamReminderName(exams: List<EventItem>): String {
@@ -772,6 +769,7 @@ private fun TimelineEventRow(
             .padding(start = HitaTheme.tokens.spacing.xl),
     ) {
         TimelineRail(isPassed = isPassed)
+        val cardShape = RoundedCornerShape(if (isPassed) 24.dp else 16.dp)
         Card(
             modifier = Modifier
                 .fillMaxWidth()
@@ -781,8 +779,9 @@ private fun TimelineEventRow(
                     end = HitaTheme.tokens.spacing.xl,
                     bottom = if (isPassed) HitaTheme.tokens.spacing.sm else HitaTheme.tokens.spacing.lg
                 )
+                .clip(cardShape)
                 .clickable(onClick = onClick),
-            shape = RoundedCornerShape(if (isPassed) 24.dp else 16.dp),
+            shape = cardShape,
             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
             elevation = CardDefaults.cardElevation(defaultElevation = if (isPassed) 0.dp else 8.dp)
         ) {

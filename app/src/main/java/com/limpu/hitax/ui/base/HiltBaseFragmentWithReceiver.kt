@@ -13,7 +13,8 @@ abstract class HiltBaseFragmentWithReceiver<V : ViewBinding> : HiltBaseFragment<
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        requireContext().registerReceiver(receiver, getIntentFilter())
+        val ctx = context ?: return
+        ctx.registerReceiver(receiver, getIntentFilter())
         receiverRegistered = true
     }
 

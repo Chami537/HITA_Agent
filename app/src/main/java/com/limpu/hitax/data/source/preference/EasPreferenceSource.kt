@@ -7,24 +7,59 @@ import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKeys
 import com.google.gson.Gson
 import com.limpu.hitax.data.model.eas.EASToken
+import java.io.File
 
 /**
  * 层次：DataSource
  * 教务登录状态的数据源
- * 类型：SharedPreference
+ * 类型：SharedPreference (Encrypted)
  * 数据：同步读取，异步写入
  */
 private const val SP_NAME_EAS_TOKEN = "local_eas_token"
 
 class EasPreferenceSource(context: Context) {
-    private val preference: SharedPreferences =
-        EncryptedSharedPreferences.create(
+    private val preference: SharedPreferences = run {
+        // Migration: if old plaintext SP exists, move data to encrypted SP then delete plaintext file
+        val oldData = try {
+            val plainPrefs = context.getSharedPreferences(SP_NAME_EAS_TOKEN, Context.MODE_PRIVATE)
+            if (plainPrefs.contains("username")) plainPrefs.all.toMap() else null
+        } catch (_: Exception) { null }
+
+        if (oldData != null) {
+            try {
+                val prefsDir = File(context.applicationInfo.dataDir, "shared_prefs")
+                File(prefsDir, "${SP_NAME_EAS_TOKEN}.xml").delete()
+            } catch (_: Exception) { }
+        }
+
+        val encryptedPrefs = EncryptedSharedPreferences.create(
             SP_NAME_EAS_TOKEN,
             MasterKeys.getOrCreate(MasterKeys.AES256_GCM_SPEC),
             context,
             EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
             EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
         )
+
+        if (oldData != null) {
+            val editor = encryptedPrefs.edit()
+            oldData.forEach { (key, value) ->
+                when (value) {
+                    is String -> editor.putString(key, value)
+                    is Int -> editor.putInt(key, value)
+                    is Long -> editor.putLong(key, value)
+                    is Float -> editor.putFloat(key, value)
+                    is Boolean -> editor.putBoolean(key, value)
+                    is Set<*> -> {
+                        @Suppress("UNCHECKED_CAST")
+                        editor.putStringSet(key, value as? Set<String>)
+                    }
+                }
+            }
+            editor.apply()
+        }
+
+        encryptedPrefs
+    }
 
     fun saveEasToken(token: EASToken) {
         preference.edit()
