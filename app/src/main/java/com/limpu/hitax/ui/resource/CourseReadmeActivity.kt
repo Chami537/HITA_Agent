@@ -5,113 +5,114 @@ import android.net.Uri
 import android.os.Bundle
 import android.text.method.LinkMovementMethod
 import android.view.View
-import androidx.core.view.ViewCompat
-import androidx.core.view.WindowInsetsCompat
-import androidx.core.view.updatePadding
-import com.google.android.material.snackbar.Snackbar
+import android.widget.TextView
+import android.widget.Toast
+import androidx.activity.compose.setContent
+import androidx.activity.viewModels
+import androidx.appcompat.app.AppCompatActivity
+import androidx.appcompat.app.AppCompatDelegate
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.statusBars
+import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Text
+import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.livedata.observeAsState
+import androidx.compose.runtime.remember
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.rotate
+import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.compose.ui.viewinterop.AndroidView
 import com.limpu.component.data.DataState
 import com.limpu.hitax.R
-import com.limpu.hitax.databinding.ActivityCourseReadmeBinding
-import com.limpu.hitax.ui.base.HiltBaseActivity
+import com.limpu.hitax.data.model.resource.CourseReadmeData
+import com.limpu.hitax.ui.design.HitaComposeTheme
+import com.limpu.hitax.ui.design.HitaTheme
 import com.limpu.hitax.utils.ActivityUtils
+import com.limpu.style.ThemeTools
 import dagger.hilt.android.AndroidEntryPoint
-import androidx.activity.viewModels
+import io.noties.markwon.AbstractMarkwonPlugin
 import io.noties.markwon.Markwon
+import io.noties.markwon.MarkwonConfiguration
 import io.noties.markwon.ext.latex.JLatexMathPlugin
 import io.noties.markwon.ext.strikethrough.StrikethroughPlugin
 import io.noties.markwon.ext.tables.TablePlugin
 import io.noties.markwon.ext.tasklist.TaskListPlugin
-import io.noties.markwon.AbstractMarkwonPlugin
-import io.noties.markwon.MarkwonConfiguration
 import io.noties.markwon.html.HtmlPlugin
 import io.noties.markwon.image.glide.GlideImagesPlugin
 import io.noties.markwon.linkify.LinkifyPlugin
 import org.jsoup.Jsoup
 import java.net.URI
-// syntax highlight removed (prism4j artifacts not available in current mirrors)
 
 @AndroidEntryPoint
-class CourseReadmeActivity : HiltBaseActivity<ActivityCourseReadmeBinding>() {
-    protected val viewModel: CourseReadmeViewModel by viewModels()
+class CourseReadmeActivity : AppCompatActivity() {
+    private val viewModel: CourseReadmeViewModel by viewModels()
+
     private lateinit var repoName: String
     private lateinit var courseName: String
     private lateinit var courseCode: String
     private lateinit var repoType: String
 
-    override fun initViewBinding(): ActivityCourseReadmeBinding =
-        ActivityCourseReadmeBinding.inflate(layoutInflater)
-
     override fun onCreate(savedInstanceState: Bundle?) {
+        val mode = when (ThemeTools.getThemeMode(this)) {
+            ThemeTools.MODE.DARK -> AppCompatDelegate.MODE_NIGHT_YES
+            ThemeTools.MODE.LIGHT -> AppCompatDelegate.MODE_NIGHT_NO
+            else -> AppCompatDelegate.MODE_NIGHT_FOLLOW_SYSTEM
+        }
+        AppCompatDelegate.setDefaultNightMode(mode)
         super.onCreate(savedInstanceState)
-        setToolbarActionBack(binding.toolbar)
-        applyStatusBarInsets()
-    }
 
-    override fun initViews() {
         repoName = intent.getStringExtra("repoName") ?: ""
         courseName = intent.getStringExtra("courseName") ?: repoName
         courseCode = intent.getStringExtra("courseCode") ?: repoName
         repoType = intent.getStringExtra("repoType") ?: "normal"
 
-        binding.toolbar.title = courseName
-        binding.courseCode.text = courseCode
-        binding.readmeText.text = getString(R.string.course_readme_loading)
-        binding.buttonContribute.setOnClickListener {
-            ActivityUtils.startCourseContributionActivity(this, repoName, courseName, courseCode, repoType)
-        }
-
-        viewModel.readmeLiveData.observe(this) { state ->
-            binding.progress.visibility = View.GONE
-            if (state.state == DataState.STATE.SUCCESS) {
-                val data = state.data ?: return@observe
-                binding.sourceText.text = getString(R.string.course_readme_source, data.source)
-                val processed = preprocessReadme(data.markdown)
-                val linkBase = data.source
-                val markwon = Markwon.builder(this)
-                    .usePlugin(LinkifyPlugin.create())
-                    .usePlugin(HtmlPlugin.create())
-                    .usePlugin(TablePlugin.create(this))
-                    .usePlugin(TaskListPlugin.create(this))
-                    .usePlugin(StrikethroughPlugin.create())
-                    .usePlugin(JLatexMathPlugin.create(binding.readmeText.textSize))
-                    .usePlugin(GlideImagesPlugin.create(this))
-                    .usePlugin(object : AbstractMarkwonPlugin() {
-                        override fun configureConfiguration(builder: MarkwonConfiguration.Builder) {
-                            builder.linkResolver { _: View, link: String ->
-                                openLink(resolveReadmeLink(link, linkBase))
-                            }
-                        }
-                    })
-                    .build()
-                markwon.setMarkdown(binding.readmeText, processed)
-                binding.readmeText.movementMethod = LinkMovementMethod.getInstance()
-            } else {
-                val rawMessage = state.message?.trim().orEmpty()
-                val friendly = if (rawMessage.contains("invalid repo name", ignoreCase = true)) {
-                    getString(R.string.course_readme_missing)
-                } else {
-                    rawMessage.ifBlank { getString(R.string.course_resource_failed) }
-                }
-                binding.readmeText.text = friendly
-                Snackbar.make(binding.root, friendly, Snackbar.LENGTH_LONG).show()
+        setContent {
+            HitaComposeTheme() {
+                CourseReadmeScreen(
+                    viewModel = viewModel,
+                    courseName = courseName,
+                    courseCode = courseCode,
+                    repoName = repoName,
+                    repoType = repoType,
+                    preprocessReadme = ::preprocessReadme,
+                    resolveReadmeLink = ::resolveReadmeLink,
+                    openLink = ::openLink,
+                    onBack = { onBackPressedDispatcher.onBackPressed() }
+                )
             }
         }
     }
 
     override fun onStart() {
         super.onStart()
-        binding.progress.visibility = View.VISIBLE
         viewModel.load(repoName)
-    }
-
-    private fun applyStatusBarInsets() {
-        val target = binding.root
-        val originalTop = target.paddingTop
-        ViewCompat.setOnApplyWindowInsetsListener(target) { view, insets ->
-            val bars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
-            view.updatePadding(top = originalTop + bars.top)
-            insets
-        }
     }
 
     private fun preprocessReadme(markdown: String): String {
@@ -174,5 +175,188 @@ class CourseReadmeActivity : HiltBaseActivity<ActivityCourseReadmeBinding>() {
             val intent = Intent(Intent.ACTION_VIEW, Uri.parse(link))
             startActivity(intent)
         }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun CourseReadmeScreen(
+    viewModel: CourseReadmeViewModel,
+    courseName: String,
+    courseCode: String,
+    repoName: String,
+    repoType: String,
+    preprocessReadme: (String) -> String,
+    resolveReadmeLink: (String, String) -> String,
+    openLink: (String) -> Unit,
+    onBack: () -> Unit
+) {
+    val context = LocalContext.current
+    val tokens = HitaTheme.tokens
+    val state by viewModel.readmeLiveData.observeAsState()
+    val current = state
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .windowInsetsPadding(WindowInsets.statusBars)
+    ) {
+        TopAppBar(
+            title = {
+                Text(
+                    text = courseName,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    maxLines = 1
+                )
+            },
+            navigationIcon = {
+                IconButton(onClick = onBack) {
+                    Icon(
+                        painter = painterResource(R.drawable.ic_baseline_keyboard_arrow_right_24),
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onSurface,
+                        modifier = Modifier.rotate(180f)
+                    )
+                }
+            },
+            colors = TopAppBarDefaults.topAppBarColors(
+                containerColor = MaterialTheme.colorScheme.background
+            )
+        )
+
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(
+                    start = tokens.spacing.lg,
+                    top = tokens.spacing.sm,
+                    end = tokens.spacing.lg,
+                    bottom = tokens.spacing.sm
+                )
+        ) {
+            Text(
+                text = courseCode,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            val source = current?.data?.source
+            if (!source.isNullOrBlank()) {
+                Text(
+                    text = stringResource(R.string.course_readme_source, source),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    fontSize = 12.sp,
+                    modifier = Modifier.padding(top = tokens.spacing.xs)
+                )
+            }
+            OutlinedButton(
+                onClick = {
+                    ActivityUtils.startCourseContributionActivity(
+                        context,
+                        repoName,
+                        courseName,
+                        courseCode,
+                        repoType
+                    )
+                },
+                colors = ButtonDefaults.outlinedButtonColors(
+                    contentColor = MaterialTheme.colorScheme.primary
+                ),
+                modifier = Modifier.padding(top = tokens.spacing.sm)
+            ) {
+                Text(text = stringResource(R.string.course_resource_contribute))
+            }
+        }
+
+        val loading = current == null || current.state == DataState.STATE.LOADING
+        if (loading) {
+            Box(
+                modifier = Modifier.fillMaxSize(),
+                contentAlignment = Alignment.TopCenter
+            ) {
+                CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
+            }
+            return@Column
+        }
+
+        if (current?.state == DataState.STATE.SUCCESS) {
+            val data = current.data ?: return@Column
+            ReadmeContent(
+                data = data,
+                preprocessReadme = preprocessReadme,
+                resolveReadmeLink = resolveReadmeLink,
+                openLink = openLink,
+                contentPadding = PaddingValues(tokens.spacing.lg)
+            )
+        } else {
+            val rawMessage = current?.message?.trim().orEmpty()
+            val friendly = if (rawMessage.contains("invalid repo name", ignoreCase = true)) {
+                stringResource(R.string.course_readme_missing)
+            } else {
+                rawMessage.ifBlank { stringResource(R.string.course_resource_failed) }
+            }
+            LaunchedEffect(friendly) {
+                Toast.makeText(context, friendly, Toast.LENGTH_LONG).show()
+            }
+            Text(
+                text = friendly,
+                color = MaterialTheme.colorScheme.onSurface,
+                modifier = Modifier.padding(tokens.spacing.lg)
+            )
+        }
+    }
+}
+
+@Composable
+private fun ReadmeContent(
+    data: CourseReadmeData,
+    preprocessReadme: (String) -> String,
+    resolveReadmeLink: (String, String) -> String,
+    openLink: (String) -> Unit,
+    contentPadding: PaddingValues
+) {
+    val context = LocalContext.current
+    val textColor = MaterialTheme.colorScheme.onSurface.toArgb()
+    val markdown = remember(data.markdown) { preprocessReadme(data.markdown) }
+    val markwon = remember(context, data.source) {
+        Markwon.builder(context)
+            .usePlugin(LinkifyPlugin.create())
+            .usePlugin(HtmlPlugin.create())
+            .usePlugin(TablePlugin.create(context))
+            .usePlugin(TaskListPlugin.create(context))
+            .usePlugin(StrikethroughPlugin.create())
+            .usePlugin(JLatexMathPlugin.create(15f))
+            .usePlugin(GlideImagesPlugin.create(context))
+            .usePlugin(object : AbstractMarkwonPlugin() {
+                override fun configureConfiguration(builder: MarkwonConfiguration.Builder) {
+                    builder.linkResolver { _: View, link: String ->
+                        openLink(resolveReadmeLink(link, data.source))
+                    }
+                }
+            })
+            .build()
+    }
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState())
+    ) {
+        AndroidView(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(contentPadding),
+            factory = {
+                TextView(it).apply {
+                    textSize = 15f
+                    setTextColor(textColor)
+                    movementMethod = LinkMovementMethod.getInstance()
+                    linksClickable = true
+                }
+            },
+            update = { textView ->
+                textView.setTextColor(textColor)
+                markwon.setMarkdown(textView, markdown)
+            }
+        )
+        Spacer(modifier = Modifier.height(16.dp))
     }
 }

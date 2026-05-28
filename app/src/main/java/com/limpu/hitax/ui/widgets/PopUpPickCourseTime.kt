@@ -1,161 +1,79 @@
 package com.limpu.hitax.ui.widgets
 
-import android.annotation.SuppressLint
-import android.content.Context
-import android.graphics.Color
-import android.view.*
-import android.widget.TextView
+import android.os.Bundle
+import android.view.LayoutInflater
+import android.view.View
+import android.view.ViewGroup
 import android.widget.Toast
-import androidx.cardview.widget.CardView
-import androidx.lifecycle.MutableLiveData
-import androidx.recyclerview.widget.GridLayoutManager
-import androidx.recyclerview.widget.RecyclerView
-import androidx.viewbinding.ViewBinding
-import com.beloo.widget.chipslayoutmanager.ChipsLayoutManager
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateListOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.ComposeView
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.compose.ui.viewinterop.AndroidView
+import com.google.android.material.bottomsheet.BottomSheetDialogFragment
 import com.limpu.hitax.R
 import com.limpu.hitax.data.model.timetable.TimePeriodInDay
 import com.limpu.hitax.data.model.timetable.Timetable
-import com.limpu.hitax.databinding.DialogBottomPickCourseTimeBinding
-import com.limpu.hitax.databinding.DynamicAddEventDateitemBinding
+import com.limpu.hitax.ui.design.HitaComposeTheme
+import com.limpu.hitax.ui.design.HitaTheme
 import com.limpu.hitax.ui.event.add.CourseTime
 import com.limpu.hitax.utils.TimeTools
-import com.limpu.style.base.BaseActivity
-import com.limpu.style.base.BaseListAdapter
-import com.limpu.style.base.BaseViewHolder
-import com.limpu.style.widgets.TransparentBottomSheetDialog
-import com.limpu.style.widgets.TransparentDialog
-import java.sql.Time
-import java.util.*
-import kotlin.collections.ArrayList
+import com.limpu.style.widgets.MWheel3DView
+import java.util.Calendar
 
-class PopUpPickCourseTime(val timetable: Timetable) :
-    TransparentDialog<DialogBottomPickCourseTimeBinding>() {
+class PopUpPickCourseTime(val timetable: Timetable) : BottomSheetDialogFragment() {
+
     enum class Mode {
         DATE_AND_PERIOD,
         DATE_ONLY,
         PERIOD_ONLY,
     }
 
-    var rangeLiveData: MutableLiveData<Pair<Int, TimePeriodInDay>> = MutableLiveData()
-    var weeksLiveData: MutableLiveData<List<Boolean>> = MutableLiveData()
-    var selectedTimesLiveData: MutableLiveData<List<Long>> = MutableLiveData()
     var onTimeSelectedListener: OnTimeSelectedListener? = null
     var initTimetable: Timetable? = null
     var initCourseTime: CourseTime? = null
     private var mode: Mode = Mode.DATE_AND_PERIOD
-    private var listAdapter: PickWeekListAdapter? = null
-    private var datesAdapter: SelectedDateAdapter? = null
 
     interface OnTimeSelectedListener {
         fun onSelected(data: CourseTime)
     }
 
-    override fun getLayoutId(): Int {
-        return R.layout.dialog_bottom_pick_course_time
-    }
-
-    override fun initViewBinding(v: View): DialogBottomPickCourseTimeBinding {
-        return DialogBottomPickCourseTimeBinding.bind(v)
-    }
-
-
-    private fun bindLiveData() {
-        weeksLiveData.observe(this) {
-            listAdapter?.notifyData(it)
-        }
-        rangeLiveData.observe(this) {
-            binding.pickdow.currentIndex = it.first - 1
-            val period = timetable.transformCourseNumber(it.second)
-            binding.picktot.currentIndex = period.second - 1
-            binding.pickfromt.currentIndex = period.first - 1
-        }
-        selectedTimesLiveData.observe(this) {
-            val dt = mutableListOf<String>()
-            for (time in it) {
-                val c = Calendar.getInstance()
-                c.timeInMillis = time
-                context?.let { it1 ->
-                    dt.add(TimeTools.getDateString(it1, c, true, TimeTools.TTY_NONE))
-                }
-            }
-            datesAdapter?.notifyItemChangedSmooth(dt, notifyNormalItem = false)
-
-        }
-    }
-
-    override fun initViews(v: View) {
-        val dows: MutableList<String> = ArrayList()
-        for (str in requireActivity().resources.getStringArray(R.array.dow2)) dows.add(str)
-        binding.pickdow.setEntries(dows)
-        listAdapter = PickWeekListAdapter(requireActivity())
-        binding.weekList.adapter = listAdapter
-        binding.weekList.layoutManager = GridLayoutManager(context, 5)
-        listAdapter?.onItemCheckListener = object : PickWeekListAdapter.OnItemCheckListener {
-            override fun onItemChecked(position: Int, checked: Boolean) {
-                selectedTimesLiveData.value = getSelectedDates()
-            }
-        }
-        datesAdapter = context?.let { SelectedDateAdapter(it, mutableListOf()) }
-        binding.dateList.adapter = datesAdapter
-        binding.dateList.layoutManager = ChipsLayoutManager.newBuilder(context)
-            .setOrientation(ChipsLayoutManager.HORIZONTAL)
-            .setMaxViewsInRow(4)
-            .build()
-        binding.cancel.setOnClickListener {
-            dismiss()
-        }
-        binding.done.setOnClickListener {
-            val r = CourseTime()
-            r.dow = binding.pickdow.currentIndex + 1
-            r.period = timetable.transformTimePeriod(
-                binding.pickfromt.currentIndex + 1,
-                binding.picktot.currentIndex + 1
-            )
-            r.weeks = listAdapter?.getSelectedWeeks() ?: listOf()
-            if (mode != Mode.PERIOD_ONLY && r.weeks.isEmpty()) {
-                Toast.makeText(context, R.string.ade_pick_weeks, Toast.LENGTH_SHORT).show()
-            } else {
-                onTimeSelectedListener?.onSelected(r)
-                dismiss()
-            }
-        }
-        binding.pickfromt.setOnWheelChangedListener { _, _, newIndex ->
-            if (binding.picktot.currentIndex < newIndex) binding.picktot.currentIndex = newIndex
-            initTimetable?.let { tt ->
-                binding.fromTime.text = tt.scheduleStructure[newIndex].from.toString()
-            }
-        }
-        binding.picktot.setOnWheelChangedListener { _, _, newIndex ->
-            if (binding.pickfromt.currentIndex > newIndex) binding.pickfromt.currentIndex = newIndex
-            initTimetable?.let { tt ->
-                binding.toTime.text = tt.scheduleStructure[newIndex].to.toString()
-            }
-        }
-        binding.pickdow.setOnWheelChangedListener { _, _, _ ->
-            selectedTimesLiveData.value = getSelectedDates()
-        }
-        bindLiveData()
-    }
-
     fun setMode(mode: Mode): PopUpPickCourseTime {
         this.mode = mode
         return this
-    }
-
-
-    private fun getSelectedDates(): List<Long> {
-        val res = mutableListOf<Long>()
-        for (wk in listAdapter?.getSelectedWeeks() ?: listOf()) {
-            initTimetable?.getTimestamps(
-                wk,
-                binding.pickdow.currentIndex + 1,
-                binding.pickfromt.currentIndex + 1,
-                binding.picktot.currentIndex + 1
-            )?.let {
-                res.add(it[0])
-            }
-        }
-        return res
     }
 
     fun setInitialValue(timetable: Timetable?, courseTime: CourseTime?): PopUpPickCourseTime {
@@ -169,171 +87,355 @@ class PopUpPickCourseTime(val timetable: Timetable) :
         return this
     }
 
-
-    override fun onStart() {
-        super.onStart()
-        var weeksValue = mutableListOf<Boolean>()
-        initTimetable?.let {
-            val weeks = mutableListOf<Boolean>()
-            for (i in 0 until it.getWeekNumber(it.endTime.time)) weeks.add(false)
-            weeksValue = weeks
-            val times = mutableListOf<String>()
-            val periodTemp = getString(R.string.period)
-            for (i in 0 until it.scheduleStructure.size) {
-                times.add(String.format(periodTemp, i + 1))
-            }
-            binding.pickfromt.setEntries(times)
-            binding.picktot.setEntries(times)
-            if (it.scheduleStructure.isNotEmpty()) {
-                binding.fromTime.text = it.scheduleStructure[0].from.toString()
-                binding.toTime.text = it.scheduleStructure[0].to.toString()
-            }
-        }
-
-        if (mode == Mode.DATE_ONLY) {
-            binding.pickfromt.visibility = View.GONE
-            binding.picktot.visibility = View.GONE
-            binding.pickToLabel.visibility = View.GONE
-            binding.fromTime.visibility = View.GONE
-            binding.toTime.visibility = View.GONE
-            binding.timePreviewDash.visibility = View.GONE
-        } else if (mode == Mode.PERIOD_ONLY) {
-            binding.pickdow.visibility = View.GONE
-            binding.textView3.visibility = View.GONE
-            binding.weekList.visibility = View.GONE
-            binding.dateList.visibility = View.GONE
-            binding.fromTime.visibility = View.VISIBLE
-            binding.toTime.visibility = View.VISIBLE
-            binding.timePreviewDash.visibility = View.VISIBLE
-        }
-
-        initCourseTime?.let { initCourseTime ->
-            rangeLiveData.value =
-                Pair(initCourseTime.dow, initCourseTime.period)
-            for (i in initCourseTime.weeks) {
-                if (i > weeksValue.size) for (x in weeksValue.size until i) weeksValue.add(false)
-                weeksValue[i - 1] = true
-            }
-        }
-
-        weeksLiveData.value = weeksValue
-    }
-
-
-    internal class PickWeekListAdapter(val mContext: android.content.Context) :
-        RecyclerView.Adapter<PickWeekListAdapter.mViewHolder?>() {
-
-        private fun resolveColor(attr: Int): Int {
-            val typedValue = android.util.TypedValue()
-            mContext.theme.resolveAttribute(attr, typedValue, true)
-            return typedValue.data
-        }
-
-        var onItemCheckListener: OnItemCheckListener? = null
-
-        interface OnItemCheckListener {
-            fun onItemChecked(position: Int, checked: Boolean)
-        }
-
-        val weeks: MutableList<Boolean> = mutableListOf()
-
-        fun notifyData(data: List<Boolean>) {
-            weeks.clear()
-            weeks.addAll(data)
-            notifyDataSetChanged()
-        }
-
-        fun getSelectedWeeks(): List<Int> {
-            val res = mutableListOf<Int>()
-            for (i in 0 until weeks.size) {
-                if (weeks[i]) res.add(i + 1)
-            }
-            return res
-        }
-
-        override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): mViewHolder {
-            val v: View =
-                LayoutInflater.from(mContext)
-                    .inflate(R.layout.dynamic_pick_week_item, parent, false)
-            return mViewHolder(v)
-        }
-
-        @SuppressLint("SetTextI18n")
-        override fun onBindViewHolder(holder: mViewHolder, position: Int) {
-            holder.text.text = (position + 1).toString() + ""
-            if (position == weeks.size) {
-                holder.card.setCardBackgroundColor(
-                    resolveColor(com.limpu.style.R.attr.colorControlNormal)
-                )
-                holder.text.setTextColor(
-                    resolveColor(com.limpu.style.R.attr.textColorSecondary)
-                )
-                holder.text.text = "＋"
-                holder.card.setOnClickListener {
-                    for (i in 0..4) {
-                        weeks.add(false)
-                        notifyItemChanged(weeks.size - 2)
-                        notifyItemInserted(weeks.size - 1)
-                    }
-                }
-            } else {
-                if (!weeks[position]) {
-                    holder.card.setCardBackgroundColor(
-                        resolveColor(com.limpu.style.R.attr.colorControlNormal)
+    override fun onCreateView(
+        inflater: LayoutInflater,
+        container: ViewGroup?,
+        savedInstanceState: Bundle?
+    ): View {
+        return ComposeView(requireContext()).apply {
+            setContent {
+                HitaComposeTheme() {
+                    PickCourseTimeScreen(
+                        timetable = timetable,
+                        initTimetable = initTimetable,
+                        initCourseTime = initCourseTime,
+                        mode = mode,
+                        onCancel = { dismiss() },
+                        onConfirm = { courseTime ->
+                            if (mode != Mode.PERIOD_ONLY && courseTime.weeks.isEmpty()) {
+                                Toast.makeText(context, R.string.ade_pick_weeks, Toast.LENGTH_SHORT).show()
+                            } else {
+                                onTimeSelectedListener?.onSelected(courseTime)
+                                dismiss()
+                            }
+                        }
                     )
-                    holder.text.setTextColor(
-                        resolveColor(com.limpu.style.R.attr.textColorSecondary)
-                    )
-                } else {
-                    holder.card.setCardBackgroundColor(resolveColor(com.limpu.style.R.attr.colorPrimary))
-                    holder.text.setTextColor(Color.WHITE)
                 }
-                holder.card.setOnClickListener {
-                    weeks[position] = !weeks[position]
-                    onItemCheckListener?.onItemChecked(position, weeks[position])
-                    notifyItemChanged(position)
-                }
-            }
-        }
-
-        override fun getItemCount(): Int {
-            return weeks.size + 1
-        }
-
-        internal inner class mViewHolder(itemView: View) : RecyclerView.ViewHolder(itemView) {
-            var card: CardView
-            var text: TextView
-
-            init {
-                card = itemView.findViewById(R.id.card)
-                text = itemView.findViewById(R.id.text)
             }
         }
     }
+}
 
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun PickCourseTimeScreen(
+    timetable: Timetable,
+    initTimetable: Timetable?,
+    initCourseTime: CourseTime?,
+    mode: PopUpPickCourseTime.Mode,
+    onCancel: () -> Unit,
+    onConfirm: (CourseTime) -> Unit
+) {
+    val tokens = HitaTheme.tokens
+    val context = LocalContext.current
 
-    class SelectedDateAdapter(mContext: Context, mBeans: MutableList<String>) :
-        BaseListAdapter<String, SelectedDateAdapter.DHolder>(
-            mContext, mBeans
+    val dowEntries = remember {
+        context.resources.getStringArray(R.array.dow2).toList()
+    }
+    val periodEntries = remember {
+        val periodTemp = context.getString(R.string.period)
+        (0 until timetable.scheduleStructure.size).map {
+            String.format(periodTemp, it + 1)
+        }
+    }
+
+    val initDow = initCourseTime?.dow ?: 1
+    val initFromPeriod = initCourseTime?.let { timetable.transformCourseNumber(it.period).first } ?: 1
+    val initToPeriod = initCourseTime?.let { timetable.transformCourseNumber(it.period).second } ?: 1
+
+    var selectedDow by remember { mutableIntStateOf(initDow) }
+    var selectedFromPeriod by remember { mutableIntStateOf(initFromPeriod) }
+    var selectedToPeriod by remember { mutableIntStateOf(initToPeriod) }
+
+    val weekCount = remember {
+        initTimetable?.getWeekNumber(initTimetable.endTime.time) ?: 20
+    }
+    val selectedWeeks = remember {
+        val weeks = mutableStateListOf<Boolean>()
+        for (i in 0 until weekCount) weeks.add(false)
+        initCourseTime?.weeks?.forEach { week ->
+            if (week - 1 < weeks.size) weeks[week - 1] = true
+        }
+        weeks
+    }
+    var extraWeeks by remember { mutableIntStateOf(0) }
+
+    val fromTimeText = remember(selectedFromPeriod) {
+        timetable.scheduleStructure.getOrNull(selectedFromPeriod - 1)?.from?.toString() ?: ""
+    }
+    val toTimeText = remember(selectedToPeriod) {
+        timetable.scheduleStructure.getOrNull(selectedToPeriod - 1)?.to?.toString() ?: ""
+    }
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(tokens.spacing.lg)
+    ) {
+        // Title row
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically
         ) {
+            Text(
+                text = stringResource(R.string.dialog_pick_course_title),
+                fontSize = 20.sp,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onSurface,
+                modifier = Modifier.weight(1f)
+            )
+            Card(
+                onClick = onCancel,
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.surfaceVariant
+                ),
+                elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
+            ) {
+                Text(
+                    text = stringResource(R.string.cancel),
+                    fontSize = 16.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(horizontal = tokens.spacing.md, vertical = tokens.spacing.xs)
+                )
+            }
+            Spacer(modifier = Modifier.width(tokens.spacing.xs))
+            Card(
+                onClick = {
+                    val r = CourseTime()
+                    r.dow = selectedDow
+                    r.period = timetable.transformTimePeriod(selectedFromPeriod, selectedToPeriod)
+                    r.weeks = selectedWeeks.mapIndexedNotNull { index, selected ->
+                        if (selected) index + 1 else null
+                    }
+                    onConfirm(r)
+                },
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.primary
+                ),
+                elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
+            ) {
+                Text(
+                    text = stringResource(R.string.confirm),
+                    fontSize = 16.sp,
+                    color = MaterialTheme.colorScheme.onPrimary,
+                    modifier = Modifier.padding(horizontal = tokens.spacing.md, vertical = tokens.spacing.xs)
+                )
+            }
+        }
 
+        // Wheel pickers
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = tokens.spacing.lg),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            if (mode != PopUpPickCourseTime.Mode.PERIOD_ONLY) {
+                WheelPicker(
+                    entries = dowEntries,
+                    initialIndex = selectedDow - 1,
+                    modifier = Modifier.weight(1f),
+                    onItemSelected = { selectedDow = it + 1 }
+                )
+            }
+            if (mode != PopUpPickCourseTime.Mode.DATE_ONLY) {
+                WheelPicker(
+                    entries = periodEntries,
+                    initialIndex = selectedFromPeriod - 1,
+                    modifier = Modifier.weight(1f),
+                    onItemSelected = {
+                        selectedFromPeriod = it + 1
+                        if (selectedToPeriod < selectedFromPeriod) {
+                            selectedToPeriod = selectedFromPeriod
+                        }
+                    }
+                )
+                Text(
+                    text = stringResource(R.string.dialog_pick_course_to),
+                    fontSize = 14.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(horizontal = tokens.spacing.xs)
+                )
+                WheelPicker(
+                    entries = periodEntries,
+                    initialIndex = selectedToPeriod - 1,
+                    modifier = Modifier.weight(1f),
+                    onItemSelected = {
+                        selectedToPeriod = it + 1
+                        if (selectedFromPeriod > selectedToPeriod) {
+                            selectedFromPeriod = selectedToPeriod
+                        }
+                    }
+                )
+            }
+        }
 
-        class DHolder(viewBinding: DynamicAddEventDateitemBinding) :
-            BaseViewHolder<DynamicAddEventDateitemBinding>(
-                viewBinding
+        // Time preview
+        if (mode != PopUpPickCourseTime.Mode.DATE_ONLY) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = tokens.spacing.sm),
+                horizontalArrangement = Arrangement.Center,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = fromTimeText,
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Text(
+                    text = " - ",
+                    fontSize = 24.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Text(
+                    text = toTimeText,
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+
+        // Week picker
+        if (mode != PopUpPickCourseTime.Mode.PERIOD_ONLY) {
+            Text(
+                text = stringResource(R.string.ade_pick_weeks),
+                fontSize = 14.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(top = tokens.spacing.lg)
             )
 
-        override fun getViewBinding(parent: ViewGroup, viewType: Int): ViewBinding {
-            return DynamicAddEventDateitemBinding.inflate(mInflater, parent, false)
-        }
+            val totalWeeks = weekCount + extraWeeks * 5
+            LazyVerticalGrid(
+                columns = GridCells.Fixed(5),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = tokens.spacing.xs)
+                    .height(200.dp)
+            ) {
+                items(totalWeeks + 1) { index ->
+                    if (index < totalWeeks) {
+                        val isSelected = index < selectedWeeks.size && selectedWeeks[index]
+                        Surface(
+                            shape = RoundedCornerShape(tokens.radius.sm),
+                            color = if (isSelected) {
+                                MaterialTheme.colorScheme.primary
+                            } else {
+                                MaterialTheme.colorScheme.surfaceVariant
+                            },
+                            modifier = Modifier
+                                .padding(2.dp)
+                                .clickable {
+                                    if (index < selectedWeeks.size) {
+                                        selectedWeeks[index] = !selectedWeeks[index]
+                                    }
+                                }
+                        ) {
+                            Text(
+                                text = "${index + 1}",
+                                fontSize = 14.sp,
+                                color = if (isSelected) {
+                                    MaterialTheme.colorScheme.onPrimary
+                                } else {
+                                    MaterialTheme.colorScheme.onSurfaceVariant
+                                },
+                                textAlign = TextAlign.Center,
+                                modifier = Modifier.padding(vertical = tokens.spacing.xs)
+                            )
+                        }
+                    } else {
+                        // "+" button
+                        Surface(
+                            shape = RoundedCornerShape(tokens.radius.sm),
+                            color = MaterialTheme.colorScheme.surfaceVariant,
+                            modifier = Modifier
+                                .padding(2.dp)
+                                .clickable { extraWeeks++ }
+                        ) {
+                            Text(
+                                text = "＋",
+                                fontSize = 14.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                textAlign = TextAlign.Center,
+                                modifier = Modifier.padding(vertical = tokens.spacing.xs)
+                            )
+                        }
+                    }
+                }
+            }
 
-        override fun createViewHolder(viewBinding: ViewBinding, viewType: Int): DHolder {
-            return DHolder(viewBinding as DynamicAddEventDateitemBinding)
-        }
+            // Selected dates preview
+            val selectedDates = remember(selectedWeeks, selectedDow, selectedFromPeriod, selectedToPeriod) {
+                val dates = mutableListOf<String>()
+                selectedWeeks.forEachIndexed { index, selected ->
+                    if (selected) {
+                        initTimetable?.getTimestamps(
+                            index + 1,
+                            selectedDow,
+                            selectedFromPeriod,
+                            selectedToPeriod
+                        )?.firstOrNull()?.let { timestamp ->
+                            val c = Calendar.getInstance()
+                            c.timeInMillis = timestamp
+                            dates.add(TimeTools.getDateString(context, c, true, TimeTools.TTY_NONE))
+                        }
+                    }
+                }
+                dates
+            }
 
-        override fun bindHolder(holder: DHolder, data: String?, position: Int) {
-            holder.binding.date.text = data
+            if (selectedDates.isNotEmpty()) {
+                FlowRow(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = tokens.spacing.xs),
+                    horizontalArrangement = Arrangement.spacedBy(tokens.spacing.xs),
+                    verticalArrangement = Arrangement.spacedBy(tokens.spacing.xs)
+                ) {
+                    selectedDates.forEach { date ->
+                        Surface(
+                            shape = RoundedCornerShape(tokens.radius.sm),
+                            color = MaterialTheme.colorScheme.surfaceVariant
+                        ) {
+                            Text(
+                                text = date,
+                                fontSize = 12.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.padding(
+                                    horizontal = tokens.spacing.sm,
+                                    vertical = tokens.spacing.xs
+                                )
+                            )
+                        }
+                    }
+                }
+            }
         }
     }
+}
 
+@Composable
+private fun WheelPicker(
+    entries: List<String>,
+    initialIndex: Int,
+    modifier: Modifier = Modifier,
+    onItemSelected: (Int) -> Unit
+) {
+    AndroidView(
+        modifier = modifier.height(120.dp),
+        factory = { context ->
+            MWheel3DView(context).apply {
+                setEntries(entries)
+                currentIndex = initialIndex
+                setOnWheelChangedListener { _, _, newIndex ->
+                    onItemSelected(newIndex)
+                }
+            }
+        }
+    )
 }

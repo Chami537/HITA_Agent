@@ -3,261 +3,269 @@ package com.limpu.hitax.ui.resource
 import android.app.TimePickerDialog
 import android.os.Bundle
 import android.text.format.DateFormat
-import android.view.View
-import androidx.core.view.ViewCompat
-import androidx.core.view.WindowInsetsCompat
-import androidx.core.view.updatePadding
-import androidx.core.view.isVisible
-import com.google.android.material.snackbar.Snackbar
+import android.widget.Toast
+import androidx.activity.compose.setContent
+import androidx.activity.viewModels
+import androidx.appcompat.app.AlertDialog
+import androidx.appcompat.app.AppCompatActivity
+import androidx.appcompat.app.AppCompatDelegate
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.statusBars
+import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.Button
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.livedata.observeAsState
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.rotate
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.TextFieldValue
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.limpu.component.data.DataState
 import com.limpu.hitax.R
 import com.limpu.hitax.data.model.resource.CourseStructureSummary
 import com.limpu.hitax.data.model.resource.CourseSummary
-import com.limpu.hitax.databinding.ActivityCourseContributionBinding
-import com.limpu.hitax.ui.base.HiltBaseActivity
+import com.limpu.hitax.ui.design.HitaComposeTheme
+import com.limpu.hitax.ui.design.HitaTheme
 import com.limpu.hitax.ui.widgets.PopUpCalendarPicker
 import com.limpu.hitax.utils.LogUtils
+import com.limpu.style.ThemeTools
 import dagger.hilt.android.AndroidEntryPoint
-import androidx.activity.viewModels
 import org.json.JSONArray
 import org.json.JSONObject
 import java.util.Calendar
 import java.util.Locale
 
 @AndroidEntryPoint
-class CourseContributionActivity :
-    HiltBaseActivity<ActivityCourseContributionBinding>() {
-
-    protected val viewModel: CourseContributionViewModel by viewModels()
-    private enum class ContributionMode {
-        NORMAL_TEACHER_REVIEW,
-        NORMAL_SECTION_APPEND,
-        MULTI_COURSE_REVIEW,
-        MULTI_TEACHER_REVIEW,
-    }
-
-    private lateinit var repoName: String
-    private lateinit var courseName: String
-    private lateinit var courseCode: String
-    private lateinit var repoType: String
-    private var selectedMode: ContributionMode? = null
-    private var selectedCourse: CourseSummary? = null
-    private val selectedDate: Calendar = Calendar.getInstance()
-    private var submitObserverBound = false
-
-    override fun initViewBinding(): ActivityCourseContributionBinding =
-        ActivityCourseContributionBinding.inflate(layoutInflater)
+class CourseContributionActivity : AppCompatActivity() {
+    private val viewModel: CourseContributionViewModel by viewModels()
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        val nightMode = when (ThemeTools.getThemeMode(this)) {
+            ThemeTools.MODE.DARK -> AppCompatDelegate.MODE_NIGHT_YES
+            ThemeTools.MODE.LIGHT -> AppCompatDelegate.MODE_NIGHT_NO
+            else -> AppCompatDelegate.MODE_NIGHT_FOLLOW_SYSTEM
+        }
+        AppCompatDelegate.setDefaultNightMode(nightMode)
         super.onCreate(savedInstanceState)
-        setToolbarActionBack(binding.toolbar)
-        applyStatusBarInsets()
-    }
 
-    override fun initViews() {
-        repoName = intent.getStringExtra("repoName") ?: ""
-        courseName = intent.getStringExtra("courseName") ?: repoName
-        courseCode = intent.getStringExtra("courseCode") ?: repoName
-        repoType = intent.getStringExtra("repoType") ?: "normal"
-        binding.toolbar.title = getString(R.string.course_contribution_title)
-        binding.repoName.text = "$courseCode · $courseName"
-
-        binding.typeLayout.setOnClickListener { showModePicker() }
-        binding.courseLayout.setOnClickListener { showCoursePicker() }
-        binding.authorDateLayout.setOnClickListener { pickDateTime() }
-        binding.submitButton.setOnClickListener { submit() }
-
-        updateDateLabel()
-
-        viewModel.structureLiveData.observe(this) { state ->
-            binding.progress.isVisible = false
-            if (state.state == DataState.STATE.SUCCESS) {
-                val summary = state.data ?: return@observe
-                LogUtils.d("Loaded: repoType=${summary.repoType}, courses=${summary.courses.size}, teachers=${summary.teachers.size}")
-                repoType = summary.repoType.ifBlank { repoType }
-                if (repoType == "multi-project" && selectedCourse == null) {
-                    selectedCourse = summary.courses.firstOrNull()
-                    binding.courseValue.text = selectedCourse?.name?.ifBlank { selectedCourse?.code } ?: ""
-                    LogUtils.d("Selected course: ${selectedCourse?.name}, teachers: ${selectedCourse?.teachers}")
-                }
-                if (repoType != "multi-project" && binding.teacherInput.text.isNullOrBlank()) {
-                    summary.teachers.firstOrNull()?.let { binding.teacherInput.setText(it) }
-                }
-                applyDefaultModeIfNeeded(summary)
-            } else {
-                Snackbar.make(binding.root, state.message ?: getString(R.string.course_resource_failed), Snackbar.LENGTH_LONG).show()
-            }
-        }
-
-        if (!submitObserverBound) {
-            submitObserverBound = true
-            viewModel.submitLiveData.observe(this) { state ->
-                binding.progress.isVisible = false
-                if (state.state == DataState.STATE.SUCCESS) {
-                    Snackbar.make(binding.root, getString(R.string.course_contribution_success, state.data ?: ""), Snackbar.LENGTH_LONG).show()
-                } else {
-                    Snackbar.make(binding.root, state.message ?: getString(R.string.course_resource_failed), Snackbar.LENGTH_LONG).show()
-                }
+        setContent {
+            HitaComposeTheme() {
+                CourseContributionScreen(
+                    viewModel = viewModel,
+                    repoName = intent.getStringExtra("repoName") ?: "",
+                    courseName = intent.getStringExtra("courseName")
+                        ?: intent.getStringExtra("repoName").orEmpty(),
+                    courseCode = intent.getStringExtra("courseCode")
+                        ?: intent.getStringExtra("repoName").orEmpty(),
+                    initialRepoType = intent.getStringExtra("repoType") ?: "normal",
+                    onBack = { onBackPressedDispatcher.onBackPressed() },
+                    showModePicker = { labels, onPick ->
+                        AlertDialog.Builder(this)
+                            .setItems(labels.toTypedArray()) { _, which -> onPick(which) }
+                            .show()
+                    },
+                    showCoursePicker = { labels, onPick ->
+                        AlertDialog.Builder(this)
+                            .setItems(labels.toTypedArray()) { _, which -> onPick(which) }
+                            .show()
+                    },
+                    pickDateTime = { selectedDate, onPicked ->
+                        PopUpCalendarPicker().setInitValue(selectedDate.timeInMillis)
+                            .setOnConfirmListener(object : PopUpCalendarPicker.OnConfirmListener {
+                                override fun onConfirm(c: Calendar) {
+                                    val result = selectedDate.clone() as Calendar
+                                    result.set(Calendar.YEAR, c.get(Calendar.YEAR))
+                                    result.set(Calendar.MONTH, c.get(Calendar.MONTH))
+                                    result.set(Calendar.DAY_OF_MONTH, c.get(Calendar.DAY_OF_MONTH))
+                                    TimePickerDialog(
+                                        this@CourseContributionActivity,
+                                        { _, hour, minute ->
+                                            result.set(Calendar.HOUR_OF_DAY, hour)
+                                            result.set(Calendar.MINUTE, minute)
+                                            onPicked(result)
+                                        },
+                                        selectedDate.get(Calendar.HOUR_OF_DAY),
+                                        selectedDate.get(Calendar.MINUTE),
+                                        DateFormat.is24HourFormat(this@CourseContributionActivity),
+                                    ).show()
+                                }
+                            }).show(supportFragmentManager, "pick_date")
+                    }
+                )
             }
         }
     }
+}
 
-    override fun onStart() {
-        super.onStart()
-        binding.progress.isVisible = true
+private enum class ContributionMode {
+    NORMAL_TEACHER_REVIEW,
+    NORMAL_SECTION_APPEND,
+    MULTI_COURSE_REVIEW,
+    MULTI_TEACHER_REVIEW,
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun CourseContributionScreen(
+    viewModel: CourseContributionViewModel,
+    repoName: String,
+    courseName: String,
+    courseCode: String,
+    initialRepoType: String,
+    onBack: () -> Unit,
+    showModePicker: (List<String>, (Int) -> Unit) -> Unit,
+    showCoursePicker: (List<String>, (Int) -> Unit) -> Unit,
+    pickDateTime: (Calendar, (Calendar) -> Unit) -> Unit,
+) {
+    val context = LocalContext.current
+    val tokens = HitaTheme.tokens
+    val structureState by viewModel.structureLiveData.observeAsState()
+    val submitState by viewModel.submitLiveData.observeAsState()
+    var repoType by remember(initialRepoType) { mutableStateOf(initialRepoType) }
+    var selectedMode by remember { mutableStateOf<ContributionMode?>(null) }
+    var selectedCourse by remember { mutableStateOf<CourseSummary?>(null) }
+    var selectedDate by remember { mutableStateOf(Calendar.getInstance()) }
+    var loading by remember { mutableStateOf(true) }
+    var typeText by remember { mutableStateOf("") }
+    var courseText by remember { mutableStateOf("") }
+    var sectionText by remember { mutableStateOf(TextFieldValue("")) }
+    var teacherText by remember { mutableStateOf(TextFieldValue("")) }
+    var topicText by remember { mutableStateOf(TextFieldValue("")) }
+    var normalTeacherText by remember { mutableStateOf(TextFieldValue("")) }
+    var contentText by remember { mutableStateOf(TextFieldValue("")) }
+    var authorNameText by remember { mutableStateOf(TextFieldValue("")) }
+    var authorLinkText by remember { mutableStateOf(TextFieldValue("")) }
+
+    fun modeLabel(mode: ContributionMode): String {
+        return when (mode) {
+            ContributionMode.NORMAL_TEACHER_REVIEW ->
+                context.getString(R.string.course_contribution_mode_teacher_review)
+            ContributionMode.NORMAL_SECTION_APPEND ->
+                context.getString(R.string.course_contribution_mode_section_append)
+            ContributionMode.MULTI_COURSE_REVIEW ->
+                context.getString(R.string.course_contribution_mode_course_review)
+            ContributionMode.MULTI_TEACHER_REVIEW ->
+                context.getString(R.string.course_contribution_mode_multi_teacher_review)
+        }
+    }
+
+    fun setMode(mode: ContributionMode) {
+        selectedMode = mode
+        typeText = modeLabel(mode)
+    }
+
+    fun showMessage(message: String) {
+        Toast.makeText(context, message, Toast.LENGTH_LONG).show()
+    }
+
+    LaunchedEffect(Unit) {
         viewModel.load(repoName)
     }
 
-    private fun showModePicker() {
-        val labels = if (repoType == "multi-project") {
-            listOf(
-                getString(R.string.course_contribution_mode_course_review),
-                getString(R.string.course_contribution_mode_multi_teacher_review),
-            )
-        } else {
-            listOf(
-                getString(R.string.course_contribution_mode_teacher_review),
-                getString(R.string.course_contribution_mode_section_append),
-            )
-        }
-        val values = if (repoType == "multi-project") {
-            listOf(
-                ContributionMode.MULTI_COURSE_REVIEW,
-                ContributionMode.MULTI_TEACHER_REVIEW,
-            )
-        } else {
-            listOf(
-                ContributionMode.NORMAL_TEACHER_REVIEW,
-                ContributionMode.NORMAL_SECTION_APPEND,
-            )
-        }
-        androidx.appcompat.app.AlertDialog.Builder(this)
-            .setItems(labels.toTypedArray()) { _, which ->
-                selectedMode = values[which]
-                binding.typeValue.text = labels[which]
-                updateModeVisibility()
+    LaunchedEffect(structureState) {
+        val state = structureState ?: return@LaunchedEffect
+        loading = false
+        if (state.state == DataState.STATE.SUCCESS) {
+            val summary = state.data ?: return@LaunchedEffect
+            LogUtils.d("Loaded: repoType=${summary.repoType}, courses=${summary.courses.size}, teachers=${summary.teachers.size}")
+            repoType = summary.repoType.ifBlank { repoType }
+            if (repoType == "multi-project" && selectedCourse == null) {
+                selectedCourse = summary.courses.firstOrNull()
+                courseText = selectedCourse?.name?.ifBlank { selectedCourse?.code }.orEmpty()
             }
-            .show()
-    }
-
-    private fun showCoursePicker() {
-        val courses = viewModel.structureLiveData.value?.data?.courses ?: emptyList()
-        if (courses.isEmpty()) return
-        val labels = courses.map { it.name.ifBlank { it.code } }
-        androidx.appcompat.app.AlertDialog.Builder(this)
-            .setItems(labels.toTypedArray()) { _, which ->
-                selectedCourse = courses[which]
-                binding.courseValue.text = labels[which]
-                binding.teacherValue.setText("")
-                binding.sectionValue.setText("")
-            }
-            .show()
-    }
-
-    private fun updateModeVisibility() {
-        val mode = selectedMode
-        binding.courseLayout.isVisible = mode == ContributionMode.MULTI_COURSE_REVIEW ||
-            mode == ContributionMode.MULTI_TEACHER_REVIEW
-        binding.teacherLayout.isVisible = mode == ContributionMode.MULTI_TEACHER_REVIEW
-        binding.teacherInputLayout.isVisible = mode == ContributionMode.NORMAL_TEACHER_REVIEW
-        binding.sectionLayout.isVisible = mode == ContributionMode.NORMAL_SECTION_APPEND
-        binding.topicLayout.isVisible = mode == ContributionMode.MULTI_COURSE_REVIEW
-    }
-
-    private fun pickDateTime() {
-        PopUpCalendarPicker().setInitValue(selectedDate.timeInMillis)
-            .setOnConfirmListener(object : PopUpCalendarPicker.OnConfirmListener {
-                override fun onConfirm(c: Calendar) {
-                    selectedDate.set(Calendar.YEAR, c.get(Calendar.YEAR))
-                    selectedDate.set(Calendar.MONTH, c.get(Calendar.MONTH))
-                    selectedDate.set(Calendar.DAY_OF_MONTH, c.get(Calendar.DAY_OF_MONTH))
-                    TimePickerDialog(
-                        this@CourseContributionActivity,
-                        { _, hour, minute ->
-                            selectedDate.set(Calendar.HOUR_OF_DAY, hour)
-                            selectedDate.set(Calendar.MINUTE, minute)
-                            updateDateLabel()
-                        },
-                        selectedDate.get(Calendar.HOUR_OF_DAY),
-                        selectedDate.get(Calendar.MINUTE),
-                        DateFormat.is24HourFormat(this@CourseContributionActivity),
-                    ).show()
+            if (repoType != "multi-project" && normalTeacherText.text.isBlank()) {
+                summary.teachers.firstOrNull()?.let {
+                    normalTeacherText = TextFieldValue(it)
                 }
-            }).show(supportFragmentManager, "pick_date")
-    }
-
-    private fun updateDateLabel() {
-        binding.authorDateValue.text = String.format(
-            Locale.getDefault(),
-            "%04d-%02d",
-            selectedDate.get(Calendar.YEAR),
-            selectedDate.get(Calendar.MONTH) + 1,
-        )
-    }
-
-    private fun applyStatusBarInsets() {
-        val target = binding.root
-        val originalTop = target.paddingTop
-        ViewCompat.setOnApplyWindowInsetsListener(target) { view, insets ->
-            val bars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
-            view.updatePadding(top = originalTop + bars.top)
-            insets
-        }
-    }
-
-    @Suppress("UNUSED_PARAMETER")
-    private fun applyDefaultModeIfNeeded(summary: CourseStructureSummary) {
-        if (selectedMode != null) {
-            return
-        }
-        selectedMode = if (repoType == "multi-project") {
-            ContributionMode.MULTI_COURSE_REVIEW
+            }
+            if (selectedMode == null) {
+                setMode(
+                    if (repoType == "multi-project") {
+                        ContributionMode.MULTI_COURSE_REVIEW
+                    } else {
+                        ContributionMode.NORMAL_SECTION_APPEND
+                    }
+                )
+            }
         } else {
-            ContributionMode.NORMAL_SECTION_APPEND
-        }
-        binding.typeValue.text = getModeLabel(selectedMode!!)
-        updateModeVisibility()
-    }
-
-    private fun getModeLabel(mode: ContributionMode): String {
-        return when (mode) {
-            ContributionMode.NORMAL_TEACHER_REVIEW -> getString(R.string.course_contribution_mode_teacher_review)
-            ContributionMode.NORMAL_SECTION_APPEND -> getString(R.string.course_contribution_mode_section_append)
-            ContributionMode.MULTI_COURSE_REVIEW -> getString(R.string.course_contribution_mode_course_review)
-            ContributionMode.MULTI_TEACHER_REVIEW -> getString(R.string.course_contribution_mode_multi_teacher_review)
+            showMessage(state.message ?: context.getString(R.string.course_resource_failed))
         }
     }
 
-    private fun submit() {
+    LaunchedEffect(submitState) {
+        val state = submitState ?: return@LaunchedEffect
+        loading = false
+        if (state.state == DataState.STATE.SUCCESS) {
+            showMessage(context.getString(R.string.course_contribution_success, state.data ?: ""))
+        } else {
+            showMessage(state.message ?: context.getString(R.string.course_resource_failed))
+        }
+    }
+
+    fun submit() {
         val mode = selectedMode ?: run {
-            Snackbar.make(binding.root, R.string.course_contribution_pick_type, Snackbar.LENGTH_SHORT).show()
+            showMessage(context.getString(R.string.course_contribution_pick_type))
             return
         }
-        val content = binding.contentInput.text?.toString()?.trim().orEmpty()
-        val authorName = binding.authorNameInput.text?.toString()?.trim().orEmpty()
-        val authorLink = binding.authorLinkInput.text?.toString()?.trim().orEmpty()
-        val authorDate = binding.authorDateValue.text?.toString()?.trim().orEmpty()
+        val content = contentText.text.trim()
+        val authorName = authorNameText.text.trim()
+        val authorLink = authorLinkText.text.trim()
 
         if (authorName.isBlank()) {
-            Snackbar.make(binding.root, R.string.course_contribution_fill_author, Snackbar.LENGTH_SHORT).show()
+            showMessage(context.getString(R.string.course_contribution_fill_author))
             return
         }
 
-        val author = JSONObject()
-        author.put("name", authorName)
-        author.put("link", authorLink)
-        author.put("date", authorDate)
-
+        val author = JSONObject().apply {
+            put("name", authorName)
+            put("link", authorLink)
+            put("date", formatDate(selectedDate))
+        }
         val ops = JSONArray()
         when (mode) {
             ContributionMode.NORMAL_TEACHER_REVIEW -> {
                 if (content.isBlank()) {
-                    Snackbar.make(binding.root, R.string.course_contribution_fill_content, Snackbar.LENGTH_SHORT).show()
+                    showMessage(context.getString(R.string.course_contribution_fill_content))
                     return
                 }
-                val teacher = binding.teacherInput.text?.toString()?.trim().orEmpty()
+                val teacher = normalTeacherText.text.trim()
                 if (teacher.isBlank()) {
-                    Snackbar.make(binding.root, R.string.course_contribution_pick_teacher, Snackbar.LENGTH_SHORT).show()
+                    showMessage(context.getString(R.string.course_contribution_pick_teacher))
                     return
                 }
                 ops.put(JSONObject().apply {
@@ -268,16 +276,15 @@ class CourseContributionActivity :
                 })
             }
             ContributionMode.NORMAL_SECTION_APPEND -> {
-                val section = binding.sectionValue.text?.toString()?.trim().orEmpty()
-                    .ifBlank {
-                        viewModel.structureLiveData.value?.data?.appendTargets?.firstOrNull().orEmpty()
-                    }
+                val section = sectionText.text.trim().ifBlank {
+                    structureState?.data?.appendTargets?.firstOrNull().orEmpty()
+                }
                 if (section.isBlank()) {
-                    Snackbar.make(binding.root, R.string.course_contribution_pick_section, Snackbar.LENGTH_SHORT).show()
+                    showMessage(context.getString(R.string.course_contribution_pick_section))
                     return
                 }
                 if (content.isBlank()) {
-                    Snackbar.make(binding.root, R.string.course_contribution_fill_content, Snackbar.LENGTH_SHORT).show()
+                    showMessage(context.getString(R.string.course_contribution_fill_content))
                     return
                 }
                 ops.put(JSONObject().apply {
@@ -289,35 +296,33 @@ class CourseContributionActivity :
             }
             ContributionMode.MULTI_COURSE_REVIEW -> {
                 val course = selectedCourse ?: run {
-                    Snackbar.make(binding.root, R.string.course_contribution_pick_course, Snackbar.LENGTH_SHORT).show()
+                    showMessage(context.getString(R.string.course_contribution_pick_course))
                     return
                 }
-                val topic = binding.topicInput.text?.toString()?.trim().orEmpty()
                 if (content.isBlank()) {
-                    Snackbar.make(binding.root, R.string.course_contribution_fill_content, Snackbar.LENGTH_SHORT).show()
+                    showMessage(context.getString(R.string.course_contribution_fill_content))
                     return
                 }
-                // Use add_section_item instead of append_course_review (deprecated)
                 ops.put(JSONObject().apply {
                     put("op", "add_section_item")
                     put("course_name", course.name)
-                    put("title", topic.ifBlank { "课程评价" })
+                    put("title", topicText.text.trim().ifBlank { "课程评价" })
                     put("content", content)
                     put("author", author)
                 })
             }
             ContributionMode.MULTI_TEACHER_REVIEW -> {
                 val course = selectedCourse ?: run {
-                    Snackbar.make(binding.root, R.string.course_contribution_pick_course, Snackbar.LENGTH_SHORT).show()
+                    showMessage(context.getString(R.string.course_contribution_pick_course))
                     return
                 }
-                val teacher = binding.teacherValue.text?.toString()?.trim().orEmpty()
+                val teacher = teacherText.text.trim()
                 if (teacher.isBlank()) {
-                    Snackbar.make(binding.root, R.string.course_contribution_pick_teacher, Snackbar.LENGTH_SHORT).show()
+                    showMessage(context.getString(R.string.course_contribution_pick_teacher))
                     return
                 }
                 if (content.isBlank()) {
-                    Snackbar.make(binding.root, R.string.course_contribution_fill_content, Snackbar.LENGTH_SHORT).show()
+                    showMessage(context.getString(R.string.course_contribution_fill_content))
                     return
                 }
                 ops.put(JSONObject().apply {
@@ -330,7 +335,285 @@ class CourseContributionActivity :
             }
         }
 
-        binding.progress.isVisible = true
+        loading = true
         viewModel.submit(repoName, courseCode, courseName, repoType, ops)
     }
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .windowInsetsPadding(WindowInsets.statusBars)
+            .background(MaterialTheme.colorScheme.background)
+    ) {
+        Column(modifier = Modifier.fillMaxSize()) {
+            TopAppBar(
+                title = {
+                    Text(
+                        text = stringResource(R.string.course_contribution_title),
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                },
+                navigationIcon = {
+                    IconButton(onClick = onBack) {
+                        Icon(
+                            painter = painterResource(R.drawable.ic_baseline_keyboard_arrow_right_24),
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onSurface,
+                            modifier = Modifier.rotate(180f)
+                        )
+                    }
+                },
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = MaterialTheme.colorScheme.background
+                )
+            )
+
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .verticalScroll(rememberScrollState())
+                    .padding(tokens.spacing.lg)
+            ) {
+                Text(
+                    text = "$courseCode · $courseName",
+                    color = MaterialTheme.colorScheme.onSurface,
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
+                )
+
+                SelectField(
+                    label = stringResource(R.string.course_contribution_type),
+                    value = typeText,
+                    onClick = {
+                        val modes = if (repoType == "multi-project") {
+                            listOf(
+                                ContributionMode.MULTI_COURSE_REVIEW,
+                                ContributionMode.MULTI_TEACHER_REVIEW,
+                            )
+                        } else {
+                            listOf(
+                                ContributionMode.NORMAL_TEACHER_REVIEW,
+                                ContributionMode.NORMAL_SECTION_APPEND,
+                            )
+                        }
+                        showModePicker(modes.map { modeLabel(it) }) { which ->
+                            setMode(modes[which])
+                        }
+                    },
+                    modifier = Modifier.padding(top = tokens.spacing.lg)
+                )
+
+                if (
+                    selectedMode == ContributionMode.MULTI_COURSE_REVIEW ||
+                    selectedMode == ContributionMode.MULTI_TEACHER_REVIEW
+                ) {
+                    SelectField(
+                        label = stringResource(R.string.course_contribution_course),
+                        value = courseText,
+                        onClick = {
+                            val courses = structureState?.data?.courses.orEmpty()
+                            val labels = courses.map { it.name.ifBlank { it.code } }
+                            if (courses.isNotEmpty()) {
+                                showCoursePicker(labels) { which ->
+                                    selectedCourse = courses[which]
+                                    courseText = labels[which]
+                                    teacherText = TextFieldValue("")
+                                    sectionText = TextFieldValue("")
+                                }
+                            }
+                        },
+                        modifier = Modifier.padding(top = tokens.spacing.md)
+                    )
+                }
+
+                if (selectedMode == ContributionMode.NORMAL_SECTION_APPEND) {
+                    FormInput(
+                        label = stringResource(R.string.course_contribution_section),
+                        value = sectionText,
+                        onValueChange = { sectionText = it },
+                        hint = stringResource(R.string.course_contribution_section_hint),
+                        modifier = Modifier.padding(top = tokens.spacing.md)
+                    )
+                }
+
+                if (selectedMode == ContributionMode.MULTI_TEACHER_REVIEW) {
+                    FormInput(
+                        label = stringResource(R.string.course_contribution_teacher),
+                        value = teacherText,
+                        onValueChange = { teacherText = it },
+                        hint = stringResource(R.string.course_contribution_teacher_hint),
+                        modifier = Modifier.padding(top = tokens.spacing.md)
+                    )
+                }
+
+                if (selectedMode == ContributionMode.MULTI_COURSE_REVIEW) {
+                    FormInput(
+                        label = stringResource(R.string.course_contribution_topic),
+                        value = topicText,
+                        onValueChange = { topicText = it },
+                        modifier = Modifier.padding(top = tokens.spacing.md)
+                    )
+                }
+
+                if (selectedMode == ContributionMode.NORMAL_TEACHER_REVIEW) {
+                    FormInput(
+                        label = stringResource(R.string.course_contribution_teacher),
+                        value = normalTeacherText,
+                        onValueChange = { normalTeacherText = it },
+                        modifier = Modifier.padding(top = tokens.spacing.md)
+                    )
+                }
+
+                FormInput(
+                    label = stringResource(R.string.course_contribution_content),
+                    value = contentText,
+                    onValueChange = { contentText = it },
+                    minHeight = 160.dp,
+                    singleLine = false,
+                    modifier = Modifier.padding(top = tokens.spacing.md)
+                )
+
+                FormInput(
+                    label = stringResource(R.string.course_contribution_author_name),
+                    value = authorNameText,
+                    onValueChange = { authorNameText = it },
+                    modifier = Modifier.padding(top = tokens.spacing.md)
+                )
+
+                FormInput(
+                    label = stringResource(R.string.course_contribution_author_link),
+                    value = authorLinkText,
+                    onValueChange = { authorLinkText = it },
+                    modifier = Modifier.padding(top = tokens.spacing.md)
+                )
+
+                SelectField(
+                    label = stringResource(R.string.course_contribution_author_date),
+                    value = formatDate(selectedDate),
+                    onClick = {
+                        pickDateTime(selectedDate) { picked ->
+                            selectedDate = picked
+                        }
+                    },
+                    modifier = Modifier.padding(top = tokens.spacing.md)
+                )
+
+                Button(
+                    onClick = { submit() },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(48.dp)
+                        .padding(top = tokens.spacing.xl)
+                ) {
+                    Text(text = stringResource(R.string.course_contribution_submit))
+                }
+
+                Spacer(modifier = Modifier.height(tokens.spacing.xl))
+            }
+        }
+
+        if (loading) {
+            CircularProgressIndicator(
+                color = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.align(Alignment.Center)
+            )
+        }
+    }
+}
+
+@Composable
+private fun SelectField(
+    label: String,
+    value: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    FieldSurface(
+        label = label,
+        modifier = modifier.clickable(onClick = onClick)
+    ) {
+        Text(
+            text = value,
+            color = MaterialTheme.colorScheme.onSurface,
+            fontSize = 16.sp,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.padding(top = HitaTheme.tokens.spacing.xs)
+        )
+    }
+}
+
+@Composable
+private fun FormInput(
+    label: String,
+    value: TextFieldValue,
+    onValueChange: (TextFieldValue) -> Unit,
+    modifier: Modifier = Modifier,
+    hint: String = "",
+    minHeight: androidx.compose.ui.unit.Dp = 0.dp,
+    singleLine: Boolean = true,
+) {
+    FieldSurface(label = label, modifier = modifier) {
+        BasicTextField(
+            value = value,
+            onValueChange = onValueChange,
+            singleLine = singleLine,
+            textStyle = TextStyle(
+                color = MaterialTheme.colorScheme.onSurface,
+                fontSize = 16.sp
+            ),
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(if (minHeight > 0.dp) minHeight else 44.dp)
+                .padding(top = HitaTheme.tokens.spacing.xs),
+            decorationBox = { inner ->
+                Box {
+                    if (value.text.isBlank() && hint.isNotBlank()) {
+                        Text(
+                            text = hint,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            fontSize = 16.sp,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                    inner()
+                }
+            }
+        )
+    }
+}
+
+@Composable
+private fun FieldSurface(
+    label: String,
+    modifier: Modifier = Modifier,
+    content: @Composable () -> Unit
+) {
+    val tokens = HitaTheme.tokens
+    Surface(
+        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.78f),
+        shape = RoundedCornerShape(tokens.radius.xl),
+        modifier = modifier.fillMaxWidth()
+    ) {
+        Column(modifier = Modifier.padding(tokens.spacing.md)) {
+            Text(
+                text = label,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                fontSize = 14.sp
+            )
+            content()
+        }
+    }
+}
+
+private fun formatDate(date: Calendar): String {
+    return String.format(
+        Locale.getDefault(),
+        "%04d-%02d",
+        date.get(Calendar.YEAR),
+        date.get(Calendar.MONTH) + 1,
+    )
 }

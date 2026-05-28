@@ -1,345 +1,453 @@
 package com.limpu.hitax.ui.event
 
 import android.os.Bundle
+import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
-import android.widget.ImageView
-import android.widget.TextView
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.livedata.observeAsState
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.ComposeView
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.fragment.app.Fragment
+import androidx.fragment.app.viewModels
 import com.limpu.hitax.R
 import com.limpu.hitax.data.model.timetable.EventItem
 import com.limpu.hitax.data.model.timetable.TimeInDay
 import com.limpu.hitax.data.repository.EASRepository
 import com.limpu.hitax.data.source.preference.EasPreferenceSource
 import com.limpu.hitax.data.source.preference.TimetablePreferenceSource
-import com.limpu.hitax.databinding.DialogBottomTimetableClassBinding
-import com.limpu.hitax.ui.base.HiltBaseFragment
+import com.limpu.hitax.ui.design.HitaComposeTheme
+import com.limpu.hitax.ui.design.HitaTheme
 import com.limpu.hitax.ui.subject.SubjectActivity
 import com.limpu.hitax.utils.ActivityUtils
-import com.limpu.hitax.utils.TimeTools
 import com.limpu.hitax.utils.CourseResourceLinker
+import com.limpu.hitax.utils.TimeTools
 import com.limpu.style.widgets.PopUpColorPicker
 import com.limpu.style.widgets.PopUpText
 import dagger.hilt.android.AndroidEntryPoint
-import androidx.fragment.app.viewModels
-import java.util.*
+import java.util.Calendar
 
 @AndroidEntryPoint
-class EventItemFragment : HiltBaseFragment<DialogBottomTimetableClassBinding>() {
+class EventItemFragment : Fragment() {
 
     protected val viewModel: EventItemViewModel by viewModels()
 
     interface EventParent {
         fun callDismiss()
     }
-//
-//    private override fun initViews(dlgView: View) {
-//        courseProgressBar.setMax(100)
-//        ratingBar.setStepSize(0.5f)
 
-//        val delete = dlgView.findViewById<View>(R.id.delete)
-//        delete.setOnClickListener { v ->
-//            v.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
-//            val ad = android.app.AlertDialog.Builder(requireContext())
-//                .setNegativeButton(getString(R.string.button_cancel), null)
-//                .setPositiveButton(getString(R.string.button_confirm)) { d, which -> deleteEvent() }
-//                .create()
-//            ad.setTitle(getString(R.string.dialog_title_sure_delete))
-//            ad.show()
-//        }
-//    }
+    var eventParent: EventParent? = null
 
-    var parent: EventParent? = null
     private val easRepository by lazy {
-        EASRepository(requireActivity().application, EasPreferenceSource(requireActivity().application.applicationContext), TimetablePreferenceSource(requireActivity().application.applicationContext))
+        EASRepository(
+            requireActivity().application,
+            EasPreferenceSource(requireActivity().application.applicationContext),
+            TimetablePreferenceSource(requireActivity().application.applicationContext)
+        )
     }
     private val hoaCampus by lazy { easRepository.getHoaCampus() }
-    private var currentSubject: com.limpu.hitax.data.model.timetable.TermSubject? = null
-//    override fun onAttach(context: Context) {
-//        super.onAttach(context)
-//        if (context is EventParent) {
-//            parent = context
-//        }
-//    }
 
-    private fun isCourseLike(eventItem: EventItem): Boolean {
-        return eventItem.type == EventItem.TYPE.CLASS || eventItem.type == EventItem.TYPE.EXAM
-    }
-
-    private fun applyTypeUi(eventItem: EventItem) {
-        val courseLike = isCourseLike(eventItem)
-        binding?.ttDlgValue3Detail?.visibility = if (courseLike) View.VISIBLE else View.GONE
-        binding?.courseProgressLayout?.visibility = if (courseLike) View.VISIBLE else View.GONE
-        binding?.subject?.visibility = if (courseLike) View.VISIBLE else View.GONE
-        binding?.nameAction?.visibility = if (courseLike) View.VISIBLE else View.GONE
-        binding?.nameLayout?.isClickable = courseLike
-        binding?.nameLayout?.isFocusable = courseLike
-        binding?.placeLabel?.setText(if (courseLike) R.string.dialog_classroom else R.string.exam_location)
-    }
-
-    private fun setInfo(eventItem: EventItem) {
-        applyTypeUi(eventItem)
-        val teachers = splitTeachers(eventItem.teacher)
-        val container = binding?.teacherList
-        container?.removeAllViews()
-        if (teachers.isEmpty()) {
-            addTeacherRow(container, getString(R.string.none), clickable = false)
-        } else {
-            teachers.forEach { name ->
-                addTeacherRow(container, name, clickable = true)
+    override fun onCreateView(
+        inflater: LayoutInflater,
+        container: ViewGroup?,
+        savedInstanceState: Bundle?
+    ): View {
+        return ComposeView(requireContext()).apply {
+            setContent {
+                HitaComposeTheme() {
+                    EventItemScreen(
+                        viewModel = viewModel,
+                        onSubjectClick = { event, subject ->
+                            if (requireContext() !is SubjectActivity) {
+                                ActivityUtils.startSubjectActivity(requireContext(), event.subjectId)
+                            }
+                        },
+                        onSubjectLongClick = { subject ->
+                            CourseResourceLinker.openReadme(
+                                context = requireContext(),
+                                owner = viewLifecycleOwner,
+                                courseCodeRaw = subject.code,
+                                courseNameRaw = subject.name,
+                                campus = hoaCampus,
+                            )
+                        },
+                        onColorPick = { subject ->
+                            PopUpColorPicker().setOnColorSelectListener(object :
+                                PopUpColorPicker.OnColorSelectedListener {
+                                override fun onSelected(color: Int) {
+                                    viewModel.changeSubjectColor(color)
+                                }
+                            }).initColor(subject.color)
+                                .show(childFragmentManager, "pickColor")
+                        },
+                        onDelete = {
+                            PopUpText().setTitle(R.string.dialog_title_sure_delete)
+                                .setOnConfirmListener(object : PopUpText.OnConfirmListener {
+                                    override fun OnConfirm() {
+                                        viewModel.delete()
+                                        eventParent?.callDismiss()
+                                    }
+                                }).show(childFragmentManager, "sure")
+                        },
+                        onTeacherClick = { name ->
+                            ActivityUtils.startCourseResourceSearchActivity(
+                                requireContext(),
+                                query = name,
+                                mode = ActivityUtils.CourseResourceMode.VIEW,
+                            )
+                        },
+                        onTeacherLongClick = { name ->
+                            ActivityUtils.startTeacherHomepageSearch(requireContext(), name)
+                        }
+                    )
+                }
             }
         }
-        binding?.place?.text = getString(eventItem.place)
-        binding?.time?.text = getString(
-            R.string.event_duration_text,
-            TimeInDay(eventItem.from).toString(),
-            TimeInDay(eventItem.to).toString()
-        )
-        binding?.ttDlgName?.text = getString(eventItem.name)
-        val numberStr = (eventItem.fromNumber until eventItem.fromNumber + eventItem.lastNumber).joinToString(
-            separator = ", "
-        )
-        binding?.timeNumber?.text = numberStr
-        if(numberStr.isEmpty()){
-            binding?.numberLayout?.visibility = View.GONE
-        }else{
-            binding?.numberLayout?.visibility = View.VISIBLE
-        }
-
-        binding?.ttDlgValue3Detail?.setOnClickListener(null)
-        binding?.ttDlgValue3Detail?.setOnLongClickListener(null)
-//        if (TextUtils.isEmpty(eventItem.tag2)) {
-//            classroom_detail_icon!!.visibility = View.GONE
-//        } else {
-//            classroom_detail_icon!!.visibility = View.VISIBLE
-//            classroom_detail!!.setOnClickListener(View.OnClickListener {
-//                if (TextUtils.isEmpty(eventItem.tag2) || eventItem.tag2 == "无地点") return@OnClickListener
-//                val cr: Array<String> = eventItem.tag2.split("，\\[")
-//                val classRooms = ArrayList(Arrays.asList(*cr))
-//                if (classRooms.size > 1) {
-//                    val toRemove = ArrayList<String>()
-//                    for (i in classRooms.indices) {
-//                        classRooms[i] = classRooms[i].substring(classRooms[i].lastIndexOf("周") + 1)
-//                    }
-//                    for (x in classRooms) {
-//                        if (TextUtils.isEmpty(x)) toRemove.add(x)
-//                    }
-//                    classRooms.removeAll(toRemove)
-//                    val classRoomItems = arrayOfNulls<String>(classRooms.size)
-//                    for (i in classRoomItems.indices) classRoomItems[i] = classRooms[i]
-//                    val ad: AlertDialog = AlertDialog.Builder(requireContext())
-//                        .setTitle(HContext.getString(R.string.pick_classroom)).setItems(
-//                            classRoomItems,
-//                            DialogInterface.OnClickListener { dialogInterface, i ->
-//                                ActivityUtils.searchFor(requireContext(), classRooms[i], "location")
-//                                //ActivityUtils.startLocationActivity_name(requireContext(), classRooms.get(i));
-//                            }).create()
-//                    ad.show()
-//                } else ActivityUtils.searchFor(requireContext(), eventItem.tag2, "location")
-//                //                    Intent i = new Intent(a,ActivityExplore.class);
-////                    i.putExtra("terminal",eventItem.tag2);
-////                    a.startActivity(i);
-//            })
-//        }
-
-        val c = Calendar.getInstance()
-        c.timeInMillis = eventItem.from.time
-        binding?.date?.text =
-            TimeTools.getDateString(requireContext(), c, false, TimeTools.TTY_FOLLOWING)
     }
 
-
-    fun getString(str: String?): String {
-        if (str.isNullOrEmpty()) return getString(R.string.none)
-        return str
-    }
-
-    private fun splitTeachers(raw: String?): List<String> {
-        if (raw.isNullOrBlank()) return emptyList()
-        return raw.split(Regex("[,，、]"))
-            .map { it.trim() }
-            .filter { it.isNotEmpty() }
-    }
-
-    private fun addTeacherRow(container: ViewGroup?, name: String, clickable: Boolean) {
-        if (container == null) return
-        val row = layoutInflater.inflate(R.layout.dynamic_teacher_row, container, false)
-        val nameView = row.findViewById<TextView>(R.id.teacher_name)
-        val actionView = row.findViewById<ImageView>(R.id.teacher_action)
-        nameView.text = name
-        if (!clickable || name == getString(R.string.none)) {
-            actionView.visibility = View.GONE
-            row.setOnClickListener(null)
-            row.setOnLongClickListener(null)
-        } else {
-            row.setOnClickListener {
-                ActivityUtils.startCourseResourceSearchActivity(
-                    requireContext(),
-                    query = name,
-                    mode = ActivityUtils.CourseResourceMode.VIEW,
-                )
-            }
-            row.setOnLongClickListener {
-                ActivityUtils.startTeacherHomepageSearch(requireContext(), name)
-                true
-            }
-        }
-        container.addView(row)
-    }
-
-//
-//    fun onOperationStart(id: String?, params: Array<Boolean?>?) {
-//        ratingBar!!.visibility = View.INVISIBLE
-//        courseProgress!!.text = "..."
-//    }
-//
-//    fun onOperationDone(
-//        id: String?,
-//        task: BaseOperationTask<Map<String?, Int?>?>?,
-//        params: Array<Boolean?>?,
-//        res: Map<String?, Int?>?
-//    ) {
-//        if (null == res) {
-//            popupRoot.callDismiss()
-//            return
-//        }
-//        try {
-//            ratingBar!!.visibility = View.VISIBLE
-//            courseNumber = Objects.requireNonNull(res["now"])
-//            courseProgress!!.text = java.lang.String.format(
-//                HContext.getString(R.string.dialog_this_course_p),
-//                courseNumber
-//            )
-//            val all = Objects.requireNonNull(res["total"]).toFloat()
-//            val has = Objects.requireNonNull(res["now"])
-//            val progress = has.toFloat() / all
-//            val va = ValueAnimator.ofInt(0, (progress * 100).toInt())
-//            va.duration = 700
-//            va.interpolator = DecelerateInterpolator()
-//            va.addUpdateListener { animation ->
-//                val value = animation.animatedValue as Int
-//                courseProgressBar!!.progress = value
-//            }
-//            va.start()
-//        } catch (e: Exception) {
-//            e.printStackTrace()
-//        }
-//    }
-//
-//
-//    internal class RefreshTask(listRefreshedListener: OperationListener?, eventItem: EventItem) :
-//        BaseOperationTask<Map<String?, Int?>?>(listRefreshedListener) {
-//        //  double rate = 0;
-//        var eventItem: EventItem
-//        protected fun doInBackground(
-//            listRefreshedListener: OperationListener?,
-//            vararg booleans: Boolean?
-//        ): Map<String, Int>? {
-//            val res: MutableMap<String, Int> = HashMap()
-//            try {
-//                val subject: Subject =
-//                    TimetableCore.getInstance(HContext).getSubjectByCourse(eventItem)
-//                val courses: List<*> = TimetableCore.getInstance(HContext).getCourses(subject)
-//                res["total"] = courses.size
-//                Collections.sort<Comparable<*>>(courses)
-//                val now = courses.indexOf(eventItem) + 1
-//                res["now"] = now
-//                //rate = TimetableCore.getInstance(HContext).getCurrentCurriculum().getSubjectByCourse(eventItem).getRate(courseNumber);
-//            } catch (e: Exception) {
-//                e.printStackTrace()
-//                return null
-//            }
-//            return res
-//        }
-//
-//        init {
-//            this.eventItem = eventItem
-//        }
-//    }
-
-    override fun initViewBinding(): DialogBottomTimetableClassBinding {
-        return DialogBottomTimetableClassBinding.inflate(layoutInflater)
-    }
-
-    override fun initViews(view: View) {
+    override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
+        super.onViewCreated(view, savedInstanceState)
         arguments?.let {
             @Suppress("DEPRECATION")
             viewModel.eventItemLiveData.value = it.getSerializable("event") as? EventItem
         }
-
-        viewModel.eventItemLiveData.observe(this) {
-            setInfo(it)
-        }
-        viewModel.subjectLiveData.observe(this) { subject ->
-            currentSubject = subject
-        }
-        viewModel.progressLiveData.observe(this) {
-            val event = viewModel.eventItemLiveData.value ?: return@observe
-            if (!isCourseLike(event)) return@observe
-            binding?.courseProgress?.progress =
-                (((it.first + 1).toFloat() / it.second.toFloat()) * 100).toInt()
-            binding?.courseCourseInSubject?.text =
-                getString(R.string.dialog_this_course_p, it.first + 1)
-        }
-
-
-        binding?.subject?.setOnClickListener {
-            val event = viewModel.eventItemLiveData.value ?: return@setOnClickListener
-            if (!isCourseLike(event)) return@setOnClickListener
-            val subject = currentSubject
-            if (subject == null) {
-                android.widget.Toast.makeText(requireContext(), R.string.loading, android.widget.Toast.LENGTH_SHORT).show()
-                return@setOnClickListener
-            }
-            PopUpColorPicker().setOnColorSelectListener(object :
-                PopUpColorPicker.OnColorSelectedListener {
-                override fun onSelected(color: Int) {
-                    viewModel.changeSubjectColor(color)
-                }
-            }).initColor(subject.color).show(childFragmentManager, "pickColor")
-        }
-        binding?.nameLayout?.setOnClickListener {
-            val event = viewModel.eventItemLiveData.value ?: return@setOnClickListener
-            if (!isCourseLike(event)) return@setOnClickListener
-            if (requireContext() !is SubjectActivity) {
-                ActivityUtils.startSubjectActivity(requireContext(), event.subjectId)
-            }
-        }
-        binding?.nameLayout?.setOnLongClickListener {
-            val event = viewModel.eventItemLiveData.value ?: return@setOnLongClickListener true
-            if (!isCourseLike(event)) return@setOnLongClickListener true
-            val subject = viewModel.subjectLiveData.value
-            if (subject != null) {
-                CourseResourceLinker.openReadme(
-                    context = requireContext(),
-                    owner = viewLifecycleOwner,
-                    courseCodeRaw = subject.code,
-                    courseNameRaw = subject.name,
-                    campus = hoaCampus,
-                )
-            }
-            true
-        }
-        binding?.delete?.setOnClickListener {
-            PopUpText().setTitle(R.string.dialog_title_sure_delete)
-                .setOnConfirmListener(object : PopUpText.OnConfirmListener {
-                    override fun OnConfirm() {
-                        viewModel.delete()
-                        parent?.callDismiss()
-                    }
-
-                }).show(childFragmentManager, "sure")
-        }
     }
 
     companion object {
-
-        fun newInstance(eventItem: EventItem,parent:EventParent): EventItemFragment {
+        fun newInstance(eventItem: EventItem, parent: EventParent): EventItemFragment {
             val res = EventItemFragment()
             val b = Bundle()
             b.putSerializable("event", eventItem)
             res.arguments = b
-            res.parent = parent
+            res.eventParent = parent
             return res
         }
     }
+}
+
+@Composable
+private fun EventItemScreen(
+    viewModel: EventItemViewModel,
+    onSubjectClick: (EventItem, com.limpu.hitax.data.model.timetable.TermSubject) -> Unit,
+    onSubjectLongClick: (com.limpu.hitax.data.model.timetable.TermSubject) -> Unit,
+    onColorPick: (com.limpu.hitax.data.model.timetable.TermSubject) -> Unit,
+    onDelete: () -> Unit,
+    onTeacherClick: (String) -> Unit,
+    onTeacherLongClick: (String) -> Unit
+) {
+    val tokens = HitaTheme.tokens
+    val context = LocalContext.current
+    val eventItem by viewModel.eventItemLiveData.observeAsState()
+    val subject by viewModel.subjectLiveData.observeAsState()
+    val progress by viewModel.progressLiveData.observeAsState()
+
+    val event = eventItem ?: return
+    val courseLike = event.type == EventItem.TYPE.CLASS || event.type == EventItem.TYPE.EXAM
+    val teachers = splitTeachers(event.teacher)
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = tokens.spacing.sm)
+    ) {
+        // Name row
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable(enabled = courseLike) {
+                    if (courseLike) onSubjectClick(event, subject ?: return@clickable)
+                }
+                .padding(
+                    horizontal = tokens.spacing.lg,
+                    vertical = tokens.spacing.sm
+                ),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = event.name ?: stringResource(R.string.none),
+                fontSize = 20.sp,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onSurface,
+                modifier = Modifier.weight(1f)
+            )
+            if (courseLike) {
+                Text(
+                    text = stringResource(R.string.dialog_view_course_detail),
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier
+                        .clickable {
+                            val subj = subject ?: return@clickable
+                            onSubjectClick(event, subj)
+                        }
+                        .padding(tokens.spacing.xs)
+                )
+            }
+        }
+
+        // Teacher section
+        if (courseLike) {
+            DetailRow(
+                iconRes = R.drawable.ic_bo_teacher,
+                label = stringResource(R.string.dialog_teacher)
+            ) {
+                if (teachers.isEmpty()) {
+                    Text(
+                        text = stringResource(R.string.none),
+                        fontSize = 19.sp,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                } else {
+                    teachers.forEach { name ->
+                        TeacherRow(
+                            name = name,
+                            clickable = true,
+                            onClick = { onTeacherClick(name) },
+                            onLongClick = { onTeacherLongClick(name) }
+                        )
+                    }
+                }
+            }
+        }
+
+        // Location
+        DetailRow(
+            iconRes = R.drawable.ic_bo_location,
+            label = if (courseLike) stringResource(R.string.dialog_classroom) else stringResource(R.string.exam_location)
+        ) {
+            Text(
+                text = event.place ?: stringResource(R.string.none),
+                fontSize = 19.sp,
+                color = MaterialTheme.colorScheme.onSurface
+            )
+        }
+
+        // Time
+        DetailRow(
+            iconRes = R.drawable.ic_bo_time,
+            label = stringResource(R.string.dialog_time)
+        ) {
+            Text(
+                text = stringResource(
+                    R.string.event_duration_text,
+                    TimeInDay(event.from).toString(),
+                    TimeInDay(event.to).toString()
+                ),
+                fontSize = 19.sp,
+                color = MaterialTheme.colorScheme.onSurface
+            )
+        }
+
+        // Period/Number
+        val numberStr = (event.fromNumber until event.fromNumber + event.lastNumber)
+            .joinToString(separator = ", ")
+        if (numberStr.isNotEmpty()) {
+            DetailRow(
+                iconRes = R.drawable.ic_bo_time,
+                label = stringResource(R.string.dialog_period)
+            ) {
+                Text(
+                    text = numberStr,
+                    fontSize = 19.sp,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+            }
+        }
+
+        // Date
+        DetailRow(
+            iconRes = R.drawable.ic_bo_date,
+            label = stringResource(R.string.dialog_date)
+        ) {
+            val c = Calendar.getInstance()
+            c.timeInMillis = event.from.time
+            Text(
+                text = TimeTools.getDateString(context, c, false, TimeTools.TTY_FOLLOWING),
+                fontSize = 19.sp,
+                color = MaterialTheme.colorScheme.onSurface
+            )
+        }
+
+        // Progress
+        if (courseLike) {
+            val progressValue = progress?.let { (current, total) ->
+                if (total > 0) ((current + 1).toFloat() / total.toFloat()) else 0f
+            } ?: 0f
+            val progressText = progress?.let { (current, _) ->
+                stringResource(R.string.dialog_this_course_p, current + 1)
+            } ?: ""
+
+            DetailRow(
+                iconRes = R.drawable.ic_bo_distribution,
+                label = stringResource(R.string.dialog_this_course_s)
+            ) {
+                Text(
+                    text = progressText,
+                    fontSize = 19.sp,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                LinearProgressIndicator(
+                    progress = { progressValue },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = tokens.spacing.xs)
+                        .height(10.dp),
+                    color = MaterialTheme.colorScheme.primary,
+                    trackColor = MaterialTheme.colorScheme.surfaceVariant,
+                )
+            }
+        }
+
+        // Action buttons
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(
+                    start = tokens.spacing.lg,
+                    end = tokens.spacing.lg,
+                    top = tokens.spacing.sm,
+                    bottom = tokens.spacing.sm
+                ),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Spacer(modifier = Modifier.weight(1f))
+            if (courseLike) {
+                Button(
+                    onClick = {
+                        val subj = subject ?: return@Button
+                        onColorPick(subj)
+                    },
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = MaterialTheme.colorScheme.primary
+                    ),
+                    shape = androidx.compose.foundation.shape.RoundedCornerShape(18.dp),
+                    modifier = Modifier.height(36.dp)
+                ) {
+                    Text(
+                        text = stringResource(R.string.course_change_color),
+                        color = MaterialTheme.colorScheme.onPrimary
+                    )
+                }
+                Spacer(modifier = Modifier.width(tokens.spacing.sm))
+            }
+            IconButton(
+                onClick = onDelete,
+                modifier = Modifier.size(36.dp)
+            ) {
+                Icon(
+                    painter = painterResource(R.drawable.ic_baseline_delete_24),
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(20.dp)
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun DetailRow(
+    iconRes: Int,
+    label: String,
+    content: @Composable () -> Unit
+) {
+    val tokens = HitaTheme.tokens
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(
+                horizontal = tokens.spacing.lg,
+                vertical = tokens.spacing.sm
+            ),
+        verticalAlignment = Alignment.Top
+    ) {
+        Icon(
+            painter = painterResource(iconRes),
+            contentDescription = null,
+            modifier = Modifier
+                .size(20.dp)
+                .padding(top = 2.dp),
+            tint = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        Column(
+            modifier = Modifier
+                .weight(1f)
+                .padding(start = tokens.spacing.sm)
+        ) {
+            Text(
+                text = label,
+                fontSize = 12.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            content()
+        }
+    }
+}
+
+@Composable
+private fun TeacherRow(
+    name: String,
+    clickable: Boolean,
+    onClick: () -> Unit,
+    onLongClick: () -> Unit
+) {
+    val tokens = HitaTheme.tokens
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(enabled = clickable) { onClick() }
+            .padding(vertical = 2.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            text = name,
+            fontSize = 19.sp,
+            color = MaterialTheme.colorScheme.onSurface,
+            maxLines = 1
+        )
+        if (clickable) {
+            Icon(
+                painter = painterResource(R.drawable.ic_baseline_search_24),
+                contentDescription = null,
+                modifier = Modifier
+                    .padding(start = tokens.spacing.xs)
+                    .size(20.dp),
+                tint = MaterialTheme.colorScheme.primary
+            )
+        }
+    }
+}
+
+private fun splitTeachers(raw: String?): List<String> {
+    if (raw.isNullOrBlank()) return emptyList()
+    return raw.split(Regex("[,，、]"))
+        .map { it.trim() }
+        .filter { it.isNotEmpty() }
 }

@@ -3,13 +3,13 @@ package com.limpu.style.widgets
 import android.content.Context
 import android.text.Editable
 import android.text.TextWatcher
+import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import androidx.lifecycle.LiveData
 import androidx.lifecycle.MediatorLiveData
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.viewbinding.ViewBinding
-import com.limpu.style.R
 import com.limpu.style.base.BaseListAdapter
 import com.limpu.style.base.BaseViewHolder
 import com.limpu.style.databinding.DialogBottomAutoEditTextBinding
@@ -150,14 +150,7 @@ class PopUpAutoEditText : TransparentBottomSheetDialog<DialogBottomAutoEditTextB
             return DialogBottomCheckableListItemBinding.inflate(mInflater, parent, false)
         }
     }
-
-    override fun getLayoutId(): Int {
-        return R.layout.dialog_bottom_auto_edit_text
+    override fun createViewBinding(inflater: LayoutInflater, container: ViewGroup?): DialogBottomAutoEditTextBinding {
+        return DialogBottomAutoEditTextBinding.inflate(inflater, container, false)
     }
-
-    override fun initViewBinding(v: View): DialogBottomAutoEditTextBinding {
-        return DialogBottomAutoEditTextBinding.bind(v)
-    }
-
-
 }

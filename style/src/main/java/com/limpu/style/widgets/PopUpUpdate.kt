@@ -3,10 +3,10 @@ package com.limpu.style.widgets
 import android.content.DialogInterface
 import android.text.TextUtils
 import android.text.method.LinkMovementMethod
+import android.view.LayoutInflater
 import android.view.View
+import android.view.ViewGroup
 import androidx.annotation.StringRes
-import com.limpu.style.R
-import com.limpu.style.databinding.DialogBottomTextBinding
 import com.limpu.style.databinding.DialogBottomUpdateBinding
 
 /**
@@ -102,12 +102,7 @@ class PopUpUpdate : TransparentBottomSheetDialog<DialogBottomUpdateBinding>() {
         super.onDismiss(dialog)
     }
 
-
-    override fun getLayoutId(): Int {
-        return R.layout.dialog_bottom_update
-    }
-
-    override fun initViewBinding(v: View): DialogBottomUpdateBinding{
-        return DialogBottomUpdateBinding.bind(v)
+    override fun createViewBinding(inflater: LayoutInflater, container: ViewGroup?): DialogBottomUpdateBinding {
+        return DialogBottomUpdateBinding.inflate(inflater, container, false)
     }
 }

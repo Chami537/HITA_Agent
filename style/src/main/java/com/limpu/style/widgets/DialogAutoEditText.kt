@@ -3,17 +3,16 @@ package com.limpu.style.widgets
 import android.content.Context
 import android.text.Editable
 import android.text.TextWatcher
+import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import androidx.lifecycle.LiveData
 import androidx.lifecycle.MediatorLiveData
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.viewbinding.ViewBinding
-import com.limpu.style.R
 import com.limpu.style.base.BaseListAdapter
 import com.limpu.style.base.BaseViewHolder
 import com.limpu.style.databinding.DialogAutoEditTextBinding
-import com.limpu.style.databinding.DialogBottomAutoEditTextBinding
 import com.limpu.style.databinding.DialogBottomCheckableListItemBinding
 
 /**
@@ -151,14 +150,7 @@ class DialogAutoEditText : TransparentDialog<DialogAutoEditTextBinding>() {
             return DialogBottomCheckableListItemBinding.inflate(mInflater, parent, false)
         }
     }
-
-    override fun getLayoutId(): Int {
-        return R.layout.dialog_auto_edit_text
+    override fun createViewBinding(inflater: LayoutInflater, container: ViewGroup?): DialogAutoEditTextBinding {
+        return DialogAutoEditTextBinding.inflate(inflater, container, false)
     }
-
-    override fun initViewBinding(v: View): DialogAutoEditTextBinding {
-        return DialogAutoEditTextBinding.bind(v)
-    }
-
-
 }

@@ -74,14 +74,24 @@ abstract class TransparentBottomSheetDialog<V:ViewBinding> : BottomSheetDialogFr
 
     override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View? {
         val contextThemeWrapper = ContextThemeWrapper(context,R.style.AppTheme)
-        val v = inflater.cloneInContext(contextThemeWrapper)
-            .inflate(getLayoutId(), container, false)
-        binding = initViewBinding(v)
+        val themedInflater = inflater.cloneInContext(contextThemeWrapper)
+        binding = createViewBinding(themedInflater, container)
         initViews(binding.root)
         return binding.root
     }
 
-    protected abstract fun getLayoutId():Int
-    protected abstract fun initViewBinding(v:View):V
+    protected open fun createViewBinding(inflater: LayoutInflater, container: ViewGroup?): V {
+        val v = inflater.inflate(getLayoutId(), container, false)
+        return initViewBinding(v)
+    }
+
+    protected open fun getLayoutId():Int {
+        throw NotImplementedError("Override createViewBinding or getLayoutId")
+    }
+
+    protected open fun initViewBinding(v:View):V {
+        throw NotImplementedError("Override createViewBinding or initViewBinding")
+    }
+
     protected abstract fun initViews(v: View)
 }

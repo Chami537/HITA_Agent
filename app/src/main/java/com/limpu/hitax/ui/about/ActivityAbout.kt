@@ -1,31 +1,80 @@
 package com.limpu.hitax.ui.about
 
-import android.annotation.SuppressLint
-import android.content.Intent
 import android.content.pm.PackageInfo
 import android.content.pm.PackageManager
-import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.text.Html
 import android.text.method.LinkMovementMethod
 import android.view.HapticFeedbackConstants
-import android.view.View
-import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
-import androidx.cardview.widget.CardView
-import com.limpu.component.data.DataState
-import com.limpu.hitax.R
+import androidx.activity.compose.setContent
 import androidx.activity.viewModels
+import androidx.appcompat.app.AppCompatActivity
+import androidx.appcompat.app.AppCompatDelegate
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBars
+import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.livedata.observeAsState
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.rotate
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.res.colorResource
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.compose.ui.viewinterop.AndroidView
+import com.limpu.component.data.DataState
 import com.limpu.hitax.BuildConfig
+import com.limpu.hitax.R
 import com.limpu.hitax.data.model.ReleaseHistoryItem
-import com.limpu.hitax.databinding.ActivityAboutBinding
-import com.limpu.hitax.ui.base.HiltBaseActivity
+import com.limpu.hitax.ui.design.HitaComposeTheme
+import com.limpu.hitax.ui.design.HitaTheme
 import com.limpu.hitax.utils.ActivityUtils
-import com.limpu.hitax.utils.ImageUtils
 import com.limpu.hitax.utils.LogUtils
-import com.limpu.style.widgets.PopUpText
+import com.limpu.style.ThemeTools
 import dagger.hilt.android.AndroidEntryPoint
 import io.noties.markwon.Markwon
 import io.noties.markwon.ext.strikethrough.StrikethroughPlugin
@@ -36,194 +85,464 @@ import io.noties.markwon.linkify.LinkifyPlugin
 
 @Suppress("DEPRECATION")
 @AndroidEntryPoint
-class ActivityAbout: HiltBaseActivity<ActivityAboutBinding>() {
-
-    protected val viewModel: AboutViewModel by viewModels()
-    private val releaseMarkwon: Markwon by lazy {
-        Markwon.builder(this)
-            .usePlugin(LinkifyPlugin.create())
-            .usePlugin(TablePlugin.create(this))
-            .usePlugin(TaskListPlugin.create(this))
-            .usePlugin(StrikethroughPlugin.create())
-            .usePlugin(HtmlPlugin.create())
-            .build()
-    }
+class ActivityAbout : AppCompatActivity() {
+    private val viewModel: AboutViewModel by viewModels()
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        val nightMode = when (ThemeTools.getThemeMode(this)) {
+            ThemeTools.MODE.DARK -> AppCompatDelegate.MODE_NIGHT_YES
+            ThemeTools.MODE.LIGHT -> AppCompatDelegate.MODE_NIGHT_NO
+            else -> AppCompatDelegate.MODE_NIGHT_FOLLOW_SYSTEM
+        }
+        AppCompatDelegate.setDefaultNightMode(nightMode)
         super.onCreate(savedInstanceState)
-        setWindowParams(true,false,false)
-        setToolbarActionBack(binding.toolbar)
-    }
 
-    override fun initViews() {
-        viewModel.aboutPageLiveData.observe(this){ state ->
-            state.data?.let {
-                binding.aboutInfo.text = Html.fromHtml(it)
-            }
-        }
-        viewModel.releaseHistoryLiveData.observe(this) { state ->
-            renderReleaseHistory(state)
-        }
-        binding.privacyProtocol.setOnClickListener {
-             UserAgreementDialog().show(
-                 supportFragmentManager,"a"
-             )
-        }
-        binding.check.setOnClickListener {
-            it.performHapticFeedback(HapticFeedbackConstants.CONTEXT_CLICK)
-            binding.check.startAnimation()
-            val code = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-                packageManager.getPackageInfo(
-                    packageName,
-                    0
-                ).longVersionCode
-            } else {
-                packageManager.getPackageInfo(
-                    packageName,
-                    0
-                ).versionCode.toLong()
-            }
-            viewModel.checkForUpdate(code)
-        }
-        viewModel.checkUpdateResult.observe(this){
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-                binding.check.performHapticFeedback(HapticFeedbackConstants.CONFIRM)
-            } else {
-                binding.check.performHapticFeedback(HapticFeedbackConstants.CONTEXT_CLICK)
-            }
-            val bitmap =
-                ImageUtils.getResourceBitmap(getThis(), if (it.state==DataState.STATE.SUCCESS)
-                    R.drawable.ic_baseline_done_24 else R.drawable.ic_baseline_error_24)
-            binding.check.doneLoadingAnimation(
-                getColorPrimary(), bitmap
-            )
-            binding.check.postDelayed({
-                binding.check.revertAnimation()
-            }, 600)
-            if (it.state == DataState.STATE.SUCCESS) {
-                it.data?.let { cr ->
-                    if (cr.shouldUpdate) {
-                        ActivityUtils.showUpdateNotificationForce(cr,this)
-                    }else{
-                        val msg = if (BuildConfig.DEBUG && cr.downloadCount > 0) {
-                            getString(R.string.already_up_to_date) + " · 累计下载 ${cr.downloadCount} 次"
-                        } else {
-                            getString(R.string.already_up_to_date)
-                        }
-                        Toast.makeText(this, msg, Toast.LENGTH_SHORT).show()
+        setContent {
+            HitaComposeTheme() {
+                AboutScreen(
+                    viewModel = viewModel,
+                    versionText = currentVersionText(),
+                    onBack = { onBackPressedDispatcher.onBackPressed() },
+                    onOpenAgreement = {
+                        UserAgreementDialog().show(supportFragmentManager, "a")
+                    },
+                    onShowUpdate = { result ->
+                        ActivityUtils.showUpdateNotificationForce(result, this)
                     }
-                }
+                )
             }
         }
     }
 
     override fun onStart() {
         super.onStart()
-        refresh()
-    }
-
-    @SuppressLint("SetTextI18n")
-    fun refresh(){
-        var packageInfo: PackageInfo? = null
-        try {
-            packageInfo = packageManager
-                .getPackageInfo(packageName, 0)
-        } catch (e: PackageManager.NameNotFoundException) {
-            LogUtils.e("Failed to get package info for version", e)
-        }
-        //获取APP版本versionName
-        //获取APP版本versionName
-        var versionName: String? = null
-        if (packageInfo != null) {
-            versionName = packageInfo.versionName
-        }
-        //获取APP版本versionCode
-        //获取APP版本versionCode
-        binding.version.text = getString(R.string.version) + versionName
         viewModel.refresh()
     }
 
-    private fun renderReleaseHistory(state: DataState<List<ReleaseHistoryItem>>) {
-        binding.releaseHistoryProgress.visibility =
-            if (state.state == DataState.STATE.LOADING) View.VISIBLE else View.GONE
-        binding.releaseHistoryList.removeAllViews()
-        binding.releaseHistoryStatus.visibility = View.GONE
-
-        if (state.state == DataState.STATE.LOADING) return
-
-        if (state.state != DataState.STATE.SUCCESS) {
-            binding.releaseHistoryStatus.visibility = View.VISIBLE
-            binding.releaseHistoryStatus.setText(R.string.release_history_failed)
-            return
+    private fun currentVersionText(): String {
+        var packageInfo: PackageInfo? = null
+        try {
+            packageInfo = packageManager.getPackageInfo(packageName, 0)
+        } catch (e: PackageManager.NameNotFoundException) {
+            LogUtils.e("Failed to get package info for version", e)
         }
+        return getString(R.string.version) + packageInfo?.versionName.orEmpty()
+    }
+}
 
-        val items = state.data.orEmpty()
-        if (items.isEmpty()) {
-            binding.releaseHistoryStatus.visibility = View.VISIBLE
-            binding.releaseHistoryStatus.setText(R.string.release_history_empty)
-            return
-        }
+private enum class UpdateButtonState {
+    Idle,
+    Loading,
+    Success,
+    Failed
+}
 
-        items.forEach { item ->
-            binding.releaseHistoryList.addView(createReleaseHistoryView(item))
-        }
+@Composable
+private fun AboutScreen(
+    viewModel: AboutViewModel,
+    versionText: String,
+    onBack: () -> Unit,
+    onOpenAgreement: () -> Unit,
+    onShowUpdate: (com.limpu.hitauser.data.model.CheckUpdateResult) -> Unit,
+) {
+    val context = LocalContext.current
+    val view = LocalView.current
+    val tokens = HitaTheme.tokens
+    val aboutState by viewModel.aboutPageLiveData.observeAsState()
+    val releaseState by viewModel.releaseHistoryLiveData.observeAsState()
+    val checkState by viewModel.checkUpdateResult.observeAsState()
+    var aboutHtml by remember { mutableStateOf("") }
+    var buttonState by remember { mutableStateOf(UpdateButtonState.Idle) }
+
+    LaunchedEffect(aboutState) {
+        aboutState?.data?.let { aboutHtml = it }
     }
 
-    private fun createReleaseHistoryView(item: ReleaseHistoryItem): View {
-        val card = CardView(this).apply {
-            radius = ImageUtils.dp2px(this@ActivityAbout, 8f).toFloat()
-            cardElevation = 0f
-            useCompatPadding = false
-            setCardBackgroundColor(resolveThemeColor(R.attr.backgroundColorBottom))
-            layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT
-            ).apply {
-                bottomMargin = ImageUtils.dp2px(this@ActivityAbout, 8f)
+    LaunchedEffect(checkState) {
+        val current = checkState ?: return@LaunchedEffect
+        view.performHapticFeedback(
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                HapticFeedbackConstants.CONFIRM
+            } else {
+                HapticFeedbackConstants.CONTEXT_CLICK
+            }
+        )
+        buttonState = if (current.state == DataState.STATE.SUCCESS) {
+            UpdateButtonState.Success
+        } else {
+            UpdateButtonState.Failed
+        }
+        if (current.state == DataState.STATE.SUCCESS) {
+            current.data?.let { result ->
+                if (result.shouldUpdate) {
+                    onShowUpdate(result)
+                } else {
+                    val msg = if (BuildConfig.DEBUG && result.downloadCount > 0) {
+                        context.getString(R.string.already_up_to_date) +
+                            " · 累计下载 ${result.downloadCount} 次"
+                    } else {
+                        context.getString(R.string.already_up_to_date)
+                    }
+                    Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
+                }
+            }
+        } else {
+            Toast.makeText(context, R.string.check_for_update_failed, Toast.LENGTH_SHORT).show()
+        }
+        kotlinx.coroutines.delay(900)
+        buttonState = UpdateButtonState.Idle
+    }
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(MaterialTheme.colorScheme.background)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .verticalScroll(rememberScrollState())
+        ) {
+            AboutHeader(
+                versionText = versionText,
+                onBack = onBack,
+                onOpenAgreement = onOpenAgreement
+            )
+            Surface(
+                color = MaterialTheme.colorScheme.background,
+                shape = RoundedCornerShape(
+                    topStart = tokens.radius.xl,
+                    topEnd = tokens.radius.xl
+                ),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = (-36).dp)
+            ) {
+                Column(
+                    modifier = Modifier.padding(
+                        start = tokens.spacing.xl,
+                        top = 36.dp,
+                        end = tokens.spacing.xl,
+                        bottom = 104.dp
+                    )
+                ) {
+                    HtmlText(
+                        html = aboutHtml,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    Text(
+                        text = stringResource(R.string.release_history),
+                        color = MaterialTheme.colorScheme.onSurface,
+                        fontSize = 18.sp,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.padding(top = tokens.spacing.xl)
+                    )
+                    ReleaseHistory(
+                        state = releaseState,
+                        modifier = Modifier.padding(top = tokens.spacing.md)
+                    )
+                }
             }
         }
-        val container = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(
-                ImageUtils.dp2px(this@ActivityAbout, 14f),
-                ImageUtils.dp2px(this@ActivityAbout, 12f),
-                ImageUtils.dp2px(this@ActivityAbout, 14f),
-                ImageUtils.dp2px(this@ActivityAbout, 12f)
+
+        CheckUpdateButton(
+            state = buttonState,
+            onClick = {
+                view.performHapticFeedback(HapticFeedbackConstants.CONTEXT_CLICK)
+                buttonState = UpdateButtonState.Loading
+                viewModel.checkForUpdate(currentVersionCode(context))
+            },
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .navigationBarsPadding()
+                .padding(tokens.spacing.xl)
+        )
+    }
+}
+
+@Composable
+private fun AboutHeader(
+    versionText: String,
+    onBack: () -> Unit,
+    onOpenAgreement: () -> Unit,
+) {
+    val tokens = HitaTheme.tokens
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(420.dp)
+            .background(
+                Brush.linearGradient(
+                    listOf(
+                        colorResource(R.color.primary),
+                        colorResource(R.color.color_fade)
+                    )
+                )
+            )
+            .windowInsetsPadding(WindowInsets.statusBars)
+    ) {
+        IconButton(
+            onClick = onBack,
+            modifier = Modifier
+                .align(Alignment.TopStart)
+                .padding(top = tokens.spacing.xl)
+        ) {
+            Icon(
+                painter = painterResource(R.drawable.ic_baseline_keyboard_arrow_right_24),
+                contentDescription = null,
+                tint = Color.White,
+                modifier = Modifier.rotate(180f)
             )
         }
-        val title = TextView(this).apply {
-            text = buildString {
-                append(item.releaseName)
-                if (item.prerelease) append(" · 预发布")
+
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center,
+            modifier = Modifier
+                .align(Alignment.Center)
+                .padding(horizontal = tokens.spacing.xl)
+        ) {
+            Card(
+                colors = CardDefaults.cardColors(containerColor = Color.White),
+                elevation = CardDefaults.cardElevation(defaultElevation = 16.dp),
+                shape = CircleShape,
+                modifier = Modifier.size(100.dp)
+            ) {
+                Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
+                    Image(
+                        painter = painterResource(R.drawable.logo),
+                        contentDescription = null,
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(tokens.spacing.sm)
+                    )
+                }
             }
-            setTextColor(resolveThemeColor(R.attr.textColorPrimary))
-            textSize = 15f
-            typeface = android.graphics.Typeface.DEFAULT_BOLD
+            Text(
+                text = stringResource(R.string.app_name),
+                color = Color.White,
+                fontSize = 24.sp,
+                fontWeight = FontWeight.Black,
+                modifier = Modifier.padding(top = tokens.spacing.xl)
+            )
+            Text(
+                text = versionText,
+                color = Color.White,
+                fontSize = 16.sp,
+                modifier = Modifier.padding(top = tokens.spacing.sm)
+            )
+            Surface(
+                color = Color.White.copy(alpha = 0.33f),
+                shape = RoundedCornerShape(tokens.radius.full),
+                modifier = Modifier
+                    .padding(top = tokens.spacing.md)
+                    .clickable(onClick = onOpenAgreement)
+            ) {
+                Text(
+                    text = stringResource(R.string.name_ua_and_pp),
+                    color = Color.White,
+                    fontSize = 12.sp,
+                    modifier = Modifier.padding(
+                        horizontal = tokens.spacing.sm,
+                        vertical = tokens.spacing.xs
+                    )
+                )
+            }
         }
-        val content = TextView(this).apply {
-            visibility = View.GONE
-            setTextColor(resolveThemeColor(R.attr.textColorPrimary))
-            textSize = 14f
-            movementMethod = LinkMovementMethod.getInstance()
-            setPadding(0, ImageUtils.dp2px(this@ActivityAbout, 10f), 0, 0)
-            releaseMarkwon.setMarkdown(this, item.markdown)
+    }
+}
+
+@Composable
+private fun HtmlText(
+    html: String,
+    color: Color,
+    modifier: Modifier = Modifier
+) {
+    AndroidView(
+        modifier = modifier.fillMaxWidth(),
+        factory = { context ->
+            TextView(context).apply {
+                textSize = 16f
+                setTextIsSelectable(true)
+                movementMethod = LinkMovementMethod.getInstance()
+            }
+        },
+        update = { textView ->
+            textView.setTextColor(color.toArgbCompat())
+            textView.text = Html.fromHtml(html)
         }
-        container.addView(title)
-        container.addView(content)
-        card.addView(container)
-        card.setOnClickListener {
-            content.visibility = if (content.visibility == View.VISIBLE) View.GONE else View.VISIBLE
-        }
-        return card
+    )
+}
+
+@Composable
+private fun ReleaseHistory(
+    state: DataState<List<ReleaseHistoryItem>>?,
+    modifier: Modifier = Modifier
+) {
+    val context = LocalContext.current
+    val markwon = remember {
+        Markwon.builder(context)
+            .usePlugin(LinkifyPlugin.create())
+            .usePlugin(TablePlugin.create(context))
+            .usePlugin(TaskListPlugin.create(context))
+            .usePlugin(StrikethroughPlugin.create())
+            .usePlugin(HtmlPlugin.create())
+            .build()
     }
 
-    private fun resolveThemeColor(attr: Int): Int {
-        val typedValue = android.util.TypedValue()
-        theme.resolveAttribute(attr, typedValue, true)
-        return typedValue.data
+    Column(modifier = modifier.fillMaxWidth()) {
+        when {
+            state == null || state.state == DataState.STATE.LOADING -> {
+                CircularProgressIndicator(
+                    color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier
+                        .align(Alignment.CenterHorizontally)
+                        .padding(HitaTheme.tokens.spacing.lg)
+                )
+            }
+            state.state != DataState.STATE.SUCCESS -> {
+                Text(
+                    text = stringResource(R.string.release_history_failed),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    fontSize = 14.sp
+                )
+            }
+            state.data.orEmpty().isEmpty() -> {
+                Text(
+                    text = stringResource(R.string.release_history_empty),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    fontSize = 14.sp
+                )
+            }
+            else -> {
+                state.data.orEmpty().forEach { item ->
+                    ReleaseHistoryCard(item = item, markwon = markwon)
+                }
+            }
+        }
     }
+}
 
-    override fun initViewBinding(): ActivityAboutBinding {
-        return ActivityAboutBinding.inflate(layoutInflater)
+@Composable
+private fun ReleaseHistoryCard(
+    item: ReleaseHistoryItem,
+    markwon: Markwon,
+    modifier: Modifier = Modifier
+) {
+    val tokens = HitaTheme.tokens
+    val contentColor = MaterialTheme.colorScheme.onSurface
+    var expanded by remember(item.releaseName) { mutableStateOf(false) }
+    Card(
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.background),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
+        shape = RoundedCornerShape(tokens.radius.sm),
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(bottom = tokens.spacing.sm)
+            .clickable { expanded = !expanded }
+    ) {
+        Column(
+            modifier = Modifier.padding(
+                horizontal = 14.dp,
+                vertical = 12.dp
+            )
+        ) {
+            Text(
+                text = buildString {
+                    append(item.releaseName)
+                    if (item.prerelease) append(" · 预发布")
+                },
+                color = MaterialTheme.colorScheme.onSurface,
+                fontSize = 15.sp,
+                fontWeight = FontWeight.Bold,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            if (expanded) {
+                AndroidView(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 10.dp),
+                    factory = { context ->
+                        TextView(context).apply {
+                            textSize = 14f
+                            movementMethod = LinkMovementMethod.getInstance()
+                        }
+                    },
+                    update = { textView ->
+                        textView.setTextColor(contentColor.toArgbCompat())
+                        markwon.setMarkdown(textView, item.markdown)
+                    }
+                )
+            }
+        }
     }
+}
+
+@Composable
+private fun CheckUpdateButton(
+    state: UpdateButtonState,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Button(
+        onClick = onClick,
+        enabled = state != UpdateButtonState.Loading,
+        shape = RoundedCornerShape(24.dp),
+        colors = ButtonDefaults.buttonColors(
+            containerColor = MaterialTheme.colorScheme.primary,
+            contentColor = Color.White
+        ),
+        modifier = modifier.size(width = 120.dp, height = 48.dp)
+    ) {
+        when (state) {
+            UpdateButtonState.Loading -> {
+                CircularProgressIndicator(
+                    color = Color.White,
+                    strokeWidth = 3.dp,
+                    modifier = Modifier.size(22.dp)
+                )
+            }
+            UpdateButtonState.Success -> {
+                Icon(
+                    painter = painterResource(R.drawable.ic_baseline_done_24),
+                    contentDescription = null,
+                    tint = Color.White
+                )
+            }
+            UpdateButtonState.Failed -> {
+                Icon(
+                    painter = painterResource(R.drawable.ic_baseline_error_24),
+                    contentDescription = null,
+                    tint = Color.White
+                )
+            }
+            UpdateButtonState.Idle -> {
+                Text(
+                    text = stringResource(R.string.check_for_update),
+                    color = Color.White,
+                    fontSize = 16.sp,
+                    maxLines = 1
+                )
+            }
+        }
+    }
+}
+
+private fun currentVersionCode(context: android.content.Context): Long {
+    val packageInfo = context.packageManager.getPackageInfo(context.packageName, 0)
+    return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+        packageInfo.longVersionCode
+    } else {
+        packageInfo.versionCode.toLong()
+    }
+}
+
+private fun Color.toArgbCompat(): Int {
+    return android.graphics.Color.argb(
+        (alpha * 255).toInt(),
+        (red * 255).toInt(),
+        (green * 255).toInt(),
+        (blue * 255).toInt()
+    )
 }

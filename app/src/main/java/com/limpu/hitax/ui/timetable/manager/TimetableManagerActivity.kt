@@ -3,171 +3,150 @@ package com.limpu.hitax.ui.timetable.manager
 import android.content.Intent
 import android.os.Bundle
 import android.view.HapticFeedbackConstants
-import android.view.View
 import android.widget.Toast
 import androidx.activity.OnBackPressedCallback
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.appcompat.app.AlertDialog
-import androidx.recyclerview.widget.GridLayoutManager
-import com.google.android.material.appbar.AppBarLayout
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBars
+import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Checkbox
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.livedata.observeAsState
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.rotate
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ColorFilter
+import androidx.compose.ui.platform.ComposeView
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.limpu.component.data.DataState
 import com.limpu.hitax.R
 import com.limpu.hitax.data.model.timetable.Timetable
-import com.limpu.hitax.databinding.ActivityTimetableManagerBinding
+import com.limpu.hitax.ui.base.ComposeViewBinding
 import com.limpu.hitax.ui.base.HiltBaseActivity
+import com.limpu.hitax.ui.design.HitaComposeTheme
+import com.limpu.hitax.ui.design.HitaTheme
 import com.limpu.hitax.ui.eas.imp.ImportTimetableActivity
 import com.limpu.hitax.utils.ActivityUtils
-import com.limpu.hitax.utils.EditModeHelper
 import com.limpu.hitax.utils.FileProviderUtils
 import com.limpu.hitax.utils.IcsImportUtils
-import com.limpu.hitax.utils.ImageUtils
 import com.limpu.hitax.utils.ShareUtils
-import com.limpu.style.base.BaseListAdapter
+import com.limpu.hitax.utils.TimeTools
 import dagger.hilt.android.AndroidEntryPoint
 import java.io.File
 
 @AndroidEntryPoint
-class TimetableManagerActivity :
-    HiltBaseActivity<ActivityTimetableManagerBinding>(),
-    EditModeHelper.EditableContainer<Timetable> {
+class TimetableManagerActivity : HiltBaseActivity<ComposeViewBinding>() {
 
     protected val viewModel: TimetableManagerViewModel by viewModels()
-    private lateinit var listAdapter: TimetableListAdapter
-    private var editModeHelper: EditModeHelper<Timetable>? = null
-    
-    // ICS 文件选择器
-    private val selectIcsLauncher = registerForActivityResult(androidx.activity.result.contract.ActivityResultContracts.OpenDocument()) { uri: android.net.Uri? ->
+    private var selectedTimetableIds by mutableStateOf(emptySet<String>())
+    private var isExporting by mutableStateOf(false)
+    private var lastExportSuccess: Boolean? by mutableStateOf(null)
+
+    private val selectIcsLauncher = registerForActivityResult(
+        ActivityResultContracts.OpenDocument()
+    ) { uri: android.net.Uri? ->
         uri?.let { importICS(it) }
     }
 
-    override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
-        setToolbarActionBack(binding.toolbar)
+    override fun initViewBinding(): ComposeViewBinding {
+        return ComposeViewBinding(ComposeView(this))
     }
 
     override fun initViews() {
-        binding.toolbar.title = ""
-        binding.collapse.title = ""
-        binding.appbar.addOnOffsetChangedListener { appBarLayout, verticalOffset ->
-            val scale = 1.0f + verticalOffset / appBarLayout.height.toFloat()
-            binding.title.translationX =
-                (binding.toolbar.contentInsetStartWithNavigation + ImageUtils.dp2px(
-                    getThis(),
-                    8f
-                )) * (1 - scale)
-            binding.title.scaleX = 0.5f * (1 + scale)
-            binding.title.scaleY = 0.5f * (1 + scale)
-            binding.title.translationY =
-                (binding.title.height / 2) * (1 - binding.title.scaleY)
-
-            binding.buttonSync.translationY = ImageUtils.dp2px(getThis(), 24f) * (1 - scale)
-            binding.buttonSync.scaleX = 0.7f + 0.3f * scale
-            binding.buttonSync.scaleY = 0.7f + 0.3f * scale
-            binding.buttonSync.translationX =
-                (binding.buttonSync.width / 2) * (1 - binding.buttonSync.scaleX)
-        }
-        listAdapter = TimetableListAdapter(this, mutableListOf())
-        editModeHelper = EditModeHelper(this, listAdapter, this)
-        editModeHelper?.init(this, R.id.edit_layout, R.layout.edit_mode_bar_3)
-        editModeHelper?.smoothSwitch = false
-        binding.list.adapter = listAdapter
-        binding.list.layoutManager = GridLayoutManager(this, 2)
-        listAdapter.setOnItemClickListener(object :
-            BaseListAdapter.OnItemClickListener<Timetable> {
-            override fun onItemClick(data: Timetable?, card: View?, position: Int) {
-                if (data == null) {
-                    viewModel.startNewTimetable()
-                } else {
-                    ActivityUtils.startTimetableDetailActivity(getThis(), data.id)
-                }
-            }
-
-        })
-        listAdapter.setOnAddClickListener(object : TimetableListAdapter.OnAddClickListener {
-            override fun onAddClick(source: TimetableListAdapter.SOURCE) {
-                when (source) {
-                    TimetableListAdapter.SOURCE.EAS -> {
+        bindLiveData()
+        onBackPressedDispatcher.addCallback(this, onBackPressedCallback)
+        (binding.root as ComposeView).setContent {
+            HitaComposeTheme() {
+                TimetableManagerScreen(
+                    viewModel = viewModel,
+                    selectedTimetableIds = selectedTimetableIds,
+                    isExporting = isExporting,
+                    lastExportSuccess = lastExportSuccess,
+                    onBack = { onBackPressedDispatcher.onBackPressed() },
+                    onOpenTimetable = { ActivityUtils.startTimetableDetailActivity(getThis(), it.id) },
+                    onCreateTimetable = { viewModel.startNewTimetable() },
+                    onImportEas = {
                         ActivityUtils.startActivity(
                             this@TimetableManagerActivity,
                             ImportTimetableActivity::class.java
                         )
-                    }
-                    TimetableListAdapter.SOURCE.ICS -> {
-                        selectIcsLauncher.launch(IcsImportUtils.pickerMimeTypes())
-                    }
-                    else -> {}
-                }
+                    },
+                    onImportIcs = { selectIcsLauncher.launch(IcsImportUtils.pickerMimeTypes()) },
+                    onStartSelection = { timetable ->
+                        selectedTimetableIds = selectedTimetableIds + timetable.id
+                    },
+                    onToggleSelection = { timetable ->
+                        selectedTimetableIds = if (selectedTimetableIds.contains(timetable.id)) {
+                            selectedTimetableIds - timetable.id
+                        } else {
+                            selectedTimetableIds + timetable.id
+                        }
+                    },
+                    onClearSelection = { selectedTimetableIds = emptySet() },
+                    onDeleteSelected = { timetables ->
+                        val toDelete = timetables.filter { selectedTimetableIds.contains(it.id) }
+                        if (toDelete.isNotEmpty()) {
+                            viewModel.startDeleteTimetables(toDelete)
+                            selectedTimetableIds = emptySet()
+                        }
+                    },
+                    onExport = { timetables -> showExportPicker(timetables) }
+                )
             }
-
-        })
-        listAdapter.setOnItemLongClickListener(object :
-            BaseListAdapter.OnItemLongClickListener<Timetable> {
-            override fun onItemLongClick(data: Timetable?, view: View?, position: Int): Boolean {
-                editModeHelper?.activateEditMode(position)
-                return true
-            }
-        })
-        binding.buttonSync.setOnClickListener {
-            val timetables = listAdapter.beans
-            if (timetables.isEmpty()) {
-                Toast.makeText(getThis(), R.string.timetable_export_empty, Toast.LENGTH_SHORT).show()
-                return@setOnClickListener
-            }
-            val names = timetables.map { it.name ?: getString(R.string.default_timetable_name) }
-                .toTypedArray()
-            AlertDialog.Builder(getThis())
-                .setTitle(R.string.timetable_export_title)
-                .setItems(names) { _, which ->
-                    it.performHapticFeedback(HapticFeedbackConstants.CONTEXT_CLICK)
-                    binding.buttonSync.startAnimation()
-                    viewModel.exportToIcs(timetables[which])
-                }
-                .setNegativeButton(android.R.string.cancel, null)
-                .show()
         }
-        bindLiveData()
-        onBackPressedDispatcher.addCallback(this, onBackPressedCallback)
     }
 
-    var firstEnter = true
     private fun bindLiveData() {
-        viewModel.timetablesLiveData.observe(this) {
-            if (firstEnter) {
-                listAdapter.notifyDatasetChanged(it)
-                binding.list.scheduleLayoutAnimation()
-                firstEnter = false
-            } else{
-
-//            if (listAdapter.beans.isEmpty()) {
-//                listAdapter.notifyDatasetChanged(it)
-//                binding.list.scheduleLayoutAnimation()
-//            } else {
-                listAdapter.notifyItemChangedSmooth(
-                    it,
-                    object : BaseListAdapter.RefreshJudge<Timetable> {
-                        override fun judge(oldData: Timetable, newData: Timetable): Boolean {
-                            return oldData.name != newData.name
-                                    || oldData.startTime != newData.startTime
-                                    || oldData.id != newData.id
-                        }
-                    })
-            }
-        }
         viewModel.exportToICSResult.observe(this) {
+            isExporting = false
+            lastExportSuccess = it.state == DataState.STATE.SUCCESS
             if (it.state == DataState.STATE.SUCCESS) {
-                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) {
-                    binding.buttonSync.performHapticFeedback(HapticFeedbackConstants.CONFIRM)
-                } else {
-                    binding.buttonSync.performHapticFeedback(HapticFeedbackConstants.CONTEXT_CLICK)
-                }
-                val bitmap =
-                    ImageUtils.getResourceBitmap(getThis(), R.drawable.ic_baseline_done_24)
-                binding.buttonSync.doneLoadingAnimation(
-                    getColorPrimary(), bitmap
-                )
-                binding.buttonSync.postDelayed({
-                    binding.buttonSync.revertAnimation()
-                }, 600)
+                binding.root.performHapticFeedback(HapticFeedbackConstants.CONFIRM)
                 Toast.makeText(getThis(), "已导出为ICS文件", Toast.LENGTH_SHORT).show()
                 val path = it.data ?: return@observe
                 val file = File(path)
@@ -175,78 +154,35 @@ class TimetableManagerActivity :
                 val shareIntent = ShareUtils.buildShareIntentForUri(uri, "text/calendar")
                 startActivity(Intent.createChooser(shareIntent, "分享"))
             } else if (it.state == DataState.STATE.FETCH_FAILED) {
-                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) {
-                    binding.buttonSync.performHapticFeedback(HapticFeedbackConstants.CONFIRM)
-                } else {
-                    binding.buttonSync.performHapticFeedback(HapticFeedbackConstants.CONTEXT_CLICK)
-                }
-                val bitmap =
-                    ImageUtils.getResourceBitmap(getThis(), R.drawable.ic_baseline_error_24)
-                binding.buttonSync.doneLoadingAnimation(
-                    getColorPrimary(), bitmap
-                )
-                binding.buttonSync.postDelayed({
-                    binding.buttonSync.revertAnimation()
-                }, 600)
+                binding.root.performHapticFeedback(HapticFeedbackConstants.CONTEXT_CLICK)
                 Toast.makeText(getThis(), "导出失败", Toast.LENGTH_SHORT).show()
             }
-
-        }
-
-    }
-
-
-//    //当选择完Excel文件后调用此函数
-//    protected override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
-//        if (resultCode == Activity.RESULT_OK) {
-//            if (requestCode == CHOOSE_FILE_CODE) {
-//                val uri: Uri = data.getData()
-//                val sPath1: String
-//                sPath1 = FileOperator.getPath(this, uri) // Paul Burke写的函数，根据Uri获得文件路径
-//                if (sPath1 == null) return
-//                val file = File(sPath1)
-//                loadCurriculumTask(this, file, Calendar.getInstance()).executeOnExecutor(HITAApplication.TPE)
-//            }
-//        }
-//        super.onActivityResult(requestCode, resultCode, data)
-//    }
-
-
-companion object {
-    private const val CHOOSE_FILE_CODE = 0
-}
-
-    override fun initViewBinding(): ActivityTimetableManagerBinding {
-        return ActivityTimetableManagerBinding.inflate(layoutInflater)
-    }
-
-    override fun onEditClosed() {
-
-}
-
-override fun onEditStarted() {
-
-}
-
-override fun onItemCheckedChanged(position: Int, checked: Boolean, currentSelected: Int) {
-
-}
-
-override fun onDelete(toDelete: Collection<Timetable>?) {
-    val list = mutableListOf<Timetable>()
-    if (toDelete != null) {
-        for (t in toDelete) {
-            list.add(t)
         }
     }
-    viewModel.startDeleteTimetables(list)
-    editModeHelper?.closeEditMode()
-}
+
+    private fun showExportPicker(timetables: List<Timetable>) {
+        if (timetables.isEmpty()) {
+            Toast.makeText(getThis(), R.string.timetable_export_empty, Toast.LENGTH_SHORT).show()
+            return
+        }
+        val names = timetables.map { it.name ?: getString(R.string.default_timetable_name) }
+            .toTypedArray()
+        AlertDialog.Builder(getThis())
+            .setTitle(R.string.timetable_export_title)
+            .setItems(names) { _, which ->
+                binding.root.performHapticFeedback(HapticFeedbackConstants.CONTEXT_CLICK)
+                isExporting = true
+                lastExportSuccess = null
+                viewModel.exportToIcs(timetables[which])
+            }
+            .setNegativeButton(android.R.string.cancel, null)
+            .show()
+    }
 
     private val onBackPressedCallback = object : OnBackPressedCallback(true) {
         override fun handleOnBackPressed() {
-            if (editModeHelper?.isEditMode == true) {
-                editModeHelper?.closeEditMode()
+            if (selectedTimetableIds.isNotEmpty()) {
+                selectedTimetableIds = emptySet()
             } else {
                 isEnabled = false
                 onBackPressedDispatcher.onBackPressed()
@@ -255,9 +191,6 @@ override fun onDelete(toDelete: Collection<Timetable>?) {
         }
     }
 
-    /**
-     * 导入 ICS 文件并创建独立课表
-     */
     private fun importICS(uri: android.net.Uri) {
         try {
             contentResolver.takePersistableUriPermission(
@@ -285,9 +218,11 @@ override fun onDelete(toDelete: Collection<Timetable>?) {
                         ).show()
                         ActivityUtils.startTimetableDetailActivity(this, result.timetableId)
                     }
+
                     DataState.STATE.FETCH_FAILED -> {
                         Toast.makeText(this, "导入失败: ${it.message}", Toast.LENGTH_SHORT).show()
                     }
+
                     else -> {
                         Toast.makeText(this, "导入失败", Toast.LENGTH_SHORT).show()
                     }
@@ -296,6 +231,297 @@ override fun onDelete(toDelete: Collection<Timetable>?) {
             Toast.makeText(this, "正在导入...", Toast.LENGTH_SHORT).show()
         } catch (e: Exception) {
             Toast.makeText(this, "读取文件失败: ${e.message}", Toast.LENGTH_SHORT).show()
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
+@Composable
+private fun TimetableManagerScreen(
+    viewModel: TimetableManagerViewModel,
+    selectedTimetableIds: Set<String>,
+    isExporting: Boolean,
+    lastExportSuccess: Boolean?,
+    onBack: () -> Unit,
+    onOpenTimetable: (Timetable) -> Unit,
+    onCreateTimetable: () -> Unit,
+    onImportEas: () -> Unit,
+    onImportIcs: () -> Unit,
+    onStartSelection: (Timetable) -> Unit,
+    onToggleSelection: (Timetable) -> Unit,
+    onClearSelection: () -> Unit,
+    onDeleteSelected: (List<Timetable>) -> Unit,
+    onExport: (List<Timetable>) -> Unit
+) {
+    val tokens = HitaTheme.tokens
+    val timetables by viewModel.timetablesLiveData.observeAsState(emptyList())
+    val selectionMode = selectedTimetableIds.isNotEmpty()
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .windowInsetsPadding(WindowInsets.statusBars)
+            .background(MaterialTheme.colorScheme.background)
+    ) {
+        TopAppBar(
+            title = {
+                Text(
+                    text = stringResource(R.string.title_timetable_manager),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+            },
+            navigationIcon = {
+                IconButton(onClick = onBack) {
+                    Icon(
+                        painter = painterResource(R.drawable.ic_baseline_keyboard_arrow_right_24),
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onSurface,
+                        modifier = Modifier.rotate(180f)
+                    )
+                }
+            },
+            actions = {
+                IconButton(onClick = { onExport(timetables) }, enabled = !isExporting) {
+                    if (isExporting) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(22.dp),
+                            strokeWidth = 2.dp,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                    } else {
+                        Icon(
+                            painter = painterResource(
+                                when (lastExportSuccess) {
+                                    true -> R.drawable.ic_baseline_done_24
+                                    false -> R.drawable.ic_baseline_error_24
+                                    null -> R.drawable.ic_baseline_cloud_download_24
+                                }
+                            ),
+                            contentDescription = stringResource(R.string.export),
+                            tint = MaterialTheme.colorScheme.primary
+                        )
+                    }
+                }
+            },
+            colors = TopAppBarDefaults.topAppBarColors(
+                containerColor = MaterialTheme.colorScheme.background
+            )
+        )
+        if (selectionMode) {
+            SelectionBar(
+                selectedCount = selectedTimetableIds.size,
+                timetables = timetables,
+                onClearSelection = onClearSelection,
+                onDeleteSelected = onDeleteSelected
+            )
+        }
+        LazyVerticalGrid(
+            columns = GridCells.Fixed(2),
+            modifier = Modifier.fillMaxSize(),
+            contentPadding = PaddingValues(tokens.spacing.sm)
+        ) {
+            items(timetables, key = { it.id }) { timetable ->
+                TimetableCard(
+                    timetable = timetable,
+                    selected = selectedTimetableIds.contains(timetable.id),
+                    selectionMode = selectionMode,
+                    onClick = {
+                        if (selectionMode) onToggleSelection(timetable) else onOpenTimetable(timetable)
+                    },
+                    onLongClick = { onStartSelection(timetable) }
+                )
+            }
+            item(key = "add") {
+                AddTimetableCard(
+                    onCreateTimetable = onCreateTimetable,
+                    onImportEas = onImportEas,
+                    onImportIcs = onImportIcs
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun SelectionBar(
+    selectedCount: Int,
+    timetables: List<Timetable>,
+    onClearSelection: () -> Unit,
+    onDeleteSelected: (List<Timetable>) -> Unit
+) {
+    val tokens = HitaTheme.tokens
+    Surface(color = MaterialTheme.colorScheme.surface) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = tokens.spacing.lg, vertical = tokens.spacing.sm),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = "已选择 $selectedCount 项",
+                modifier = Modifier.weight(1f),
+                color = MaterialTheme.colorScheme.onSurface,
+                fontWeight = FontWeight.Bold
+            )
+            Button(
+                onClick = { onDeleteSelected(timetables) },
+                shape = RoundedCornerShape(16.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
+            ) {
+                Text(text = "删除")
+            }
+            IconButton(onClick = onClearSelection) {
+                Icon(
+                    painter = painterResource(R.drawable.ic_baseline_close_24),
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurface
+                )
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun TimetableCard(
+    timetable: Timetable,
+    selected: Boolean,
+    selectionMode: Boolean,
+    onClick: () -> Unit,
+    onLongClick: () -> Unit
+) {
+    val tokens = HitaTheme.tokens
+    val season = TimeTools.getSeason(timetable.startTime.time)
+    val image = when (season) {
+        TimeTools.SEASON.SPRING -> R.drawable.season_spring
+        TimeTools.SEASON.SUMMER -> R.drawable.season_summer
+        TimeTools.SEASON.AUTUMN -> R.drawable.season_autumn
+        else -> R.drawable.season_winter
+    }
+    val container = when (season) {
+        TimeTools.SEASON.SPRING -> Color(0xFFE5F4DF)
+        TimeTools.SEASON.SUMMER -> Color(0xFFE1F0FF)
+        TimeTools.SEASON.AUTUMN -> Color(0xFFFFE8D6)
+        else -> Color(0xFFE8E8F0)
+    }
+
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(260.dp)
+            .padding(tokens.spacing.sm)
+            .combinedClickable(onClick = onClick, onLongClick = onLongClick),
+        shape = RoundedCornerShape(24.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(bottom = tokens.spacing.lg),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Surface(
+                modifier = Modifier
+                    .size(140.dp)
+                    .padding(tokens.spacing.lg),
+                shape = CircleShape,
+                color = container
+            ) {
+                Image(
+                    painter = painterResource(image),
+                    contentDescription = null,
+                    modifier = Modifier.padding(18.dp)
+                )
+            }
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = tokens.spacing.lg),
+                verticalAlignment = Alignment.Bottom
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = timetable.name ?: stringResource(R.string.default_timetable_name),
+                        color = MaterialTheme.colorScheme.onSurface,
+                        fontSize = 20.sp,
+                        fontWeight = FontWeight.Bold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    Text(
+                        text = TimeTools.printDate(timetable.startTime.time),
+                        modifier = Modifier.padding(top = tokens.spacing.xs),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        fontSize = 12.sp,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+                if (selectionMode) {
+                    Checkbox(checked = selected, onCheckedChange = { onClick() })
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun AddTimetableCard(
+    onCreateTimetable: () -> Unit,
+    onImportEas: () -> Unit,
+    onImportIcs: () -> Unit
+) {
+    val tokens = HitaTheme.tokens
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(260.dp)
+            .padding(tokens.spacing.sm),
+        shape = RoundedCornerShape(24.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
+    ) {
+        Column(
+            modifier = Modifier.fillMaxSize(),
+            verticalArrangement = Arrangement.Center,
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            AddActionButton(
+                icon = R.drawable.ic_baseline_add_24,
+                onClick = onCreateTimetable
+            )
+            AddActionButton(
+                icon = R.drawable.ic_import,
+                onClick = onImportEas
+            )
+            AddActionButton(
+                icon = R.drawable.ic_baseline_cloud_download_24,
+                onClick = onImportIcs
+            )
+        }
+    }
+}
+
+@Composable
+private fun AddActionButton(icon: Int, onClick: () -> Unit) {
+    Surface(
+        modifier = Modifier
+            .size(64.dp)
+            .padding(6.dp)
+            .clickable(onClick = onClick),
+        shape = CircleShape,
+        color = MaterialTheme.colorScheme.primaryContainer
+    ) {
+        Box(contentAlignment = Alignment.Center) {
+            Icon(
+                painter = painterResource(icon),
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.size(24.dp)
+            )
         }
     }
 }

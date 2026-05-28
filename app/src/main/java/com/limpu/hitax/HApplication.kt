@@ -58,12 +58,18 @@ class HApplication : Application() {
         }
 
         try {
-            val database = AppDatabase.getDatabase(this@HApplication)
-            val timetableDao = database.timetableDao()
-            val subjectDao = database.subjectDao()
-            val eventDao = database.eventItemDao()
+            applicationScope.launch(Dispatchers.IO) {
+                try {
+                    val database = AppDatabase.getDatabase(this@HApplication)
+                    database.timetableDao()
+                    database.subjectDao()
+                    database.eventItemDao()
+                } catch (e: Exception) {
+                    LogUtils.e("Database initialization failed", e)
+                }
+            }
         } catch (e: Exception) {
-            LogUtils.e("Database initialization failed", e)
+            LogUtils.e("Failed to launch database initialization", e)
         }
 
         // 注意：在生产环境中应该移除或修改SSL设置
