@@ -150,20 +150,22 @@ class AgentChatFragment : androidx.fragment.app.Fragment() {
     }
 
     private fun showDeleteSessionDialog(session: ChatSession) {
-        AlertDialog.Builder(requireContext())
+        val ctx = context ?: return
+        AlertDialog.Builder(ctx)
             .setTitle("删除会话")
             .setMessage("删除「${session.title}」的聊天记录？")
             .setPositiveButton("删除") { _, _ ->
                 viewModel.deleteSession(session)
-                Toast.makeText(requireContext(), "已删除", Toast.LENGTH_SHORT).show()
+                Toast.makeText(ctx, "已删除", Toast.LENGTH_SHORT).show()
             }
             .setNegativeButton("取消", null)
             .show()
     }
 
     private fun openFilePicker() {
+        val ctx = context ?: return
         if (viewModel.pendingAttachment.value != null) {
-            AlertDialog.Builder(requireContext())
+            AlertDialog.Builder(ctx)
                 .setTitle("附件提示")
                 .setMessage("您已经添加了一个附件，请先发送当前消息后再添加新附件。\n\n每条消息最多支持 3 个附件。")
                 .setPositiveButton("知道了", null)
@@ -174,7 +176,7 @@ class AgentChatFragment : androidx.fragment.app.Fragment() {
     }
 
     private fun openResourceCard(card: AgentResourceCard) {
-        val context = requireContext()
+        val context = this.context ?: return
         if (card.source == SearchExternalResourceTool.SOURCE_HOA) {
             ActivityUtils.startCourseReadmeActivity(
                 context,
