@@ -2,131 +2,154 @@ package com.limpu.hitax.ui.eas.imp
 
 import android.os.Bundle
 import android.view.HapticFeedbackConstants
-import android.view.View
 import android.widget.Toast
+import androidx.activity.viewModels
+import androidx.compose.foundation.background
 import androidx.appcompat.app.AlertDialog
-import androidx.core.content.ContextCompat
-import androidx.recyclerview.widget.LinearLayoutManager
-import com.google.android.material.appbar.AppBarLayout
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBars
+import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Divider
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.livedata.observeAsState
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.rotate
+import androidx.compose.ui.platform.ComposeView
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.limpu.component.data.DataState
 import com.limpu.hitax.R
 import com.limpu.hitax.data.model.eas.EASToken
 import com.limpu.hitax.data.model.eas.TermItem
 import com.limpu.hitax.data.model.timetable.TimePeriodInDay
-import com.limpu.hitax.data.repository.EASRepository
-import com.limpu.hitax.databinding.ActivityEasImportBinding
-import androidx.activity.viewModels
+import com.limpu.hitax.ui.base.ComposeViewBinding
+import com.limpu.hitax.ui.design.HitaComposeTheme
+import com.limpu.hitax.ui.design.HitaTheme
 import com.limpu.hitax.ui.eas.EASActivity
+import com.limpu.hitax.ui.eas.login.PopUpLoginEAS
 import com.limpu.hitax.ui.widgets.PopUpCalendarPicker
-import dagger.hilt.android.AndroidEntryPoint
 import com.limpu.hitax.ui.widgets.PopUpTimePeriodPicker
 import com.limpu.hitax.ui.widgets.WidgetUtils
 import com.limpu.hitax.utils.ActivityUtils
-import com.limpu.hitax.utils.AnimationUtils
-import com.limpu.hitax.utils.ImageUtils.dp2px
 import com.limpu.hitax.utils.TermNameFormatter
 import com.limpu.hitax.utils.TextTools
-import com.limpu.style.base.BaseListAdapter
 import com.limpu.style.widgets.PopUpCheckableList
+import dagger.hilt.android.AndroidEntryPoint
 
 @AndroidEntryPoint
 class ImportTimetableActivity :
-    EASActivity<ImportTimetableViewModel, ActivityEasImportBinding>() {
+    EASActivity<ImportTimetableViewModel, ComposeViewBinding>() {
 
     override val viewModel: ImportTimetableViewModel by viewModels()
 
     override fun shouldRefreshOnStart(): Boolean = false
-
     override fun shouldCheckLoginOnStart(): Boolean = false
 
-    private lateinit var scheduleStructureAdapter: TimetableStructureListAdapter
     private var autoImportPending: Boolean = false
     private var autoImportTriggered: Boolean = false
     private var importActionInFlight: Boolean = false
     private var termQueryInFlight: Boolean = false
     private var calibrationPromptTermCode: String? = null
     private var openTermPickerWhenLoaded: Boolean = false
+    private var isRefreshing by mutableStateOf(false)
+    private var importEnabled by mutableStateOf(false)
+    private var importing by mutableStateOf(false)
+    private var importSuccess: Boolean? by mutableStateOf(null)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        setToolbarActionBack(binding.toolbar)
+    }
+
+    override fun initViewBinding(): ComposeViewBinding {
+        return ComposeViewBinding(ComposeView(this))
     }
 
     override fun initViews() {
         super.initViews()
         bindLiveData()
-        initList()
         autoImportPending = intent.getBooleanExtra("autoImport", false)
-        binding.toolbar.title = ""
-        binding.collapse.title = ""
-        binding.appbar.addOnOffsetChangedListener(AppBarLayout.OnOffsetChangedListener { appBarLayout, verticalOffset ->
-            val scale = 1.0f + verticalOffset / appBarLayout.height.toFloat()
-            binding.termPick.translationX =
-                (binding.toolbar.contentInsetStartWithNavigation + dp2px(
-                    getThis(),
-                    8f
-                )) * (1 - scale)
-            binding.termPick.scaleX = 0.5f * (1 + scale)
-            binding.termPick.scaleY = 0.5f * (1 + scale)
-            binding.termPick.translationY =
-                (binding.termPick.height / 2) * (1 - binding.termPick.scaleY)
-
-            binding.buttonImport.translationY = dp2px(getThis(), 24f) * (1 - scale)
-            binding.buttonImport.scaleX = 0.7f + 0.3f * scale
-            binding.buttonImport.scaleY = 0.7f + 0.3f * scale
-            binding.buttonImport.translationX =
-                (binding.buttonImport.width / 2) * (1 - binding.buttonImport.scaleX)
-        })
-        binding.cardName.isEnabled = false
         val token = easRepository.getEasToken()
         val isUndergrad = token.stutype == EASToken.TYPE.UNDERGRAD
-        binding.stutype.isChecked = isUndergrad
         viewModel.changeIsUndergraduate(isUndergrad)
-        binding.termPick.setOnClickListener {
-            val terms = viewModel.startGetAllTerms()
-            if (terms.isEmpty()) {
-                openTermPickerWhenLoaded = true
-                ensureLoggedInForImport {
-                    refresh()
-                }
-                return@setOnClickListener
-            }
-            showTermPicker(terms)
-        }
-        binding.buttonImport.setOnClickListener { button ->
-            ensureLoggedInForImport {
-                if (viewModel.isBenbuTerm() && viewModel.benbuCalibrationConfirmedLiveData.value != true) {
-                    showBenbuCalibrationPrompt(force = true)
-                    return@ensureLoggedInForImport
-                }
-                if (startImportFlow()) {
-                    button.performHapticFeedback(HapticFeedbackConstants.CONTEXT_CLICK)
-                }
-            }
-        }
-        binding.cardDate.onCardClickListener = View.OnClickListener {
-            viewModel.startDateLiveData.value?.data?.let {
-                PopUpCalendarPicker().setInitValue(it.timeInMillis)
-                    .setOnConfirmListener(object : PopUpCalendarPicker.OnConfirmListener {
-                        override fun onConfirm(c: java.util.Calendar) {
-                            viewModel.changeStartDate(c)
-                        }
-                    }).show(supportFragmentManager, "pick")
-            }
-        }
-        binding.buttonPrevWeek.setOnClickListener {
-            viewModel.shiftStartDateByWeek(-1)
-        }
-        binding.buttonNextWeek.setOnClickListener {
-            viewModel.shiftStartDateByWeek(1)
-        }
-        binding.stutype.setOnCheckedChangeListener { bt, b ->
-            if (bt.isPressed) {
-                viewModel.changeIsUndergraduate(b)
-            }
-        }
-
         refreshLocalUiOnly()
+        (binding.root as ComposeView).setContent {
+            HitaComposeTheme() {
+                ImportTimetableScreen(
+                    viewModel = viewModel,
+                    isRefreshing = isRefreshing,
+                    importEnabled = importEnabled,
+                    importing = importing,
+                    importSuccess = importSuccess,
+                    getDisplayTermName = ::getDisplayTermName,
+                    onBack = { onBackPressedDispatcher.onBackPressed() },
+                    onRefresh = {
+                        ensureLoggedInForImport {
+                            refresh()
+                        }
+                    },
+                    onPickTerm = { pickTerm() },
+                    onImport = {
+                        ensureLoggedInForImport {
+                            if (
+                                viewModel.isBenbuTerm() &&
+                                viewModel.benbuCalibrationConfirmedLiveData.value != true
+                            ) {
+                                showBenbuCalibrationPrompt(force = true)
+                                return@ensureLoggedInForImport
+                            }
+                            if (startImportFlow()) {
+                                (binding.root as ComposeView).performHapticFeedback(
+                                    HapticFeedbackConstants.CONTEXT_CLICK
+                                )
+                            }
+                        }
+                    },
+                    onPickDate = { pickStartDate() },
+                    onShiftWeek = { viewModel.shiftStartDateByWeek(it) },
+                    onUndergraduateChange = { viewModel.changeIsUndergraduate(it) },
+                    onEditPeriod = { period, position -> editTimePeriod(period, position) }
+                )
+            }
+        }
         if (easRepository.getEasToken().isLogin()) {
             refresh()
         }
@@ -138,33 +161,25 @@ class ImportTimetableActivity :
     }
 
     override fun refresh() {
-        binding.buttonImport.background = ContextCompat.getDrawable(
-            getThis(),
-            R.drawable.element_rounded_button_bg_grey
-        )
-        binding.buttonImport.isEnabled = false
-        binding.refresh.isRefreshing = true
+        importEnabled = false
+        importing = false
+        importSuccess = null
+        isRefreshing = true
         termQueryInFlight = true
         viewModel.startRefreshTerms()
     }
 
     override fun onLoginCheckSuccess(retry: Boolean) {
         val token = easRepository.getEasToken()
-        binding.stutype.isChecked = (token.stutype == EASToken.TYPE.UNDERGRAD)
-        viewModel.changeIsUndergraduate(binding.stutype.isChecked)
+        viewModel.changeIsUndergraduate(token.stutype == EASToken.TYPE.UNDERGRAD)
         refresh()
     }
 
     private fun refreshLocalUiOnly() {
-        binding.buttonImport.background = ContextCompat.getDrawable(
-            getThis(),
-            R.drawable.element_rounded_button_bg_grey
-        )
-        binding.buttonImport.isEnabled = false
-        binding.refresh.isRefreshing = false
-        binding.termText.setText(R.string.pick_import_term)
-        binding.cardName.setTitle(getString(R.string.timetable_name))
-        binding.cardDate.setTitle(R.string.no_valid_date)
+        importEnabled = false
+        importing = false
+        importSuccess = null
+        isRefreshing = false
         updateBenbuCalibrationVisibility()
     }
 
@@ -177,13 +192,13 @@ class ImportTimetableActivity :
             from = this,
             easRepository = easRepository,
             directTo = null,
-            onResponseListener = object : com.limpu.hitax.ui.eas.login.PopUpLoginEAS.OnResponseListener {
-                override fun onSuccess(window: com.limpu.hitax.ui.eas.login.PopUpLoginEAS) {
+            onResponseListener = object : PopUpLoginEAS.OnResponseListener {
+                override fun onSuccess(window: PopUpLoginEAS) {
                     window.dismiss()
                     onSuccess()
                 }
 
-                override fun onFailed(window: com.limpu.hitax.ui.eas.login.PopUpLoginEAS) = Unit
+                override fun onFailed(window: PopUpLoginEAS) = Unit
             }
         )
     }
@@ -191,34 +206,22 @@ class ImportTimetableActivity :
     private fun bindLiveData() {
         viewModel.selectedTermLiveData.observe(this) {
             it?.let {
-                val label = getDisplayTermName(it)
-                binding.termText.text = label
-                binding.cardName.setTitle(label)
                 updateBenbuCalibrationVisibility()
                 maybeAutoImport()
             }
         }
         viewModel.termsLiveData.observe(this) { data ->
-            binding.refresh.isRefreshing = false
+            isRefreshing = false
             when (data.state) {
                 DataState.STATE.SUCCESS -> {
                     termQueryInFlight = false
                     resetSessionRetryState()
-                    if (!data.data.isNullOrEmpty()) {
-                        for (t in data.data!!) {
-                            if (t.isCurrent) {
-                                viewModel.changeSelectedTerm(t)
-                                if (openTermPickerWhenLoaded) {
-                                    openTermPickerWhenLoaded = false
-                                    showTermPicker(data.data!!)
-                                }
-                                return@observe
-                            }
-                        }
-                        viewModel.changeSelectedTerm(data.data!![0])
+                    val terms = data.data.orEmpty()
+                    if (terms.isNotEmpty()) {
+                        viewModel.changeSelectedTerm(terms.firstOrNull { it.isCurrent } ?: terms.first())
                         if (openTermPickerWhenLoaded) {
                             openTermPickerWhenLoaded = false
-                            showTermPicker(data.data!!)
+                            showTermPicker(terms)
                         }
                     }
                 }
@@ -227,7 +230,7 @@ class ImportTimetableActivity :
                     if (termQueryInFlight) {
                         if (!handleSessionExpired {
                                 termQueryInFlight = true
-                                binding.refresh.isRefreshing = true
+                                isRefreshing = true
                                 viewModel.startRefreshTerms()
                                 true
                             }) {
@@ -241,23 +244,12 @@ class ImportTimetableActivity :
                 else -> {
                     termQueryInFlight = false
                     resetSessionRetryState()
-                    binding.termText.setText(R.string.load_failed)
                     openTermPickerWhenLoaded = false
                 }
             }
             maybeAutoImport()
         }
         viewModel.startDateLiveData.observe(this) {
-            if ((it.state == DataState.STATE.SUCCESS || it.state == DataState.STATE.SPECIAL) && it.data != null) {
-                binding.cardDate.setTitle(
-                    TextTools.getNormalDateText(
-                        getThis(),
-                        it.data!!
-                    )
-                )
-            } else {
-                binding.cardDate.setTitle(R.string.no_valid_date)
-            }
             updateBenbuCalibrationVisibility()
             maybeShowBenbuCalibrationPrompt()
             maybeAutoImport()
@@ -268,26 +260,16 @@ class ImportTimetableActivity :
             maybeAutoImport()
         }
         viewModel.scheduleStructureLiveData.observe(this) {
-            AnimationUtils.enableLoadingButton(binding.buttonImport, !it.data.isNullOrEmpty())
-            if (it.state == DataState.STATE.SUCCESS) {
-                it.data?.let { data ->
-                    scheduleStructureAdapter.notifyItemChangedSmooth(data)
-                }
-            }
+            importEnabled = !it.data.isNullOrEmpty()
             maybeAutoImport()
         }
-        viewModel.isUndergraduateLiveData.observe(this) {
-            binding.stutype.text = if (it) getString(R.string.undergrad_structure) else
-                getString(R.string.postgrad_structure)
-        }
         viewModel.importTimetableResultLiveData.observe(this) {
-            AnimationUtils.loadingButtonDone(
-                binding.buttonImport, it.state == DataState.STATE.SUCCESS,
-                successStr = R.string.import_success, failStr = R.string.import_failed
-            )
+            importing = false
+            importSuccess = it.state == DataState.STATE.SUCCESS
             if (it.state == DataState.STATE.SUCCESS) {
                 importActionInFlight = false
                 resetSessionRetryState()
+                Toast.makeText(this, R.string.import_success, Toast.LENGTH_SHORT).show()
             } else if (it.state == DataState.STATE.NOT_LOGGED_IN && importActionInFlight) {
                 if (!handleSessionExpired { retryImportFlow() }) {
                     importActionInFlight = false
@@ -296,12 +278,47 @@ class ImportTimetableActivity :
                 importActionInFlight = false
                 resetSessionRetryState()
                 val msg = it.message?.trim().orEmpty()
-                if (msg.isNotEmpty()) {
-                    Toast.makeText(this, msg, Toast.LENGTH_SHORT).show()
-                }
+                Toast.makeText(
+                    this,
+                    msg.ifEmpty { getString(R.string.import_failed) },
+                    Toast.LENGTH_SHORT
+                ).show()
             }
             WidgetUtils.sendRefreshToAll(this)
         }
+    }
+
+    private fun pickTerm() {
+        val terms = viewModel.startGetAllTerms()
+        if (terms.isEmpty()) {
+            openTermPickerWhenLoaded = true
+            ensureLoggedInForImport {
+                refresh()
+            }
+            return
+        }
+        showTermPicker(terms)
+    }
+
+    private fun pickStartDate() {
+        viewModel.startDateLiveData.value?.data?.let {
+            PopUpCalendarPicker().setInitValue(it.timeInMillis)
+                .setOnConfirmListener(object : PopUpCalendarPicker.OnConfirmListener {
+                    override fun onConfirm(c: java.util.Calendar) {
+                        viewModel.changeStartDate(c)
+                    }
+                }).show(supportFragmentManager, "pick")
+        }
+    }
+
+    private fun editTimePeriod(period: TimePeriodInDay, position: Int) {
+        PopUpTimePeriodPicker().setInitialValue(period.from, period.to)
+            .setDialogTitle(R.string.pick_time_period)
+            .setOnDialogConformListener(object : PopUpTimePeriodPicker.OnDialogConformListener {
+                override fun onClick(timePeriodInDay: TimePeriodInDay) {
+                    viewModel.setStructureData(timePeriodInDay, position)
+                }
+            }).show(supportFragmentManager, "pick")
     }
 
     private fun maybeAutoImport() {
@@ -315,10 +332,11 @@ class ImportTimetableActivity :
     private fun startImportFlow(): Boolean {
         if (viewModel.startImportTimetable()) {
             importActionInFlight = true
+            importing = true
+            importSuccess = null
             if (viewModel.isBenbuTerm()) {
                 viewModel.saveBenbuCalibration()
             }
-            binding.buttonImport.startAnimation()
             return true
         }
         return false
@@ -327,16 +345,14 @@ class ImportTimetableActivity :
     private fun retryImportFlow(): Boolean {
         if (viewModel.retryImportTimetable()) {
             importActionInFlight = true
-            binding.buttonImport.startAnimation()
+            importing = true
+            importSuccess = null
             return true
         }
         return false
     }
 
-    private fun updateBenbuCalibrationVisibility() {
-        val visible = viewModel.isBenbuTerm()
-        binding.benbuCalibrationCard.visibility = if (visible) View.VISIBLE else View.GONE
-    }
+    private fun updateBenbuCalibrationVisibility() = Unit
 
     private fun maybeShowBenbuCalibrationPrompt() {
         showBenbuCalibrationPrompt(force = false)
@@ -363,40 +379,8 @@ class ImportTimetableActivity :
             .show()
     }
 
-    private fun initList() {
-        scheduleStructureAdapter = TimetableStructureListAdapter(getThis(), mutableListOf())
-        binding.scheduleStructure.adapter = scheduleStructureAdapter
-        binding.scheduleStructure.layoutManager = LinearLayoutManager(getThis())
-        binding.refresh.setColorSchemeColors(getColorPrimary())
-        binding.refresh.setOnRefreshListener {
-            ensureLoggedInForImport {
-                refresh()
-            }
-        }
-        scheduleStructureAdapter.setOnItemClickListener(object :
-            BaseListAdapter.OnItemClickListener<TimePeriodInDay> {
-            override fun onItemClick(data: TimePeriodInDay?, card: View?, position: Int) {
-                if (data == null) return
-                PopUpTimePeriodPicker().setInitialValue(data.from, data.to)
-                    .setDialogTitle(R.string.pick_time_period)
-                    .setOnDialogConformListener(object :
-                        PopUpTimePeriodPicker.OnDialogConformListener {
-                        override fun onClick(
-                            timePeriodInDay: TimePeriodInDay
-                        ) {
-                            viewModel.setStructureData(timePeriodInDay, position)
-                        }
-
-                    }).show(supportFragmentManager, "pick")
-            }
-
-        })
-    }
-
     private fun showTermPicker(terms: List<TermItem>) {
-        // 使用公共工具类过滤学期：只显示最近的学期
         val filteredTerms = com.limpu.hitax.utils.TermUtils.filterRecentTerms(terms)
-
         val names = filteredTerms.map { getDisplayTermName(it) }
         PopUpCheckableList<TermItem>()
             .setListData(names, filteredTerms)
@@ -411,8 +395,394 @@ class ImportTimetableActivity :
     private fun getDisplayTermName(term: TermItem): String {
         return TermNameFormatter.shortTermName(term.termName, term.name)
     }
+}
 
-    override fun initViewBinding(): ActivityEasImportBinding {
-        return ActivityEasImportBinding.inflate(layoutInflater)
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun ImportTimetableScreen(
+    viewModel: ImportTimetableViewModel,
+    isRefreshing: Boolean,
+    importEnabled: Boolean,
+    importing: Boolean,
+    importSuccess: Boolean?,
+    getDisplayTermName: (TermItem) -> String,
+    onBack: () -> Unit,
+    onRefresh: () -> Unit,
+    onPickTerm: () -> Unit,
+    onImport: () -> Unit,
+    onPickDate: () -> Unit,
+    onShiftWeek: (Int) -> Unit,
+    onUndergraduateChange: (Boolean) -> Unit,
+    onEditPeriod: (TimePeriodInDay, Int) -> Unit
+) {
+    val tokens = HitaTheme.tokens
+    val selectedTerm by viewModel.selectedTermLiveData.observeAsState()
+    val startDateState by viewModel.startDateLiveData.observeAsState()
+    val scheduleState by viewModel.scheduleStructureLiveData.observeAsState()
+    val isUndergraduate by viewModel.isUndergraduateLiveData.observeAsState(true)
+    val isBenbu = viewModel.isBenbuTerm(selectedTerm)
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val dateText = startDateState?.data?.let { TextTools.getNormalDateText(context, it) }
+        ?: stringResource(R.string.no_valid_date)
+    val periods = scheduleState?.data.orEmpty()
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .windowInsetsPadding(WindowInsets.statusBars)
+            .background(MaterialTheme.colorScheme.background)
+    ) {
+        TopAppBar(
+            title = {
+                Text(
+                    text = stringResource(R.string.title_import_timetable),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+            },
+            navigationIcon = {
+                IconButton(onClick = onBack) {
+                    Icon(
+                        painter = painterResource(R.drawable.ic_baseline_keyboard_arrow_right_24),
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onSurface,
+                        modifier = Modifier.rotate(180f)
+                    )
+                }
+            },
+            actions = {
+                IconButton(onClick = onRefresh) {
+                    if (isRefreshing) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(22.dp),
+                            strokeWidth = 2.dp,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                    } else {
+                        Icon(
+                            painter = painterResource(R.drawable.ic_baseline_settings_backup_restore_24),
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary
+                        )
+                    }
+                }
+            },
+            colors = TopAppBarDefaults.topAppBarColors(
+                containerColor = MaterialTheme.colorScheme.background
+            )
+        )
+        LazyColumn(
+            modifier = Modifier.fillMaxSize(),
+            contentPadding = PaddingValues(bottom = tokens.spacing.xl)
+        ) {
+            item {
+                ImportHeader(
+                    termText = selectedTerm?.let(getDisplayTermName)
+                        ?: stringResource(R.string.pick_import_term),
+                    importEnabled = importEnabled,
+                    importing = importing,
+                    importSuccess = importSuccess,
+                    onPickTerm = onPickTerm,
+                    onImport = onImport
+                )
+            }
+            item {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = tokens.spacing.lg),
+                    horizontalArrangement = Arrangement.spacedBy(tokens.spacing.sm)
+                ) {
+                    InfoCard(
+                        title = selectedTerm?.let(getDisplayTermName)
+                            ?: stringResource(R.string.timetable_name),
+                        subtitle = stringResource(R.string.timetable_name),
+                        icon = R.drawable.ic_timetable,
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(144.dp)
+                    )
+                    InfoCard(
+                        title = dateText,
+                        subtitle = stringResource(R.string.start_date_of_curriculum),
+                        icon = R.drawable.ic_baseline_timetable_24,
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(144.dp)
+                            .clickable(onClick = onPickDate)
+                    )
+                }
+            }
+            if (isBenbu) {
+                item {
+                    BenbuCalibrationCard(
+                        onPrev = { onShiftWeek(-1) },
+                        onNext = { onShiftWeek(1) }
+                    )
+                }
+            }
+            item {
+                ScheduleStructureCard(
+                    periods = periods,
+                    isUndergraduate = isUndergraduate,
+                    onUndergraduateChange = onUndergraduateChange,
+                    onEditPeriod = onEditPeriod
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun ImportHeader(
+    termText: String,
+    importEnabled: Boolean,
+    importing: Boolean,
+    importSuccess: Boolean?,
+    onPickTerm: () -> Unit,
+    onImport: () -> Unit
+) {
+    val tokens = HitaTheme.tokens
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = tokens.spacing.xl, vertical = tokens.spacing.lg),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Row(
+            modifier = Modifier
+                .weight(1f)
+                .clickable(onClick = onPickTerm)
+                .padding(vertical = tokens.spacing.md),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = termText,
+                color = MaterialTheme.colorScheme.onSurface,
+                fontSize = 32.sp,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            Icon(
+                painter = painterResource(R.drawable.ic_expand),
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.outline,
+                modifier = Modifier
+                    .padding(start = 6.dp)
+                    .size(20.dp)
+            )
+        }
+        Button(
+            onClick = onImport,
+            enabled = importEnabled && !importing,
+            shape = RoundedCornerShape(16.dp),
+            colors = ButtonDefaults.buttonColors(
+                containerColor = if (importEnabled) {
+                    MaterialTheme.colorScheme.primary
+                } else {
+                    MaterialTheme.colorScheme.outlineVariant
+                }
+            ),
+            contentPadding = PaddingValues(horizontal = tokens.spacing.lg)
+        ) {
+            if (importing) {
+                CircularProgressIndicator(
+                    modifier = Modifier.size(16.dp),
+                    strokeWidth = 2.dp,
+                    color = MaterialTheme.colorScheme.onPrimary
+                )
+                Spacer(modifier = Modifier.size(tokens.spacing.sm))
+            }
+            Text(
+                text = when (importSuccess) {
+                    true -> stringResource(R.string.import_success)
+                    false -> stringResource(R.string.import_failed)
+                    null -> stringResource(R.string.button_import)
+                },
+                fontSize = 16.sp
+            )
+        }
+    }
+}
+
+@Composable
+private fun InfoCard(
+    title: String,
+    subtitle: String,
+    icon: Int,
+    modifier: Modifier
+) {
+    val tokens = HitaTheme.tokens
+    Card(
+        modifier = modifier.padding(vertical = tokens.spacing.sm),
+        shape = RoundedCornerShape(24.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
+    ) {
+        Column(modifier = Modifier.padding(tokens.spacing.lg)) {
+            Icon(
+                painter = painterResource(icon),
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.size(30.dp)
+            )
+            Spacer(modifier = Modifier.weight(1f))
+            Text(
+                text = title,
+                color = MaterialTheme.colorScheme.onSurface,
+                fontSize = 18.sp,
+                fontWeight = FontWeight.Bold,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis
+            )
+            Text(
+                text = subtitle,
+                modifier = Modifier.padding(top = 4.dp),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                fontSize = 12.sp
+            )
+        }
+    }
+}
+
+@Composable
+private fun BenbuCalibrationCard(
+    onPrev: () -> Unit,
+    onNext: () -> Unit
+) {
+    val tokens = HitaTheme.tokens
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = tokens.spacing.lg, vertical = tokens.spacing.xs),
+        shape = RoundedCornerShape(24.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
+    ) {
+        Column(modifier = Modifier.padding(tokens.spacing.lg)) {
+            Text(
+                text = stringResource(R.string.benbu_start_date_calibration_hint),
+                color = MaterialTheme.colorScheme.onSurface,
+                fontSize = 14.sp
+            )
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = tokens.spacing.md),
+                horizontalArrangement = Arrangement.spacedBy(tokens.spacing.md)
+            ) {
+                TextButton(onClick = onPrev, modifier = Modifier.weight(1f)) {
+                    Text(text = stringResource(R.string.benbu_start_date_prev_week))
+                }
+                TextButton(onClick = onNext, modifier = Modifier.weight(1f)) {
+                    Text(text = stringResource(R.string.benbu_start_date_next_week))
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ScheduleStructureCard(
+    periods: List<TimePeriodInDay>,
+    isUndergraduate: Boolean,
+    onUndergraduateChange: (Boolean) -> Unit,
+    onEditPeriod: (TimePeriodInDay, Int) -> Unit
+) {
+    val tokens = HitaTheme.tokens
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = tokens.spacing.lg, vertical = tokens.spacing.sm),
+        shape = RoundedCornerShape(24.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
+    ) {
+        Column {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(start = tokens.spacing.lg, top = tokens.spacing.lg, end = tokens.spacing.md),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = stringResource(R.string.timetable_structure_label),
+                    modifier = Modifier.weight(1f),
+                    color = MaterialTheme.colorScheme.onSurface,
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.Bold
+                )
+                Text(
+                    text = stringResource(
+                        if (isUndergraduate) R.string.undergrad_structure else R.string.postgrad_structure
+                    ),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    fontSize = 14.sp
+                )
+                Switch(
+                    checked = isUndergraduate,
+                    onCheckedChange = onUndergraduateChange,
+                    modifier = Modifier.padding(start = tokens.spacing.sm)
+                )
+            }
+            Spacer(modifier = Modifier.height(tokens.spacing.sm))
+            periods.forEachIndexed { index, period ->
+                StructureRow(
+                    index = index,
+                    period = period,
+                    showDivider = index != periods.lastIndex,
+                    onClick = { onEditPeriod(period, index) }
+                )
+            }
+            Spacer(modifier = Modifier.height(tokens.spacing.sm))
+        }
+    }
+}
+
+@Composable
+private fun StructureRow(
+    index: Int,
+    period: TimePeriodInDay,
+    showDivider: Boolean,
+    onClick: () -> Unit
+) {
+    val tokens = HitaTheme.tokens
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+    ) {
+        Row(
+            modifier = Modifier.padding(
+                start = tokens.spacing.lg,
+                top = 10.dp,
+                end = tokens.spacing.lg,
+                bottom = 10.dp
+            ),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = stringResource(R.string.schedule_list_item_pattern, index + 1),
+                modifier = Modifier
+                    .weight(1f)
+                    .alpha(0.3f),
+                color = MaterialTheme.colorScheme.onSurface,
+                fontSize = 16.sp,
+                fontWeight = FontWeight.Bold
+            )
+            Text(
+                text = period.toString(),
+                color = MaterialTheme.colorScheme.onSurface,
+                fontSize = 16.sp,
+                fontWeight = FontWeight.Bold
+            )
+        }
+        if (showDivider) {
+            Divider(
+                modifier = Modifier.padding(horizontal = tokens.spacing.lg),
+                color = MaterialTheme.colorScheme.outlineVariant
+            )
+        }
     }
 }

@@ -2,9 +2,10 @@ package com.limpu.style.widgets
 
 import android.text.TextUtils
 import android.text.method.LinkMovementMethod
+import android.view.LayoutInflater
 import android.view.View
+import android.view.ViewGroup
 import androidx.annotation.StringRes
-import com.limpu.style.R
 import com.limpu.style.databinding.DialogBottomTextBinding
 
 /**
@@ -74,12 +75,7 @@ class PopUpText : TransparentBottomSheetDialog<DialogBottomTextBinding>() {
         }
     }
 
-
-    override fun getLayoutId(): Int {
-        return R.layout.dialog_bottom_text
-    }
-
-    override fun initViewBinding(v: View): DialogBottomTextBinding {
-        return DialogBottomTextBinding.bind(v)
+    override fun createViewBinding(inflater: LayoutInflater, container: ViewGroup?): DialogBottomTextBinding {
+        return DialogBottomTextBinding.inflate(inflater, container, false)
     }
 }

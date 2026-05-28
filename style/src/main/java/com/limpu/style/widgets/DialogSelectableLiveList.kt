@@ -3,6 +3,7 @@ package com.limpu.style.widgets
 import android.annotation.SuppressLint
 import android.content.Context
 import android.util.Log
+import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import androidx.annotation.StringRes
@@ -11,7 +12,6 @@ import androidx.lifecycle.MediatorLiveData
 import androidx.lifecycle.MutableLiveData
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.viewbinding.ViewBinding
-import com.limpu.style.R
 import com.limpu.style.base.BaseViewHolder
 import com.limpu.style.base.BasicSelectableListAdapter
 import com.limpu.style.databinding.DialogBottomSelectableListBinding
@@ -169,12 +169,7 @@ class DialogSelectableLiveList<T> :
         }
     }
 
-
-    override fun getLayoutId(): Int {
-        return R.layout.dialog_selectable_list
-    }
-
-    override fun initViewBinding(v: View): DialogSelectableListBinding {
-        return DialogSelectableListBinding.bind(v)
+    override fun createViewBinding(inflater: LayoutInflater, container: ViewGroup?): DialogSelectableListBinding {
+        return DialogSelectableListBinding.inflate(inflater, container, false)
     }
 }

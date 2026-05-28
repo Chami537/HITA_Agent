@@ -1,0 +1,117 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!--
+        HITA Design System facade.
+
+        This file is the single entry point for new UI styles. It aliases the
+        existing color, spacing, radius, typography, and component resources so
+        new screens can use one predictable namespace without changing the
+        current visual style.
+    -->
+
+    <!-- Palette tokens -->
+    <color name="ds_color_brand">@color/primary</color>
+    <color name="ds_color_brand_on">@color/on_primary</color>
+    <color name="ds_color_brand_container">@color/primary_container</color>
+    <color name="ds_color_brand_on_container">@color/on_primary_container</color>
+    <color name="ds_color_accent">@color/secondary</color>
+    <color name="ds_color_info">@color/tertiary</color>
+    <color name="ds_color_background">@color/surface</color>
+    <color name="ds_color_surface">@color/surface_variant</color>
+    <color name="ds_color_surface_tint">@color/surface_tint</color>
+    <color name="ds_color_text_primary">@color/on_surface</color>
+    <color name="ds_color_text_secondary">@color/on_surface_variant</color>
+    <color name="ds_color_outline">@color/outline</color>
+    <color name="ds_color_outline_subtle">@color/outline_variant</color>
+    <color name="ds_color_error">@color/error</color>
+    <color name="ds_color_error_container">@color/error_container</color>
+
+    <!-- Backward-compatible brand aliases with clearer names. -->
+    <color name="ds_color_brand_subtle">@color/primary_subtle</color>
+    <color name="ds_color_control_disabled">@color/primary_disabled</color>
+    <color name="ds_color_white">@color/white</color>
+    <color name="ds_color_black">@color/black</color>
+
+    <!-- Course and seasonal tokens -->
+    <color name="ds_course_green">@color/subject_1</color>
+    <color name="ds_course_pink">@color/subject_3</color>
+    <color name="ds_course_orange">@color/subject_4</color>
+    <color name="ds_course_purple">@color/subject_5</color>
+    <color name="ds_course_red">@color/subject_6</color>
+    <color name="ds_course_indigo">@color/subject_7</color>
+    <color name="ds_course_blue">@color/subject_8</color>
+    <color name="ds_course_cyan">@color/subject_9</color>
+    <color name="ds_course_teal">@color/subject_10</color>
+    <color name="ds_season_spring">@color/season_spring</color>
+    <color name="ds_season_summer">@color/season_summer</color>
+    <color name="ds_season_autumn">@color/season_autumn</color>
+    <color name="ds_season_winter">@color/season_winter</color>
+
+    <!-- Spacing tokens. Same scale as the existing 4dp grid. -->
+    <dimen name="ds_space_none">@dimen/space_0</dimen>
+    <dimen name="ds_space_xs">@dimen/space_1</dimen>
+    <dimen name="ds_space_sm">@dimen/space_2</dimen>
+    <dimen name="ds_space_md">@dimen/space_3</dimen>
+    <dimen name="ds_space_lg">@dimen/space_4</dimen>
+    <dimen name="ds_space_xl">@dimen/space_6</dimen>
+    <dimen name="ds_space_2xl">@dimen/space_8</dimen>
+    <dimen name="ds_space_3xl">@dimen/space_12</dimen>
+    <dimen name="ds_space_4xl">@dimen/space_16</dimen>
+
+    <!-- Radius tokens -->
+    <dimen name="ds_radius_none">@dimen/corner_none</dimen>
+    <dimen name="ds_radius_xs">@dimen/corner_extra_small</dimen>
+    <dimen name="ds_radius_sm">@dimen/corner_small</dimen>
+    <dimen name="ds_radius_md">@dimen/corner_medium</dimen>
+    <dimen name="ds_radius_lg">@dimen/corner_large</dimen>
+    <dimen name="ds_radius_xl">@dimen/corner_extra_large</dimen>
+    <dimen name="ds_radius_full">@dimen/corner_full</dimen>
+
+    <!-- Common component size tokens -->
+    <dimen name="ds_toolbar_height">@dimen/material_toolbar_height</dimen>
+    <dimen name="ds_bottom_navigation_height">@dimen/bottom_navigation_height</dimen>
+    <dimen name="ds_timetable_label_width">@dimen/timetable_label_width</dimen>
+    <dimen name="ds_timetable_date_height">@dimen/timetable_date_height</dimen>
+    <dimen name="ds_timeline_width">@dimen/timeline_width</dimen>
+
+    <!-- Component aliases for new XML layouts. -->
+    <style name="Ds.Widget.Card" parent="Widget.HITA.CardView" />
+    <style name="Ds.Widget.Card.Small" parent="Widget.HITA.CardView.Small" />
+    <style name="Ds.Widget.Card.Medium" parent="Widget.HITA.CardView.Medium" />
+    <style name="Ds.Widget.Card.Large" parent="Widget.HITA.CardView.ExtraLarge" />
+    <style name="Ds.Widget.Button" parent="Widget.HITA.Button" />
+    <style name="Ds.Widget.Button.Outlined" parent="Widget.HITA.Button.Outlined" />
+    <style name="Ds.Widget.Button.Text" parent="Widget.HITA.Button.Text" />
+    <style name="Ds.Widget.Button.Tonal" parent="Widget.HITA.Button.Tonal" />
+    <style name="Ds.Widget.Toolbar" parent="Widget.HITA.Toolbar" />
+    <style name="Ds.Widget.BottomNavigation.Text" parent="TextAppearance.HITA.BottomNavigation" />
+
+    <!-- Text aliases for new XML layouts. -->
+    <style name="Ds.Text.DisplayLarge" parent="TextAppearance.HITA.DisplayLarge" />
+    <style name="Ds.Text.DisplayMedium" parent="TextAppearance.HITA.DisplayMedium" />
+    <style name="Ds.Text.HeadlineLarge" parent="TextAppearance.HITA.HeadlineLarge" />
+    <style name="Ds.Text.HeadlineMedium" parent="TextAppearance.HITA.HeadlineMedium" />
+    <style name="Ds.Text.HeadlineSmall" parent="TextAppearance.HITA.HeadlineSmall" />
+    <style name="Ds.Text.TitleLarge" parent="TextAppearance.HITA.TitleLarge" />
+    <style name="Ds.Text.TitleMedium" parent="TextAppearance.HITA.TitleMedium" />
+    <style name="Ds.Text.TitleSmall" parent="TextAppearance.HITA.TitleSmall" />
+    <style name="Ds.Text.BodyLarge" parent="TextAppearance.HITA.BodyLarge" />
+    <style name="Ds.Text.BodyMedium" parent="TextAppearance.HITA.BodyMedium" />
+    <style name="Ds.Text.BodySmall" parent="TextAppearance.HITA.BodySmall" />
+    <style name="Ds.Text.LabelLarge" parent="TextAppearance.HITA.LabelLarge" />
+    <style name="Ds.Text.LabelMedium" parent="TextAppearance.HITA.LabelMedium" />
+    <style name="Ds.Text.LabelSmall" parent="TextAppearance.HITA.LabelSmall" />
+
+    <!-- Utility-style XML aliases for common repeated patterns. -->
+    <style name="Ds.Utility.SurfaceCard" parent="">
+        <item name="android:backgroundTint">@color/ds_color_surface</item>
+        <item name="cardBackgroundColor">@color/ds_color_surface</item>
+        <item name="cardCornerRadius">@dimen/ds_radius_lg</item>
+        <item name="cardElevation">0dp</item>
+    </style>
+
+    <style name="Ds.Utility.Pill" parent="">
+        <item name="android:backgroundTint">@color/ds_color_brand_subtle</item>
+        <item name="cornerRadius">@dimen/ds_radius_full</item>
+    </style>
+</resources>

@@ -1,8 +1,9 @@
 package com.limpu.style.widgets
 
+import android.view.LayoutInflater
 import android.view.View
+import android.view.ViewGroup
 import androidx.annotation.StringRes
-import com.limpu.style.R
 import com.limpu.style.databinding.DialogBottomFloatPickerBinding
 import java.util.*
 import kotlin.math.roundToInt
@@ -18,8 +19,8 @@ class PopUpFloatPicker :
     private var init_a: Int = 0
     private var init_b: Int = 0
 
-    protected override fun initViewBinding(v: View): DialogBottomFloatPickerBinding {
-        return DialogBottomFloatPickerBinding.bind(v)
+    override fun createViewBinding(inflater: LayoutInflater, container: ViewGroup?): DialogBottomFloatPickerBinding {
+        return DialogBottomFloatPickerBinding.inflate(inflater, container, false)
     }
 
     interface OnDialogConformListener {
@@ -72,10 +73,6 @@ class PopUpFloatPicker :
         binding.title.setText(init_title)
         binding.a.currentIndex = init_a
         binding.b.currentIndex = init_b
-    }
-
-    override fun getLayoutId(): Int {
-        return R.layout.dialog_bottom_float_picker
     }
 
     init {

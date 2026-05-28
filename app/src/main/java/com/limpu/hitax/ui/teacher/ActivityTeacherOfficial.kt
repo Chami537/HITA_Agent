@@ -1,194 +1,451 @@
 package com.limpu.hitax.ui.teacher
 
-import android.annotation.SuppressLint
 import android.os.Bundle
 import android.text.Html
-import android.view.View
-import android.view.ViewGroup
+import android.text.method.LinkMovementMethod
+import android.widget.ImageView
 import android.widget.TextView
+import android.widget.Toast
+import androidx.activity.compose.setContent
 import androidx.activity.viewModels
-import androidx.viewpager.widget.PagerAdapter
+import androidx.appcompat.app.AppCompatActivity
+import androidx.appcompat.app.AppCompatDelegate
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ExtendedFloatingActionButton
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.livedata.observeAsState
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.rotate
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.compose.ui.viewinterop.AndroidView
 import com.bumptech.glide.Glide
 import com.bumptech.glide.request.RequestOptions
-import com.google.android.material.appbar.AppBarLayout
 import com.limpu.component.data.DataState
 import com.limpu.hitax.R
-import com.limpu.hitax.databinding.ActivityTeacherOfficialBinding
-import com.limpu.hitax.ui.base.HiltBaseActivity
+import com.limpu.hitax.ui.design.HitaComposeTheme
+import com.limpu.hitax.ui.design.HitaTheme
+import com.limpu.style.ThemeTools
 import dagger.hilt.android.AndroidEntryPoint
-
 
 @Suppress("DEPRECATION")
 @AndroidEntryPoint
-open class ActivityTeacherOfficial :
-    HiltBaseActivity<ActivityTeacherOfficialBinding>() {
-
-    protected val viewModel: TeacherViewModel by viewModels()
-    var tabTitles: MutableList<String> = mutableListOf()
-    var pagerAdapter: PagerAdapter? = null
-
+open class ActivityTeacherOfficial : AppCompatActivity() {
+    private val viewModel: TeacherViewModel by viewModels()
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        val nightMode = when (ThemeTools.getThemeMode(this)) {
+            ThemeTools.MODE.DARK -> AppCompatDelegate.MODE_NIGHT_YES
+            ThemeTools.MODE.LIGHT -> AppCompatDelegate.MODE_NIGHT_NO
+            else -> AppCompatDelegate.MODE_NIGHT_FOLLOW_SYSTEM
+        }
+        AppCompatDelegate.setDefaultNightMode(nightMode)
         super.onCreate(savedInstanceState)
 
-        setToolbarActionBack(binding.toolbar)
-    }
-
-    override fun onStart() {
-        super.onStart()
-        refresh()
-    }
-
-
-    private fun initToolbar() {
-        binding.toolbar.title = ""
-        binding.appbar.addOnOffsetChangedListener(AppBarLayout.OnOffsetChangedListener { appBarLayout, verticalOffset ->
-            val scale = 1.0f + verticalOffset / appBarLayout.height.toFloat()
-            binding.cardAvatar.scaleX = scale
-            binding.cardAvatar.scaleY = scale
-            val mHeadImgScale = 0f
-            binding.cardAvatar.translationY = mHeadImgScale * verticalOffset
-            binding.cardAvatar.scaleX = scale
-            binding.cardAvatar.scaleY = scale
-            binding.cardAvatar.translationY = mHeadImgScale * verticalOffset
-            if(scale<0.5){
-                binding.fab.shrink()
-            }else{
-                binding.fab.extend()
-            }
-        })
-    }
-
-    private fun initPager() {
-        pagerAdapter = object : PagerAdapter() {
-
-            override fun isViewFromObject(view: View, `object`: Any): Boolean {
-                return view === `object`
-            }
-
-            override fun getCount(): Int {
-                return tabTitles.size
-            }
-
-            //设置viewpager内部东西的方法，如果viewpager内没有子空间滑动产生不了动画效果
-            @SuppressLint("InflateParams")
-            override fun instantiateItem(container: ViewGroup, position: Int): Any {
-                val v: View =
-                    layoutInflater.inflate(R.layout.dynamic_teacher_official_info_page, null, false)
-                val textView: TextView = v.findViewById(R.id.text)
-                viewModel.teacherPagesLiveData.value?.data?.get(tabTitles[position])?.let {
-                    textView.text = Html.fromHtml(it)
-                }
-                container.addView(v)
-                //最后要返回的是控件本身
-                return v
-            }
-
-            override fun destroyItem(container: ViewGroup, position: Int, `object`: Any) {
-                container.removeView(`object` as View)
-            }
-
-            //目的是展示title上的文字，
-            override fun getPageTitle(position: Int): CharSequence {
-                return tabTitles.get(position)
+        setContent {
+            HitaComposeTheme() {
+                TeacherOfficialScreen(
+                    viewModel = viewModel,
+                    teacherId = intent.getStringExtra("id").orEmpty(),
+                    teacherUrl = intent.getStringExtra("url").orEmpty(),
+                    teacherName = intent.getStringExtra("name").orEmpty(),
+                    onBack = { onBackPressedDispatcher.onBackPressed() },
+                    onContact = { profile ->
+                        TeacherContactFragment.newInstance(profile)
+                            .show(supportFragmentManager, "ftc")
+                    }
+                )
             }
         }
-        binding.pager.adapter = pagerAdapter
-        binding.tabs.setupWithViewPager(binding.pager)
+    }
+}
+
+@Composable
+private fun TeacherOfficialScreen(
+    viewModel: TeacherViewModel,
+    teacherId: String,
+    teacherUrl: String,
+    teacherName: String,
+    onBack: () -> Unit,
+    onContact: (Map<String, String>) -> Unit,
+) {
+    val context = LocalContext.current
+    val tokens = HitaTheme.tokens
+    val teacherKey by viewModel.teacherKeyLiveData.observeAsState()
+    val profileState by viewModel.teacherProfileLiveData.observeAsState()
+    val pagesState by viewModel.teacherPagesLiveData.observeAsState()
+    var loading by remember { mutableStateOf(true) }
+    var profile by remember { mutableStateOf<Map<String, String>>(emptyMap()) }
+    var pages by remember { mutableStateOf<Map<String, String>>(emptyMap()) }
+    var selectedIndex by remember { mutableIntStateOf(0) }
+
+    LaunchedEffect(teacherId, teacherUrl, teacherName) {
+        if (teacherId.isNotBlank() && teacherUrl.isNotBlank()) {
+            loading = true
+            viewModel.startRefresh(teacherId, teacherUrl, teacherName)
+        }
     }
 
-    @SuppressLint("ResourceType")
-    override fun initViews() {
-        initPager()
-        initToolbar()
-        binding.fab.setBackgroundColor(getColorPrimary())
-        binding.fab.visibility = View.INVISIBLE
-        binding.fab.setHideMotionSpecResource(R.anim.fab_scale_hide)
-        binding.fab.setShowMotionSpecResource(R.anim.fab_scale_show)
-        binding.cardAvatar.setOnClickListener {
-//            ActivityUtils.showOneImage(
-//                getThis(),
-//                "http://faculty.hitsz.edu.cn/file/showHP.do?d=$teacherId"
-//            )
+    LaunchedEffect(profileState) {
+        val state = profileState ?: return@LaunchedEffect
+        if (state.state == DataState.STATE.SUCCESS) {
+            profile = state.data.orEmpty()
         }
-        binding.fab.setOnClickListener {
-            viewModel.teacherProfileLiveData.value?.data?.let { it1 ->
-                TeacherContactFragment.newInstance(
-                    it1
-                ).show(supportFragmentManager, "ftc")
+    }
+
+    LaunchedEffect(pagesState) {
+        val state = pagesState ?: return@LaunchedEffect
+        loading = false
+        if (state.state == DataState.STATE.SUCCESS) {
+            pages = state.data.orEmpty()
+            if (selectedIndex >= pages.size) {
+                selectedIndex = 0
             }
+        } else {
+            pages = emptyMap()
+            Toast.makeText(context, R.string.fail, Toast.LENGTH_SHORT).show()
         }
-        binding.refresh.setColorSchemeColors(getColorPrimary())
-        binding.refresh.setOnRefreshListener { refresh() }
-        viewModel.teacherKeyLiveData.observe(this) {
-            Glide.with(this).load(
-                "http://faculty.hitsz.edu.cn/file/showHP.do?d=" +
-                        it.id + "&&w=200&&h=200&&prevfix=200-"
-            ).apply(RequestOptions.circleCropTransform())
-                .placeholder(R.drawable.place_holder_avatar)
-                .into(binding.teacherAvatar)
-            binding.teacherName.text = it.name
-        }
-        viewModel.teacherProfileLiveData.observe(this) {
-            if (it.state == DataState.STATE.SUCCESS) {
-                val pos = it.data?.get("post")
-                if (pos.isNullOrBlank()) {
-                    binding.teacherPost.visibility = View.GONE
+    }
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(MaterialTheme.colorScheme.background)
+    ) {
+        Column(modifier = Modifier.fillMaxSize()) {
+            TeacherHeader(
+                teacherId = teacherKey?.id ?: teacherId,
+                teacherName = teacherKey?.name?.ifBlank { teacherName } ?: teacherName,
+                profile = profile,
+                onBack = onBack
+            )
+            TeacherTabs(
+                titles = pages.keys.toList(),
+                selectedIndex = selectedIndex,
+                onSelect = { selectedIndex = it },
+                modifier = Modifier.fillMaxWidth()
+            )
+            Box(modifier = Modifier.fillMaxSize()) {
+                if (pages.isEmpty() && !loading) {
+                    EmptyTeacherPage(modifier = Modifier.align(Alignment.TopCenter))
                 } else {
-                    binding.teacherPost.visibility = View.VISIBLE
-                    binding.teacherPost.text = pos
-                }
-                val posi = it.data?.get("position")
-                if (posi.isNullOrBlank()) {
-                    binding.teacherPosition.visibility = View.GONE
-                } else {
-                    binding.teacherPosition.visibility = View.VISIBLE
-                    binding.teacherPosition.text = posi
-                }
-                val lab = it.data?.get("label")
-                if (lab.isNullOrBlank()) {
-                    binding.teacherLabel.visibility = View.GONE
-                } else {
-                    binding.teacherLabel.visibility = View.VISIBLE
-                    binding.teacherLabel.text = lab
+                    val selectedContent = pages.values.toList().getOrNull(selectedIndex).orEmpty()
+                    HtmlPage(
+                        html = selectedContent,
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .verticalScroll(rememberScrollState())
+                            .padding(tokens.spacing.xl)
+                    )
                 }
             }
         }
-        viewModel.teacherPagesLiveData.observe(this) {
-            binding.refresh.isRefreshing = false
-            binding.fab.show()
-            if (it.state == DataState.STATE.SUCCESS) {
-                tabTitles.clear()
-                it.data?.keys?.let { it1 -> tabTitles.addAll(it1) }
-                if (it.data.isNullOrEmpty()) {
-                    binding.pager.visibility = View.GONE
-                    binding.emptyView.visibility = View.VISIBLE
-                } else {
-                    binding.emptyView.visibility = View.GONE
-                    binding.pager.visibility = View.VISIBLE
+
+        if (profile.isNotEmpty()) {
+            ExtendedFloatingActionButton(
+                onClick = { onContact(profile) },
+                icon = {
+                    Icon(
+                        painter = painterResource(R.drawable.ic_baseline_email_24),
+                        contentDescription = null
+                    )
+                },
+                text = { Text(text = stringResource(R.string.contact)) },
+                containerColor = MaterialTheme.colorScheme.primary,
+                contentColor = Color.White,
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .padding(tokens.spacing.xl)
+            )
+        }
+
+        if (loading) {
+            CircularProgressIndicator(
+                color = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.align(Alignment.Center)
+            )
+        }
+    }
+}
+
+@Composable
+private fun TeacherHeader(
+    teacherId: String,
+    teacherName: String,
+    profile: Map<String, String>,
+    onBack: () -> Unit,
+) {
+    val context = LocalContext.current
+    val tokens = HitaTheme.tokens
+    val post = profile["post"].orEmpty()
+    val position = profile["position"].orEmpty()
+    val label = profile["label"].orEmpty()
+
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(260.dp)
+    ) {
+        IconButton(
+            onClick = onBack,
+            modifier = Modifier
+                .align(Alignment.TopStart)
+                .padding(top = tokens.spacing.xl)
+        ) {
+            Icon(
+                painter = painterResource(R.drawable.ic_baseline_keyboard_arrow_right_24),
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurface,
+                modifier = Modifier.rotate(180f)
+            )
+        }
+
+        Column(
+            modifier = Modifier
+                .align(Alignment.BottomStart)
+                .padding(
+                    start = tokens.spacing.xl,
+                    end = tokens.spacing.xl,
+                    bottom = tokens.spacing.lg
+                )
+        ) {
+            Card(
+                shape = CircleShape,
+                elevation = CardDefaults.cardElevation(defaultElevation = 16.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                modifier = Modifier.size(84.dp)
+            ) {
+                AndroidView(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .clip(CircleShape),
+                    factory = {
+                        ImageView(it).apply {
+                            scaleType = ImageView.ScaleType.CENTER_CROP
+                        }
+                    },
+                    update = { imageView ->
+                        Glide.with(context)
+                            .load("http://faculty.hitsz.edu.cn/file/showHP.do?d=$teacherId&&w=200&&h=200&&prevfix=200-")
+                            .apply(RequestOptions.circleCropTransform())
+                            .placeholder(R.drawable.place_holder_avatar)
+                            .into(imageView)
+                    }
+                )
+            }
+
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.padding(top = tokens.spacing.xl)
+            ) {
+                Text(
+                    text = teacherName,
+                    color = MaterialTheme.colorScheme.primary,
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.Black,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                if (post.isNotBlank()) {
+                    TeacherChip(
+                        text = post,
+                        modifier = Modifier.padding(start = tokens.spacing.sm)
+                    )
                 }
-                pagerAdapter?.notifyDataSetChanged()
-                binding.pager.scheduleLayoutAnimation()
-            } else {
-                binding.pager.visibility = View.GONE
-                binding.emptyView.visibility = View.VISIBLE
             }
-
+            if (position.isNotBlank()) {
+                Text(
+                    text = position,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    fontSize = 14.sp,
+                    modifier = Modifier.padding(top = tokens.spacing.sm)
+                )
+            }
+            if (label.isNotBlank()) {
+                Surface(
+                    color = MaterialTheme.colorScheme.primaryContainer,
+                    shape = RoundedCornerShape(tokens.radius.full),
+                    modifier = Modifier.padding(top = tokens.spacing.sm)
+                ) {
+                    Text(
+                        text = label,
+                        color = MaterialTheme.colorScheme.primary,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.padding(
+                            horizontal = tokens.spacing.sm,
+                            vertical = tokens.spacing.xs
+                        )
+                    )
+                }
+            }
         }
     }
+}
 
-    private fun refresh() {
-        binding.fab.hide()
-        binding.refresh.isRefreshing = true
-        intent.getStringExtra("id")?.let { id ->
-            intent.getStringExtra("url")?.let { url ->
-                viewModel.startRefresh(id, url, intent.getStringExtra("name"))
+@Composable
+private fun TeacherChip(
+    text: String,
+    modifier: Modifier = Modifier
+) {
+    val tokens = HitaTheme.tokens
+    Surface(
+        color = MaterialTheme.colorScheme.background.copy(alpha = 0.82f),
+        shape = RoundedCornerShape(tokens.radius.full),
+        modifier = modifier
+    ) {
+        Text(
+            text = text,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            fontSize = 12.sp,
+            modifier = Modifier.padding(
+                horizontal = tokens.spacing.sm,
+                vertical = tokens.spacing.xs
+            )
+        )
+    }
+}
+
+@Composable
+private fun TeacherTabs(
+    titles: List<String>,
+    selectedIndex: Int,
+    onSelect: (Int) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val tokens = HitaTheme.tokens
+    Row(
+        modifier = modifier
+            .horizontalScroll(rememberScrollState())
+            .padding(horizontal = tokens.spacing.lg)
+    ) {
+        titles.forEachIndexed { index, title ->
+            val selected = index == selectedIndex
+            Surface(
+                color = Color.Transparent,
+                shape = RoundedCornerShape(tokens.radius.full),
+                modifier = Modifier
+                    .padding(end = tokens.spacing.md)
+                    .clickable { onSelect(index) }
+            ) {
+                Text(
+                    text = title,
+                    color = if (selected) {
+                        MaterialTheme.colorScheme.primary
+                    } else {
+                        MaterialTheme.colorScheme.onSurfaceVariant
+                    },
+                    fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
+                    fontSize = 15.sp,
+                    modifier = Modifier.padding(
+                        horizontal = tokens.spacing.sm,
+                        vertical = tokens.spacing.sm
+                    )
+                )
             }
         }
     }
+}
 
+@Composable
+private fun HtmlPage(
+    html: String,
+    modifier: Modifier = Modifier
+) {
+    val textColor = MaterialTheme.colorScheme.onSurface
+    AndroidView(
+        modifier = modifier,
+        factory = { context ->
+            TextView(context).apply {
+                textSize = 16f
+                setTextIsSelectable(true)
+                autoLinkMask = android.text.util.Linkify.WEB_URLS or
+                    android.text.util.Linkify.MAP_ADDRESSES or
+                    android.text.util.Linkify.EMAIL_ADDRESSES
+                movementMethod = LinkMovementMethod.getInstance()
+            }
+        },
+        update = { textView ->
+            textView.setTextColor(textColor.toArgbCompat())
+            textView.text = Html.fromHtml(html)
+        }
+    )
+}
 
-    override fun initViewBinding(): ActivityTeacherOfficialBinding {
-        return ActivityTeacherOfficialBinding.inflate(layoutInflater)
+@Composable
+private fun EmptyTeacherPage(modifier: Modifier = Modifier) {
+    val tokens = HitaTheme.tokens
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        modifier = modifier.padding(top = 36.dp)
+    ) {
+        Surface(
+            color = MaterialTheme.colorScheme.primaryContainer,
+            shape = CircleShape,
+            modifier = Modifier.size(84.dp)
+        ) {
+            Icon(
+                painter = painterResource(R.drawable.ic_empty),
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.padding(18.dp)
+            )
+        }
+        Text(
+            text = stringResource(R.string.teacher_no_page),
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            fontSize = 14.sp,
+            modifier = Modifier.padding(top = tokens.spacing.md)
+        )
     }
+}
+
+private fun Color.toArgbCompat(): Int {
+    return android.graphics.Color.argb(
+        (alpha * 255).toInt(),
+        (red * 255).toInt(),
+        (green * 255).toInt(),
+        (blue * 255).toInt()
+    )
 }

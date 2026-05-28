@@ -2,10 +2,11 @@ package com.limpu.style
 
 import android.app.Activity
 import android.content.Context
-import android.util.Log
+import androidx.appcompat.app.AppCompatDelegate
 
 object ThemeTools {
     enum class MODE { DARK, LIGHT, FOLLOW }
+    enum class STYLE { CLASSIC, FRESH, FOCUS, HIGH_CONTRAST }
 
 
     fun getThemeMode(context: Context): MODE {
@@ -27,13 +28,41 @@ object ThemeTools {
         pr.edit().putString("mode", str).apply()
     }
 
-    fun switchTheme(activity:Activity){
-        val newMode = when(getThemeMode(activity)){
+    fun getThemeStyle(context: Context): STYLE {
+        val pr = context.getSharedPreferences("theme", Context.MODE_PRIVATE)
+        return when (pr.getString("style", "classic")) {
+            "fresh" -> STYLE.FRESH
+            "focus" -> STYLE.FOCUS
+            "high_contrast" -> STYLE.HIGH_CONTRAST
+            else -> STYLE.CLASSIC
+        }
+    }
+
+    fun setThemeStyle(context: Context, style: STYLE) {
+        val str = when (style) {
+            STYLE.CLASSIC -> "classic"
+            STYLE.FRESH -> "fresh"
+            STYLE.FOCUS -> "focus"
+            STYLE.HIGH_CONTRAST -> "high_contrast"
+        }
+        context.getSharedPreferences("theme", Context.MODE_PRIVATE)
+            .edit()
+            .putString("style", str)
+            .apply()
+    }
+
+    fun switchTheme(activity: Activity) {
+        val newMode = when (getThemeMode(activity)) {
             MODE.DARK->MODE.LIGHT
             MODE.LIGHT->MODE.FOLLOW
             MODE.FOLLOW->MODE.DARK
         }
-        setThemeMode(activity,newMode)
-        activity.recreate()
+        setThemeMode(activity, newMode)
+        val nightMode = when (newMode) {
+            MODE.DARK -> AppCompatDelegate.MODE_NIGHT_YES
+            MODE.LIGHT -> AppCompatDelegate.MODE_NIGHT_NO
+            MODE.FOLLOW -> AppCompatDelegate.MODE_NIGHT_FOLLOW_SYSTEM
+        }
+        AppCompatDelegate.setDefaultNightMode(nightMode)
     }
 }
