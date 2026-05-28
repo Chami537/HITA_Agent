@@ -473,19 +473,6 @@ private fun TimelineHeaderCard(
                         .rotate(if (expanded) 180f else 0f)
                 )
 
-                state.examCountdown?.let { countdown ->
-                    HeaderInfoPill(
-                        title = countdown,
-                        subtitle = state.examName.orEmpty(),
-                        icon = R.drawable.ic_baseline_error_24,
-                        modifier = Modifier.padding(
-                            start = HitaTheme.tokens.spacing.lg,
-                            end = HitaTheme.tokens.spacing.lg,
-                            bottom = HitaTheme.tokens.spacing.sm
-                        )
-                    )
-                }
-
                 AnimatedVisibility(visible = expanded) {
                     Column(
                         modifier = Modifier
@@ -501,6 +488,14 @@ private fun TimelineHeaderCard(
                             subtitle = state.nextEventName,
                             icon = state.nextIconRes
                         )
+                        state.examCountdown?.let { countdown ->
+                            Spacer(modifier = Modifier.height(HitaTheme.tokens.spacing.sm))
+                            HeaderInfoPill(
+                                title = countdown,
+                                subtitle = state.examName.orEmpty(),
+                                icon = R.drawable.ic_baseline_error_24
+                            )
+                        }
                         Spacer(modifier = Modifier.height(HitaTheme.tokens.spacing.sm))
                         if (weekEvents.isEmpty()) {
                             HeaderWeekEmpty()
