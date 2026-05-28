@@ -574,7 +574,6 @@ private fun MainScreen(
                 modifier = Modifier
                     .weight(1f)
                     .fillMaxWidth()
-                    .padding(bottom = 70.dp)
             ) {
                 MainFragmentPager(
                     selectedTab = selectedTab,
