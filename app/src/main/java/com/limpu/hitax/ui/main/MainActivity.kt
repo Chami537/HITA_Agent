@@ -2,47 +2,103 @@ package com.limpu.hitax.ui.main
 
 import android.app.Activity
 import android.content.Intent
-import android.graphics.Color
+import android.graphics.Bitmap
+import android.graphics.Color as AndroidColor
+import android.graphics.drawable.Drawable
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
-import kotlin.math.abs
-import com.limpu.hitax.utils.LogUtils
 import android.view.HapticFeedbackConstants
-import android.view.WindowManager
-import android.view.MenuItem
 import android.view.View
-import android.view.View.VISIBLE
-import android.view.ViewGroup
+import android.view.WindowManager
 import android.widget.ImageView
-import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.core.view.WindowCompat
 import androidx.activity.viewModels
 import androidx.appcompat.app.AlertDialog
-import androidx.core.view.GravityCompat
-import androidx.drawerlayout.widget.DrawerLayout.DrawerListener
-import androidx.drawerlayout.widget.DrawerLayout.GONE
-import androidx.lifecycle.Observer
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBars
+import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.windowInsetsTopHeight
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.livedata.observeAsState
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateListOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.ComposeView
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.compose.ui.viewinterop.AndroidView
+import androidx.core.view.WindowCompat
 import androidx.fragment.app.Fragment
-import androidx.viewpager.widget.ViewPager.OnPageChangeListener
-import android.graphics.drawable.Drawable
+import androidx.fragment.app.FragmentContainerView
+import androidx.lifecycle.Observer
 import com.bumptech.glide.Glide
 import com.bumptech.glide.request.target.CustomTarget
 import com.bumptech.glide.request.transition.Transition
-import com.limpu.hitax.utils.WallpaperColorAnalyzer
 import com.limpu.component.data.DataState
 import com.limpu.hitax.R
-import com.limpu.hitax.data.repository.EasSettingsRepository
 import com.limpu.hitax.data.repository.EASRepository
+import com.limpu.hitax.data.repository.EasSettingsRepository
 import com.limpu.hitax.data.repository.KEY_WALLPAPER_PATH
 import com.limpu.hitax.data.repository.TimetableStyleRepository
-import com.limpu.hitax.databinding.ActivityMainBinding
 import com.limpu.hitax.ui.about.ActivityAbout
 import com.limpu.hitax.ui.about.UserAgreementDialog
+import com.limpu.hitax.ui.base.ComposeViewBinding
 import com.limpu.hitax.ui.base.HiltBaseActivity
+import com.limpu.hitax.ui.design.HitaComposeTheme
+import com.limpu.hitax.ui.design.HitaTheme
 import com.limpu.hitax.ui.eas.login.PopUpLoginEAS
 import com.limpu.hitax.ui.event.add.PopupAddEvent
 import com.limpu.hitax.ui.main.agent.AgentChatFragment
@@ -52,137 +108,147 @@ import com.limpu.hitax.ui.main.timetable.TimetableFragment
 import com.limpu.hitax.ui.main.timetable.panel.FragmentTimetablePanel
 import com.limpu.hitax.ui.widgets.WidgetUtils
 import com.limpu.hitax.utils.ActivityUtils
-import com.limpu.hitax.utils.ImageUtils
+import com.limpu.hitax.utils.LogUtils
+import com.limpu.hitax.utils.WallpaperColorAnalyzer
 import com.limpu.hitauser.data.repository.LocalUserRepository
 import com.limpu.style.ThemeTools
-import com.limpu.style.base.BaseTabAdapter
-import com.limpu.style.widgets.PopUpText
 import dagger.hilt.android.AndroidEntryPoint
 import java.io.File
 import javax.inject.Inject
+import kotlin.math.roundToInt
 
-/**
- * 很显然，这是主界面
- */
 @AndroidEntryPoint
-class MainActivity : HiltBaseActivity<ActivityMainBinding>(),
+class MainActivity : HiltBaseActivity<ComposeViewBinding>(),
     TimetableFragment.MainPageController, FragmentTimeLine.MainPageController {
 
-    @Inject
-    lateinit var localUserRepository: LocalUserRepository
+    companion object {
+        private const val STATE_SELECTED_TAB = "selected_tab"
+    }
 
-    @Inject
-    lateinit var easRepository: EASRepository
-
-    @Inject
-    lateinit var timetableStyleRepository: TimetableStyleRepository
+    @Inject lateinit var localUserRepository: LocalUserRepository
+    @Inject lateinit var easRepository: EASRepository
+    @Inject lateinit var timetableStyleRepository: TimetableStyleRepository
 
     protected val viewModel: MainViewModel by viewModels()
 
-    private val easTokenObserver = Observer<com.limpu.hitax.data.model.eas.EASToken> {
-        refreshDrawerEasInfo()
-    }
-
-    /**
-     * 抽屉里的View
-     */
     private val autoReimportIntervalMs = 12 * 60 * 60 * 1000L
     private var autoReimportAttempted = false
-    private var drawerAvatar: ImageView? = null
-    private var drawerNickname: TextView? = null
-    private var drawerUsername: TextView? = null
-    private var drawerHeader: ViewGroup? = null
-    override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
-        setSupportActionBar(binding.toolbar)
+    private var checkedUpdate = false
+    private var lastCheckTs: Long = 0
 
-        // 状态栏全透明 + 内容延伸到状态栏区域，壁纸铺满
+    private var selectedTab by mutableIntStateOf(0)
+    private var drawerOpen by mutableStateOf(false)
+    private var todayTitle by mutableStateOf("")
+    private var timetableTitle by mutableStateOf("")
+    private var timetableDisplayName by mutableStateOf("")
+    private var showTimetableName by mutableStateOf(false)
+    private var themeIcon by mutableIntStateOf(R.drawable.ic_moon_auto)
+    private var wallpaperBitmap by mutableStateOf<Bitmap?>(null)
+    private var wallpaperVisible by mutableStateOf(false)
+    private var wallpaperScrimOpacity by mutableIntStateOf(0)
+
+    private val easTokenObserver = Observer<com.limpu.hitax.data.model.eas.EASToken> {
+        refreshDrawerState()
+    }
+
+    private var drawerState by mutableStateOf(DrawerUserState())
+
+    override fun initViewBinding(): ComposeViewBinding {
+        return ComposeViewBinding(ComposeView(this))
+    }
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        selectedTab = savedInstanceState?.getInt(STATE_SELECTED_TAB, selectedTab) ?: selectedTab
+        super.onCreate(savedInstanceState)
         @Suppress("DEPRECATION")
         window.apply {
             clearFlags(WindowManager.LayoutParams.FLAG_TRANSLUCENT_STATUS)
             addFlags(WindowManager.LayoutParams.FLAG_DRAWS_SYSTEM_BAR_BACKGROUNDS)
-            statusBarColor = Color.TRANSPARENT
+            statusBarColor = AndroidColor.TRANSPARENT
         }
         WindowCompat.setDecorFitsSystemWindows(window, false)
     }
 
-
-    private fun setUpDrawer() {
-        binding.drawerNavigationview.itemIconTintList = null
-        val headerView =
-            binding.drawerNavigationview.inflateHeaderView(R.layout.activity_main_nav_header)
-        binding.drawer.setStatusBarBackgroundColor(Color.TRANSPARENT)
-        binding.drawer.setScrimColor(getBackgroundColorSecondAsTint())
-        binding.drawer.drawerElevation = ImageUtils.dp2px(this, 84f).toFloat()
-        drawerAvatar = headerView.findViewById(R.id.avatar)
-        drawerHeader = headerView.findViewById(R.id.drawer_header)
-        drawerNickname = headerView.findViewById(R.id.nickname)
-        drawerUsername = headerView.findViewById(R.id.username)
-        binding.drawer.addDrawerListener(object : DrawerListener {
-            override fun onDrawerSlide(drawerView: View, slideOffset: Float) {
-                //offset 偏移值
-                val mContent = binding.drawer.getChildAt(0)
-                val scale = 1 - slideOffset
-                val rightScale = 0.8f + scale * 0.2f
-                mContent.translationX = -drawerView.measuredWidth * slideOffset
-                mContent.pivotX = mContent.measuredWidth.toFloat()
-                mContent.pivotY = (mContent.measuredHeight shr 1.toFloat().toInt()).toFloat()
-                mContent.invalidate()
-                mContent.scaleX = rightScale
-                mContent.scaleY = rightScale
-            }
-
-            override fun onDrawerOpened(drawerView: View) {
-                // setUserViews(viewModel.localUser)
-            }
-
-            override fun onDrawerClosed(drawerView: View) {}
-            override fun onDrawerStateChanged(newState: Int) {}
-        })
-
-        binding.drawerNavigationview.setNavigationItemSelectedListener { item: MenuItem ->
-            var jumped = true
-            when (item.itemId) {
-                R.id.drawer_nav_ua -> {
-                    UserAgreementDialog().show(supportFragmentManager, "ua")
-                }
-                R.id.drawer_nav_timetable_manager -> {
-                    ActivityUtils.startTimetableManager(getThis())
-                }
-                R.id.drawer_nav_about -> {
-                    ActivityUtils.startActivity(getThis(), ActivityAbout::class.java)
-                }
-                else -> jumped = false
-            }
-//            if (jumped) {
-//                binding.drawer.closeDrawer(GravityCompat.START)
-//            }
-            jumped
-        }
+    override fun onSaveInstanceState(outState: Bundle) {
+        outState.putInt(STATE_SELECTED_TAB, selectedTab)
+        super.onSaveInstanceState(outState)
     }
 
-    var checkedUpdate = false
-    var lastCheckTs: Long = 0
+    override fun initViews() {
+        todayTitle = getString(R.string.maintab_today)
+        (binding.root as ComposeView).setContent {
+            HitaComposeTheme() {
+                MainScreen(
+                    selectedTab = selectedTab,
+                    drawerOpen = drawerOpen,
+                    todayTitle = todayTitle,
+                    timetableTitle = timetableTitle,
+                    timetableName = timetableDisplayName,
+                    showTimetableName = showTimetableName,
+                    themeIcon = themeIcon,
+                    wallpaperBitmap = wallpaperBitmap,
+                    wallpaperVisible = wallpaperVisible,
+                    wallpaperScrimOpacity = wallpaperScrimOpacity,
+                    drawerState = drawerState,
+                    onSelectTab = { selectedTab = it },
+                    onOpenDrawer = { drawerOpen = true },
+                    onCloseDrawer = { drawerOpen = false },
+                    onTheme = {
+                        ThemeTools.switchTheme(getThis())
+                        WidgetUtils.sendRefreshToAll(this)
+                        refreshTheme()
+                    },
+                    onWallpaper = { pickWallpaperLauncher.launch("image/*") },
+                    onWallpaperLongPress = { showWallpaperMenu() },
+                    onTimetableSetting = { FragmentTimetablePanel().show(supportFragmentManager, "panel") },
+                    onAgentShortcut = { selectedTab = 2 },
+                    onAddEvent = { PopupAddEvent().show(supportFragmentManager, "add_event") },
+                    onDrawerHeader = { openDrawerHeader() },
+                    onDrawerTimetableManager = { ActivityUtils.startTimetableManager(getThis()) },
+                    onDrawerAgreement = { UserAgreementDialog().show(supportFragmentManager, "ua") },
+                    onDrawerAbout = { ActivityUtils.startActivity(getThis(), ActivityAbout::class.java) },
+                    fragmentFactory = { position ->
+                        when (position) {
+                            0 -> FragmentTimeLine()
+                            1 -> TimetableFragment()
+                            2 -> AgentChatFragment()
+                            else -> NavigationFragment()
+                        }
+                    }
+                )
+            }
+        }
+
+        timetableStyleRepository.wallpaperPathLiveData.observe(this) { loadWallpaper(it) }
+        timetableStyleRepository.wallpaperScrimLiveData.observe(this) { opacity ->
+            wallpaperScrimOpacity = opacity
+        }
+        viewModel.checkUpdateResult.observe(this) {
+            if (it.state == DataState.STATE.SUCCESS) {
+                it.data?.let { cr ->
+                    if (cr.shouldUpdate) ActivityUtils.showUpdateNotification(cr, this)
+                }
+            }
+        }
+        viewModel.loggedInUserLiveData.observe(this) {
+            refreshDrawerState()
+        }
+        onBackPressedDispatcher.addCallback(this, onBackPressedCallback)
+    }
 
     @Suppress("DEPRECATION")
     override fun onStart() {
         super.onStart()
         viewModel.startRefreshUser()
         refreshTheme()
-        refreshDrawerEasInfo()
+        refreshDrawerState()
         easRepository.observeEasToken().observe(this, easTokenObserver)
         maybeAutoReimportTimetable()
         try {
             val code = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-                packageManager.getPackageInfo(
-                    packageName,
-                    0
-                ).longVersionCode
+                packageManager.getPackageInfo(packageName, 0).longVersionCode
             } else {
-                packageManager.getPackageInfo(
-                    packageName,
-                    0
-                ).versionCode.toLong()
+                packageManager.getPackageInfo(packageName, 0).versionCode.toLong()
             }
             if (System.currentTimeMillis() - lastCheckTs > 5 * 60 * 1000) checkedUpdate = false
             if (!checkedUpdate) {
@@ -195,7 +261,11 @@ class MainActivity : HiltBaseActivity<ActivityMainBinding>(),
         } catch (e: Exception) {
             LogUtils.e("Failed to get package info for update check", e)
         }
+    }
 
+    override fun onStop() {
+        easRepository.observeEasToken().removeObserver(easTokenObserver)
+        super.onStop()
     }
 
     private fun maybeAutoReimportTimetable() {
@@ -210,230 +280,70 @@ class MainActivity : HiltBaseActivity<ActivityMainBinding>(),
         autoReimportAttempted = true
         val isUndergrad = token.stutype == com.limpu.hitax.data.model.eas.EASToken.TYPE.UNDERGRAD
         easRepository.startAutoImportCurrentTimetable(isUndergrad) { success ->
-            if (success) {
-                settings.setLastAutoReimportTs(System.currentTimeMillis())
-            }
+            if (success) settings.setLastAutoReimportTs(System.currentTimeMillis())
         }
     }
 
-
-    override fun initViews() {
-        setUpDrawer()
-        // Set up floating pill tab bar
-        binding.pillTabBar.setTabs(
-            listOf(
-                com.limpu.hitax.ui.widgets.FloatingPillTabBar.TabItem(R.drawable.ic_nav_today, getString(R.string.title_timeline)),
-                com.limpu.hitax.ui.widgets.FloatingPillTabBar.TabItem(R.drawable.ic_nav_timetable, getString(R.string.title_timetable)),
-                com.limpu.hitax.ui.widgets.FloatingPillTabBar.TabItem(R.drawable.ic_baseline_toys_24, getString(R.string.title_agent)),
-                com.limpu.hitax.ui.widgets.FloatingPillTabBar.TabItem(R.drawable.ic_nav_navigation, getString(R.string.title_navigation))
-            )
-        )
-        binding.pager.adapter = object : BaseTabAdapter(supportFragmentManager, 4) {
-            override fun initItem(position: Int): Fragment {
-                return when (position) {
-                    0 -> FragmentTimeLine()
-                    1 -> TimetableFragment()
-                    2 -> AgentChatFragment()      // 助手
-                    else -> NavigationFragment()    // 功能中心
-                }
-            }
-
-            override fun destroyItem(container: ViewGroup, position: Int, `object`: Any) {
-                //super.destroyItem(container, position, `object`)
-            }
+    private fun refreshTheme() {
+        themeIcon = when (ThemeTools.getThemeMode(this)) {
+            ThemeTools.MODE.DARK -> R.drawable.ic_moon2
+            ThemeTools.MODE.LIGHT -> R.drawable.ic_sun
+            else -> R.drawable.ic_moon_auto
         }
-        binding.pager.offscreenPageLimit = 4
-        binding.pager.setPageTransformer(true) { page, position ->
-            page.alpha = (1 - 0.45f * abs(position)).coerceIn(0f, 1f)
-            page.translationX = 0f
-        }
-        binding.pager.addOnPageChangeListener(object : OnPageChangeListener {
-            override fun onPageScrolled(
-                position: Int,
-                positionOffset: Float,
-                positionOffsetPixels: Int
-            ) {
-            }
-
-            override fun onPageSelected(position: Int) {
-                binding.pillTabBar.setSelectedTab(position)
-                binding.agentLayout.visibility = GONE
-                binding.timetableLayout.visibility = GONE
-                binding.navigationLayout.visibility = GONE
-                binding.todayLayout.visibility = GONE
-                when (position) {
-                    0 -> binding.todayLayout.visibility = VISIBLE
-                    1 -> binding.timetableLayout.visibility = VISIBLE
-                    2 -> binding.agentLayout.visibility = VISIBLE
-                    3 -> binding.navigationLayout.visibility = VISIBLE
-                }
-//                val item = binding.navView.menu.getItem(position)
-//                item.isChecked = true
-//                binding.title.text = item.title
-                //Objects.requireNonNull(getSupportActionBar()).setTitle(item.getTitle());
-            }
-
-            override fun onPageScrollStateChanged(state: Int) {}
-        })
-        binding.pillTabBar.setOnTabSelectedListener { position ->
-            binding.pillTabBar.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
-            binding.pager.currentItem = position
-        }
-        binding.drawerButton.setOnClickListener { binding.drawer.openDrawer(GravityCompat.END) }
-
-        binding.timetableWallpaper.setOnClickListener {
-            pickWallpaperLauncher.launch("image/*")
-        }
-        binding.timetableWallpaper.setOnLongClickListener {
-            AlertDialog.Builder(this)
-                .setTitle(R.string.timetable_wallpaper)
-                .setItems(arrayOf(getString(R.string.wallpaper_remove))) { _, _ ->
-                    // 删除壁纸文件
-                    Thread {
-                        filesDir.listFiles()?.filter {
-                            it.name.startsWith("timetable_wallpaper")
-                        }?.forEach { it.delete() }
-                    }.start()
-                    timetableStyleRepository.putData(
-                        KEY_WALLPAPER_PATH,
-                        ""
-                    )
-                }
-                .show()
-            true
-        }
-
-        binding.timetableSetting.setOnClickListener {
-            FragmentTimetablePanel().show(supportFragmentManager, "panel")
-        }
-
-        binding.agentChat.setOnClickListener {
-            binding.pager.currentItem = 2
-        }
-
-        binding.addEvent.setOnClickListener {
-            PopupAddEvent().show(supportFragmentManager, "add_event")
-        }
-
-        binding.switchTheme.setOnClickListener {
-            ThemeTools.switchTheme(getThis())
-            WidgetUtils.sendRefreshToAll(this)
-        }
-
-        timetableStyleRepository.wallpaperPathLiveData.observe(this) { path ->
-            val wallpaper = binding.wallpaper
-            val scrim = binding.wallpaperScrim
-            if (path.isNullOrEmpty()) {
-                wallpaper.visibility = GONE
-                wallpaper.setImageDrawable(null)
-                scrim.visibility = GONE
-                binding.statusBarScrim.visibility = GONE
-                binding.pillTabBar.alpha = 1f
-                timetableStyleRepository.wallpaperDateColorLiveData.value = android.graphics.Color.WHITE
-                timetableStyleRepository.wallpaperLabelColorLiveData.value = android.graphics.Color.WHITE
-            } else {
-                val filePath = path.removePrefix("local://")
-                val file = java.io.File(filePath)
-                if (file.exists()) {
-                    wallpaper.visibility = VISIBLE
-                    Glide.with(this)
-                        .asBitmap()
-                        .load(file)
-                        .centerCrop()
-                        .into(object : CustomTarget<android.graphics.Bitmap>() {
-                            override fun onResourceReady(
-                                resource: android.graphics.Bitmap,
-                                transition: Transition<in android.graphics.Bitmap>?
-                            ) {
-                                wallpaper.setImageBitmap(resource)
-                                val dateColor = WallpaperColorAnalyzer.sampleRegion(resource, 0f, 0f, 1f, 0.12f)
-                                val labelColor = WallpaperColorAnalyzer.sampleRegion(resource, 0f, 0.12f, 0.08f, 0.88f)
-                                timetableStyleRepository.wallpaperDateColorLiveData.value = dateColor
-                                timetableStyleRepository.wallpaperLabelColorLiveData.value = labelColor
-                            }
-                            override fun onLoadCleared(placeholder: Drawable?) {
-                                wallpaper.setImageDrawable(placeholder)
-                            }
-                        })
-                    scrim.visibility = VISIBLE
-                    binding.statusBarScrim.visibility = VISIBLE
-                    binding.pillTabBar.alpha = 0.72f
-                } else {
-                    timetableStyleRepository.putData(KEY_WALLPAPER_PATH, "")
-                    wallpaper.visibility = GONE
-                    scrim.visibility = GONE
-                    binding.statusBarScrim.visibility = GONE
-                }
-            }
-        }
-
-        timetableStyleRepository.wallpaperScrimLiveData.observe(this) { opacity ->
-            binding.wallpaperScrim.setBackgroundColor((opacity * 255 / 100) shl 24)
-        }
-
-        viewModel.checkUpdateResult.observe(this) {
-            if (it.state == DataState.STATE.SUCCESS) {
-                it.data?.let { cr ->
-                    if (cr.shouldUpdate) {
-                        ActivityUtils.showUpdateNotification(cr, this)
-                    }
-                }
-            }
-        }
-        viewModel.loggedInUserLiveData.observe(this) {
-            refreshDrawerEasInfo()
-        }
-        onBackPressedDispatcher.addCallback(this, onBackPressedCallback)
     }
 
-
-    private fun refreshDrawerEasInfo() {
+    private fun refreshDrawerState() {
         val localUser = localUserRepository.getLoggedInUser()
         if (localUser.isValid()) {
-            com.limpu.hitauser.util.ImageUtils.loadAvatarInto(
-                this,
-                localUser.avatar,
-                drawerAvatar!!
+            drawerState = DrawerUserState(
+                title = localUser.username.orEmpty(),
+                subtitle = localUser.nickname.orEmpty(),
+                avatar = localUser.avatar,
+                loggedInLocalUser = true
             )
-            drawerUsername?.text = localUser.username
-            drawerNickname?.text = localUser.nickname
-            drawerHeader?.setOnClickListener {
-                ActivityUtils.startProfileActivity(
-                    getThis(),
-                    localUser.id,
-                    drawerAvatar
-                )
-            }
             return
         }
 
         val easToken = easRepository.getEasToken()
         if (easToken.isLogin()) {
-            drawerUsername?.text = easToken.name?.ifBlank { easToken.stuId?.ifBlank { easToken.username } }
-                ?: easToken.stuId?.ifBlank { easToken.username }
-                ?: easToken.username
-                ?: getString(R.string.eas_account_not_logged_in_title)
-            drawerNickname?.text = buildString {
-                val primary = easToken.stuId?.trim().orEmpty()
-                val secondary = listOf(
-                    easToken.school,
-                    easToken.major,
-                    easToken.grade,
-                    easToken.className
-                ).mapNotNull { it?.trim()?.takeIf(String::isNotBlank) }
-                    .joinToString(" · ")
-                append(primary)
-                if (secondary.isNotBlank()) {
-                    if (isNotEmpty()) append("\n")
-                    append(secondary)
-                }
-            }.ifBlank { easToken.username.orEmpty() }
+            drawerState = DrawerUserState(
+                title = easToken.name?.ifBlank { easToken.stuId?.ifBlank { easToken.username } }
+                    ?: easToken.stuId?.ifBlank { easToken.username }
+                    ?: easToken.username
+                    ?: getString(R.string.eas_account_not_logged_in_title),
+                subtitle = buildString {
+                    val primary = easToken.stuId?.trim().orEmpty()
+                    val secondary = listOf(
+                        easToken.school,
+                        easToken.major,
+                        easToken.grade,
+                        easToken.className
+                    ).mapNotNull { it?.trim()?.takeIf(String::isNotBlank) }
+                        .joinToString(" · ")
+                    append(primary)
+                    if (secondary.isNotBlank()) {
+                        if (isNotEmpty()) append("\n")
+                        append(secondary)
+                    }
+                }.ifBlank { easToken.username.orEmpty() },
+                avatar = null,
+                loggedInLocalUser = false
+            )
         } else {
-            drawerUsername?.setText(R.string.eas_account_not_logged_in_title)
-            drawerNickname?.setText(R.string.eas_account_not_logged_in_subtitle)
+            drawerState = DrawerUserState(
+                title = getString(R.string.eas_account_not_logged_in_title),
+                subtitle = getString(R.string.eas_account_not_logged_in_subtitle),
+                avatar = null,
+                loggedInLocalUser = false
+            )
         }
-        drawerAvatar?.setImageResource(R.drawable.place_holder_avatar)
-        drawerHeader?.setOnClickListener {
+    }
+
+    private fun openDrawerHeader() {
+        val localUser = localUserRepository.getLoggedInUser()
+        if (localUser.isValid()) {
+            ActivityUtils.startProfileActivity(getThis(), localUser.id, null)
+        } else {
             ActivityUtils.showEasVerifyWindow<Activity>(
                 this,
                 easRepository,
@@ -442,11 +352,59 @@ class MainActivity : HiltBaseActivity<ActivityMainBinding>(),
                     override fun onSuccess(window: PopUpLoginEAS) {
                         window.dismiss()
                     }
-
                     override fun onFailed(window: PopUpLoginEAS) {}
                 }
             )
         }
+    }
+
+    private fun showWallpaperMenu() {
+        AlertDialog.Builder(this)
+            .setTitle(R.string.timetable_wallpaper)
+            .setItems(arrayOf(getString(R.string.wallpaper_remove))) { _, _ ->
+                Thread {
+                    filesDir.listFiles()?.filter {
+                        it.name.startsWith("timetable_wallpaper")
+                    }?.forEach { it.delete() }
+                }.start()
+                timetableStyleRepository.putData(KEY_WALLPAPER_PATH, "")
+            }
+            .show()
+    }
+
+    private fun loadWallpaper(path: String?) {
+        if (path.isNullOrEmpty()) {
+            wallpaperBitmap = null
+            wallpaperVisible = false
+            timetableStyleRepository.wallpaperDateColorLiveData.value = AndroidColor.WHITE
+            timetableStyleRepository.wallpaperLabelColorLiveData.value = AndroidColor.WHITE
+            return
+        }
+        val file = File(path.removePrefix("local://"))
+        if (!file.exists()) {
+            timetableStyleRepository.putData(KEY_WALLPAPER_PATH, "")
+            wallpaperBitmap = null
+            wallpaperVisible = false
+            return
+        }
+        wallpaperVisible = true
+        Glide.with(this)
+            .asBitmap()
+            .load(file)
+            .centerCrop()
+            .into(object : CustomTarget<Bitmap>() {
+                override fun onResourceReady(resource: Bitmap, transition: Transition<in Bitmap>?) {
+                    wallpaperBitmap = resource
+                    val dateColor = WallpaperColorAnalyzer.sampleRegion(resource, 0f, 0f, 1f, 0.12f)
+                    val labelColor = WallpaperColorAnalyzer.sampleRegion(resource, 0f, 0.12f, 0.08f, 0.88f)
+                    timetableStyleRepository.wallpaperDateColorLiveData.value = dateColor
+                    timetableStyleRepository.wallpaperLabelColorLiveData.value = labelColor
+                }
+
+                override fun onLoadCleared(placeholder: Drawable?) {
+                    wallpaperBitmap = null
+                }
+            })
     }
 
     private val pickWallpaperLauncher = registerForActivityResult(
@@ -458,7 +416,6 @@ class MainActivity : HiltBaseActivity<ActivityMainBinding>(),
     private fun saveWallpaperLocally(uri: Uri) {
         Thread {
             try {
-                // 删除旧壁纸文件，避免堆积
                 val oldPrefix = "timetable_wallpaper"
                 filesDir.listFiles()?.filter {
                     it.name.startsWith(oldPrefix)
@@ -470,12 +427,8 @@ class MainActivity : HiltBaseActivity<ActivityMainBinding>(),
                         input.copyTo(output)
                     }
                 } ?: throw IllegalStateException("Cannot open wallpaper input stream")
-                val localPath = "local://${destFile.absolutePath}"
-                timetableStyleRepository.putData(
-                    KEY_WALLPAPER_PATH,
-                    localPath
-                )
-            } catch (e: Exception) {
+                timetableStyleRepository.putData(KEY_WALLPAPER_PATH, "local://${destFile.absolutePath}")
+            } catch (_: Exception) {
                 runOnUiThread {
                     Toast.makeText(this, R.string.wallpaper_save_failed, Toast.LENGTH_SHORT).show()
                 }
@@ -485,11 +438,10 @@ class MainActivity : HiltBaseActivity<ActivityMainBinding>(),
 
     private val onBackPressedCallback = object : OnBackPressedCallback(true) {
         override fun handleOnBackPressed() {
-            if (binding.drawer.isDrawerOpen(GravityCompat.END)) {
-                binding.drawer.closeDrawer(GravityCompat.END)
+            if (drawerOpen) {
+                drawerOpen = false
                 return
             }
-            //返回桌面而非退出
             val intent = Intent(Intent.ACTION_MAIN)
             intent.flags = Intent.FLAG_ACTIVITY_NEW_TASK
             intent.addCategory(Intent.CATEGORY_HOME)
@@ -497,40 +449,568 @@ class MainActivity : HiltBaseActivity<ActivityMainBinding>(),
         }
     }
 
-    override fun onStop() {
-        easRepository.observeEasToken().removeObserver(easTokenObserver)
-        super.onStop()
-    }
-
-
-    private fun refreshTheme() {
-        when (ThemeTools.getThemeMode(this)) {
-            ThemeTools.MODE.DARK -> binding.switchTheme.setImageResource(R.drawable.ic_moon2)
-            ThemeTools.MODE.LIGHT -> binding.switchTheme.setImageResource(R.drawable.ic_sun)
-            else -> binding.switchTheme.setImageResource(R.drawable.ic_moon_auto)
-        }
-    }
-
-    override fun initViewBinding(): ActivityMainBinding {
-        return ActivityMainBinding.inflate(layoutInflater)
-    }
-
     override fun setTitleText(string: String) {
-        binding.timetableTitle.text = string
-        binding.timetableNameCard.visibility = VISIBLE
+        timetableTitle = string
+        showTimetableName = true
     }
 
     override fun setTimetableName(String: String) {
-        binding.timetableName.text = String
-        binding.timetableNameCard.visibility = VISIBLE
+        timetableDisplayName = String
+        showTimetableName = true
     }
 
     override fun setSingleTitle(string: String) {
-        binding.timetableTitle.text = string
-        binding.timetableNameCard.visibility = GONE
+        timetableTitle = string
+        showTimetableName = false
     }
 
     override fun setTimelineTitleText(string: String) {
-        binding.todayTitle.text = string
+        todayTitle = string
     }
 }
+
+private data class DrawerUserState(
+    val title: String = "",
+    val subtitle: String = "",
+    val avatar: String? = null,
+    val loggedInLocalUser: Boolean = false,
+)
+
+private data class MainTabSpec(
+    val titleRes: Int,
+    val iconRes: Int,
+)
+
+@Composable
+private fun MainScreen(
+    selectedTab: Int,
+    drawerOpen: Boolean,
+    todayTitle: String,
+    timetableTitle: String,
+    timetableName: String,
+    showTimetableName: Boolean,
+    themeIcon: Int,
+    wallpaperBitmap: Bitmap?,
+    wallpaperVisible: Boolean,
+    wallpaperScrimOpacity: Int,
+    drawerState: DrawerUserState,
+    onSelectTab: (Int) -> Unit,
+    onOpenDrawer: () -> Unit,
+    onCloseDrawer: () -> Unit,
+    onTheme: () -> Unit,
+    onWallpaper: () -> Unit,
+    onWallpaperLongPress: () -> Unit,
+    onTimetableSetting: () -> Unit,
+    onAgentShortcut: () -> Unit,
+    onAddEvent: () -> Unit,
+    onDrawerHeader: () -> Unit,
+    onDrawerTimetableManager: () -> Unit,
+    onDrawerAgreement: () -> Unit,
+    onDrawerAbout: () -> Unit,
+    fragmentFactory: (Int) -> Fragment,
+) {
+    val density = LocalDensity.current
+    val drawerWidth = 260.dp
+    val drawerWidthPx = with(density) { drawerWidth.toPx() }
+    val drawerProgress by animateFloatAsState(if (drawerOpen) 1f else 0f, label = "drawer")
+    val contentScale = 1f - drawerProgress * 0.2f
+    val contentOffset = -drawerWidthPx * drawerProgress
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(MaterialTheme.colorScheme.background)
+    ) {
+        if (wallpaperVisible && wallpaperBitmap != null) {
+            Image(
+                bitmap = wallpaperBitmap.asImageBitmap(),
+                contentDescription = stringResource(R.string.timetable_wallpaper_description),
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize()
+            )
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color.Black.copy(alpha = wallpaperScrimOpacity / 100f))
+            )
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .windowInsetsTopHeight(WindowInsets.statusBars)
+                    .background(
+                        Brush.verticalGradient(
+                            colors = listOf(Color.Black.copy(alpha = 0.42f), Color.Transparent)
+                        )
+                    )
+            )
+        }
+
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .graphicsLayer {
+                    translationX = contentOffset
+                    scaleX = contentScale
+                    scaleY = contentScale
+                    transformOrigin = androidx.compose.ui.graphics.TransformOrigin(1f, 0.5f)
+                }
+        ) {
+            MainTopBar(
+                selectedTab = selectedTab,
+                todayTitle = todayTitle,
+                timetableTitle = timetableTitle,
+                timetableName = timetableName,
+                showTimetableName = showTimetableName,
+                themeIcon = themeIcon,
+                onOpenDrawer = onOpenDrawer,
+                onTheme = onTheme,
+                onWallpaper = onWallpaper,
+                onWallpaperLongPress = onWallpaperLongPress,
+                onTimetableSetting = onTimetableSetting,
+                onAgentShortcut = onAgentShortcut,
+                onAddEvent = onAddEvent,
+            )
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxWidth()
+                    .padding(bottom = 70.dp)
+            ) {
+                MainFragmentPager(
+                    selectedTab = selectedTab,
+                    fragmentFactory = fragmentFactory,
+                    modifier = Modifier.fillMaxSize()
+                )
+            }
+        }
+
+        MainPillTabBar(
+            selectedTab = selectedTab,
+            alpha = if (wallpaperVisible) 0.72f else 1f,
+            onSelectTab = onSelectTab,
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .navigationBarsPadding()
+                .padding(bottom = 20.dp)
+        )
+
+        if (drawerProgress > 0.01f) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.42f * drawerProgress))
+                    .pointerInput(drawerOpen) {
+                        detectTapGestures { onCloseDrawer() }
+                    }
+            )
+        }
+
+        MainDrawer(
+            drawerState = drawerState,
+            onHeaderClick = onDrawerHeader,
+            onTimetableManager = onDrawerTimetableManager,
+            onAgreement = onDrawerAgreement,
+            onAbout = onDrawerAbout,
+            modifier = Modifier
+                .align(Alignment.CenterEnd)
+                .width(drawerWidth)
+                .fillMaxHeight()
+                .offset { IntOffset(((1f - drawerProgress) * drawerWidthPx).roundToInt(), 0) }
+        )
+    }
+}
+
+@Composable
+private fun MainTopBar(
+    selectedTab: Int,
+    todayTitle: String,
+    timetableTitle: String,
+    timetableName: String,
+    showTimetableName: Boolean,
+    themeIcon: Int,
+    onOpenDrawer: () -> Unit,
+    onTheme: () -> Unit,
+    onWallpaper: () -> Unit,
+    onWallpaperLongPress: () -> Unit,
+    onTimetableSetting: () -> Unit,
+    onAgentShortcut: () -> Unit,
+    onAddEvent: () -> Unit,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(64.dp)
+            .statusBarsPadding()
+            .padding(start = HitaTheme.tokens.spacing.sm),
+        verticalAlignment = Alignment.Bottom
+    ) {
+        when (selectedTab) {
+            0 -> ToolbarTitle(todayTitle)
+            1 -> TimetableToolbarTitle(
+                title = timetableTitle,
+                name = timetableName,
+                showName = showTimetableName,
+                onWallpaper = onWallpaper,
+                onWallpaperLongPress = onWallpaperLongPress,
+                onTimetableSetting = onTimetableSetting,
+                onAgentShortcut = onAgentShortcut,
+                onAddEvent = onAddEvent
+            )
+            2 -> ToolbarTitle(stringResource(R.string.title_agent))
+            else -> NavigationToolbar(
+                themeIcon = themeIcon,
+                onTheme = onTheme,
+                onOpenDrawer = onOpenDrawer
+            )
+        }
+    }
+}
+
+@Composable
+private fun ToolbarTitle(title: String) {
+    Text(
+        text = title,
+        color = MaterialTheme.colorScheme.onSurface,
+        fontSize = 24.sp,
+        fontWeight = FontWeight.Bold,
+        maxLines = 1,
+        overflow = TextOverflow.Ellipsis,
+        modifier = Modifier
+            .height(56.dp)
+            .padding(start = HitaTheme.tokens.spacing.sm)
+            .wrapContentCenter()
+    )
+}
+
+@Composable
+private fun TimetableToolbarTitle(
+    title: String,
+    name: String,
+    showName: Boolean,
+    onWallpaper: () -> Unit,
+    onWallpaperLongPress: () -> Unit,
+    onTimetableSetting: () -> Unit,
+    onAgentShortcut: () -> Unit,
+    onAddEvent: () -> Unit,
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            text = title,
+            color = MaterialTheme.colorScheme.onSurface,
+            fontSize = 24.sp,
+            fontWeight = FontWeight.Bold,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+        AnimatedVisibility(visible = showName && name.isNotBlank()) {
+            Text(
+                text = name,
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.8f),
+                fontSize = 12.sp,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier
+                    .padding(start = HitaTheme.tokens.spacing.md)
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.8f))
+                    .padding(horizontal = 6.dp, vertical = 3.dp)
+            )
+        }
+        Spacer(modifier = Modifier.weight(1f))
+        ToolbarIcon(R.drawable.ic_wallpaper, onClick = onWallpaper, onLongClick = onWallpaperLongPress)
+        ToolbarIcon(R.drawable.ic_theme, onClick = onTimetableSetting)
+        ToolbarIcon(R.drawable.ic_baseline_toys_24, onClick = onAgentShortcut)
+        ToolbarIcon(R.drawable.ic_baseline_add_24, onClick = onAddEvent)
+    }
+}
+
+@Composable
+private fun NavigationToolbar(
+    themeIcon: Int,
+    onTheme: () -> Unit,
+    onOpenDrawer: () -> Unit,
+) {
+    Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        ToolbarTitle(stringResource(R.string.title_navigation))
+        Spacer(modifier = Modifier.weight(1f))
+        ToolbarIcon(themeIcon, onClick = onTheme)
+        ToolbarIcon(R.drawable.ic_baseline_menu_24, onClick = onOpenDrawer)
+    }
+}
+
+@Composable
+private fun ToolbarIcon(
+    iconRes: Int,
+    onClick: () -> Unit,
+    onLongClick: (() -> Unit)? = null,
+) {
+    val view = LocalView.current
+    Box(
+        modifier = Modifier
+            .size(56.dp)
+            .pointerInput(iconRes) {
+                detectTapGestures(
+                    onLongPress = {
+                        view.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
+                        onLongClick?.invoke()
+                    },
+                    onTap = {
+                        view.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
+                        onClick()
+                    }
+                )
+            },
+        contentAlignment = Alignment.Center
+    ) {
+        Icon(
+            painter = painterResource(iconRes),
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.size(24.dp)
+        )
+    }
+}
+
+@Composable
+private fun MainFragmentPager(
+    selectedTab: Int,
+    fragmentFactory: (Int) -> Fragment,
+    modifier: Modifier = Modifier,
+) {
+    val context = LocalContext.current
+    val activity = context as MainActivity
+    val containerIds = remember {
+        IntArray(4) { View.generateViewId() }
+    }
+    val createdTabs = remember {
+        mutableStateListOf(0)
+    }
+    LaunchedEffect(selectedTab) {
+        if (!createdTabs.contains(selectedTab)) {
+            createdTabs.add(selectedTab)
+        }
+    }
+    AndroidView(
+        modifier = modifier,
+        factory = {
+            android.widget.FrameLayout(it).apply {
+                layoutParams = android.widget.FrameLayout.LayoutParams(
+                    android.view.ViewGroup.LayoutParams.MATCH_PARENT,
+                    android.view.ViewGroup.LayoutParams.MATCH_PARENT
+                )
+                repeat(4) { index ->
+                    addView(
+                        FragmentContainerView(it).apply {
+                            id = containerIds[index]
+                            visibility = if (index == selectedTab) View.VISIBLE else View.GONE
+                            layoutParams = android.widget.FrameLayout.LayoutParams(
+                                android.view.ViewGroup.LayoutParams.MATCH_PARENT,
+                                android.view.ViewGroup.LayoutParams.MATCH_PARENT
+                            )
+                        }
+                    )
+                }
+            }
+        },
+        update = { root ->
+            repeat(4) { index ->
+                val container = root.findViewById<FragmentContainerView>(containerIds[index])
+                container.visibility = if (index == selectedTab) View.VISIBLE else View.GONE
+                if (!createdTabs.contains(index)) return@repeat
+                val tag = "main_tab_$index"
+                if (activity.supportFragmentManager.findFragmentByTag(tag) == null) {
+                    activity.supportFragmentManager.beginTransaction()
+                        .replace(containerIds[index], fragmentFactory(index), tag)
+                        .commitNowAllowingStateLoss()
+                }
+            }
+        }
+    )
+}
+
+@Composable
+private fun MainPillTabBar(
+    selectedTab: Int,
+    alpha: Float,
+    onSelectTab: (Int) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val tabs = listOf(
+        MainTabSpec(R.string.title_timeline, R.drawable.ic_nav_today),
+        MainTabSpec(R.string.title_timetable, R.drawable.ic_nav_timetable),
+        MainTabSpec(R.string.title_agent, R.drawable.ic_baseline_toys_24),
+        MainTabSpec(R.string.title_navigation, R.drawable.ic_nav_navigation),
+    )
+    val view = LocalView.current
+    Surface(
+        modifier = modifier.alpha(alpha),
+        shape = RoundedCornerShape(28.dp),
+        color = Color(0xCC111111),
+        shadowElevation = 8.dp
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            tabs.forEachIndexed { index, tab ->
+                val active = index == selectedTab
+                Row(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(22.dp))
+                        .background(if (active) Color.White.copy(alpha = 0.18f) else Color.Transparent)
+                        .clickable {
+                            view.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
+                            onSelectTab(index)
+                        }
+                        .padding(
+                            horizontal = if (active) 12.dp else 8.dp,
+                            vertical = 8.dp
+                        ),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        painter = painterResource(tab.iconRes),
+                        contentDescription = null,
+                        tint = if (active) Color.White else Color.White.copy(alpha = 0.5f),
+                        modifier = Modifier.size(22.dp)
+                    )
+                    AnimatedVisibility(visible = active) {
+                        Text(
+                            text = stringResource(tab.titleRes),
+                            color = Color.White,
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Bold,
+                            maxLines = 1,
+                            modifier = Modifier.padding(start = 6.dp)
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun MainDrawer(
+    drawerState: DrawerUserState,
+    onHeaderClick: () -> Unit,
+    onTimetableManager: () -> Unit,
+    onAgreement: () -> Unit,
+    onAbout: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Column(
+        modifier = modifier
+            .background(MaterialTheme.colorScheme.surface)
+            .statusBarsPadding(),
+    ) {
+        DrawerHeader(drawerState = drawerState, onClick = onHeaderClick)
+        Spacer(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(1.dp)
+                .padding(horizontal = HitaTheme.tokens.spacing.xl)
+                .background(MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.8f))
+        )
+        DrawerItem(R.drawable.ic_menu_settings, stringResource(R.string.menu_timeable_curriculum), onTimetableManager)
+        DrawerItem(R.drawable.ic_info, stringResource(R.string.name_ua_and_pp), onAgreement)
+        DrawerItem(R.drawable.logo, stringResource(R.string.main_drawer_menu_about), onAbout)
+    }
+}
+
+@Composable
+private fun DrawerHeader(drawerState: DrawerUserState, onClick: () -> Unit) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .padding(top = 78.dp, bottom = HitaTheme.tokens.spacing.lg),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Card(
+            shape = CircleShape,
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+            elevation = CardDefaults.cardElevation(defaultElevation = 12.dp),
+            modifier = Modifier.size(72.dp)
+        ) {
+            AndroidView(
+                modifier = Modifier.fillMaxSize(),
+                factory = { context ->
+                    ImageView(context).apply {
+                        scaleType = ImageView.ScaleType.FIT_CENTER
+                    }
+                },
+                update = { image ->
+                    val avatar = drawerState.avatar
+                    if (!avatar.isNullOrBlank()) {
+                        com.limpu.hitauser.util.ImageUtils.loadAvatarInto(image.context, avatar, image)
+                    } else {
+                        image.setImageResource(R.drawable.place_holder_avatar)
+                    }
+                }
+            )
+        }
+        Text(
+            text = drawerState.title,
+            color = MaterialTheme.colorScheme.onSurface,
+            fontSize = 20.sp,
+            fontWeight = FontWeight.Bold,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.padding(
+                start = HitaTheme.tokens.spacing.lg,
+                top = HitaTheme.tokens.spacing.lg,
+                end = HitaTheme.tokens.spacing.lg
+            )
+        )
+        Text(
+            text = drawerState.subtitle,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            fontSize = 16.sp,
+            fontWeight = FontWeight.Bold,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier
+                .alpha(0.6f)
+                .padding(
+                    start = HitaTheme.tokens.spacing.lg,
+                    top = HitaTheme.tokens.spacing.sm,
+                    end = HitaTheme.tokens.spacing.lg
+                )
+        )
+    }
+}
+
+@Composable
+private fun DrawerItem(icon: Int, title: String, onClick: () -> Unit) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .padding(horizontal = 32.dp, vertical = 16.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Icon(
+            painter = painterResource(icon),
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.primary,
+            modifier = Modifier.size(20.dp)
+        )
+        Text(
+            text = title,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            fontSize = 14.sp,
+            fontWeight = FontWeight.Bold,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.padding(start = 16.dp)
+        )
+    }
+}
+
+private fun Modifier.wrapContentCenter(): Modifier = this.then(
+    Modifier.padding(top = 14.dp)
+)

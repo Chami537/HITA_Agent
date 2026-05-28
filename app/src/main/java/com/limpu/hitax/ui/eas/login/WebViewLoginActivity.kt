@@ -5,7 +5,6 @@ import android.app.Activity
 import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
-import android.view.View
 import android.view.ViewGroup
 import android.webkit.CookieManager
 import android.webkit.JavascriptInterface
@@ -17,9 +16,37 @@ import android.webkit.WebView
 import android.webkit.WebViewClient
 import com.limpu.hitax.data.model.eas.EASToken
 import androidx.activity.OnBackPressedCallback
+import androidx.activity.compose.setContent
 import androidx.activity.viewModels
-import com.limpu.hitax.databinding.ActivityWebviewLoginBinding
-import com.limpu.hitax.ui.base.HiltBaseActivity
+import androidx.appcompat.app.AppCompatActivity
+import androidx.appcompat.app.AppCompatDelegate
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
+import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.rotate
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.viewinterop.AndroidView
+import com.limpu.hitax.R
+import com.limpu.hitax.ui.design.HitaComposeTheme
+import com.limpu.style.ThemeTools
 import com.limpu.hitax.utils.LogUtils
 import dagger.hilt.android.AndroidEntryPoint
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -28,7 +55,7 @@ import org.json.JSONObject
 import java.net.URL
 
 @AndroidEntryPoint
-class WebViewLoginActivity : HiltBaseActivity<ActivityWebviewLoginBinding>() {
+class WebViewLoginActivity : AppCompatActivity() {
 
     protected val viewModel: WebViewLoginViewModel by viewModels()
 
@@ -90,9 +117,9 @@ class WebViewLoginActivity : HiltBaseActivity<ActivityWebviewLoginBinding>() {
     private var collectedEasCookies: Map<String, String>? = null
     private var eelabTokenFetching = false
     private var lastPageHadError = false
-
-    override fun initViewBinding(): ActivityWebviewLoginBinding =
-        ActivityWebviewLoginBinding.inflate(layoutInflater)
+    private lateinit var webView: WebView
+    private var progressVisible by mutableStateOf(false)
+    private var progressValue by mutableIntStateOf(0)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         val campus = runCatching {
@@ -103,27 +130,42 @@ class WebViewLoginActivity : HiltBaseActivity<ActivityWebviewLoginBinding>() {
         config = configFor(campus)
         silentMode = intent?.getBooleanExtra(EXTRA_SILENT_MODE, false) == true
 
+        val nightMode = when (ThemeTools.getThemeMode(this)) {
+            ThemeTools.MODE.DARK -> AppCompatDelegate.MODE_NIGHT_YES
+            ThemeTools.MODE.LIGHT -> AppCompatDelegate.MODE_NIGHT_NO
+            else -> AppCompatDelegate.MODE_NIGHT_FOLLOW_SYSTEM
+        }
+        AppCompatDelegate.setDefaultNightMode(nightMode)
         super.onCreate(savedInstanceState)
 
         if (silentMode) {
             window?.setDimAmount(0f)
-            binding.toolbar.visibility = View.GONE
-            binding.progressBar.visibility = View.GONE
-            // 不设置alpha，保持WebView正常渲染
-            // 通过Theme透明化整个Activity，而不是降低WebView透明度
-        } else {
-            setToolbarActionBack(binding.toolbar)
+        }
+
+        setContent {
+            HitaComposeTheme() {
+                WebViewLoginScreen(
+                    silentMode = silentMode,
+                    progressVisible = progressVisible,
+                    progressValue = progressValue,
+                    onBack = { onBackPressedDispatcher.onBackPressed() },
+                    onWebViewReady = { createdWebView ->
+                        webView = createdWebView
+                        initViews()
+                    }
+                )
+            }
         }
         LogUtils.d( "onCreate silentMode=$silentMode campus=${config.campus}")
     }
 
     @SuppressLint("SetJavaScriptEnabled")
-    override fun initViews() {
+    private fun initViews() {
         CookieManager.getInstance().setAcceptCookie(true)
-        CookieManager.getInstance().setAcceptThirdPartyCookies(binding.webview, true)
+        CookieManager.getInstance().setAcceptThirdPartyCookies(webView, true)
         setupWebView()
         if (silentMode) {
-            binding.webview.postDelayed({
+            webView.postDelayed({
                 if (!finished) {
                     LogUtils.w( "silent web login timeout campus=${config.campus}")
                     finishWithCancelledResult()
@@ -131,7 +173,7 @@ class WebViewLoginActivity : HiltBaseActivity<ActivityWebviewLoginBinding>() {
             }, SILENT_TIMEOUT_MS)
         }
         LogUtils.d( "load login url=${config.loginUrl} campus=${config.campus}")
-        binding.webview.loadUrl(config.loginUrl)
+        webView.loadUrl(config.loginUrl)
         onBackPressedDispatcher.addCallback(this, onBackPressedCallback)
     }
 
@@ -154,7 +196,7 @@ class WebViewLoginActivity : HiltBaseActivity<ActivityWebviewLoginBinding>() {
     }
 
     private fun setupWebView() {
-        binding.webview.apply {
+        webView.apply {
             settings.javaScriptEnabled = true
             settings.domStorageEnabled = true
             settings.loadWithOverviewMode = true
@@ -164,10 +206,10 @@ class WebViewLoginActivity : HiltBaseActivity<ActivityWebviewLoginBinding>() {
             webChromeClient = object : WebChromeClient() {
                 override fun onProgressChanged(view: WebView?, newProgress: Int) {
                     if (newProgress == 100) {
-                        binding.progressBar.visibility = View.GONE
+                        progressVisible = false
                     } else {
-                        binding.progressBar.visibility = View.VISIBLE
-                        binding.progressBar.progress = newProgress
+                        progressVisible = true
+                        progressValue = newProgress
                     }
                 }
             }
@@ -189,7 +231,7 @@ class WebViewLoginActivity : HiltBaseActivity<ActivityWebviewLoginBinding>() {
                         if (url.contains("eelabinfo") && !url.contains("ids.hit.edu.cn") && !eelabTokenFetching) {
                             eelabTokenFetching = true
                             LogUtils.d("eelabinfo page loaded, fetching JWT token...")
-                            binding.webview.postDelayed({ fetchEelabTokenViaHttp() }, 1000)
+                            webView.postDelayed({ fetchEelabTokenViaHttp() }, 1000)
                         } else if (!url.contains("eelabinfo") && !eelabTokenFetching) {
                             LogUtils.w("navigated away from eelabinfo, finishing without token, url=$url")
                             navigatingToEelab = false
@@ -319,7 +361,7 @@ class WebViewLoginActivity : HiltBaseActivity<ActivityWebviewLoginBinding>() {
 
     private fun startCookiePolling() {
         cookieRetryCount = 0
-        binding.webview.postDelayed({
+        webView.postDelayed({
             checkCookiesAndFinish()
         }, COOKIE_RETRY_DELAY_MS)
     }
@@ -328,7 +370,7 @@ class WebViewLoginActivity : HiltBaseActivity<ActivityWebviewLoginBinding>() {
         if (finished) return
 
         val cookies = collectCookies()
-        val currentUrl = binding.webview.url ?: ""
+        val currentUrl = webView.url ?: ""
         val hasVpnTicket = hasWeihaiVpnTicket(cookies)
         val hasJsessionid = cookies.containsKey("JSESSIONID")
 
@@ -363,7 +405,7 @@ class WebViewLoginActivity : HiltBaseActivity<ActivityWebviewLoginBinding>() {
         }
 
         cookieRetryCount++
-        binding.webview.postDelayed({
+        webView.postDelayed({
             checkCookiesAndFinish()
         }, COOKIE_RETRY_DELAY_MS)
     }
@@ -383,14 +425,14 @@ class WebViewLoginActivity : HiltBaseActivity<ActivityWebviewLoginBinding>() {
             navigatingToEelab = true
             eelabTokenFetching = false
             collectedEasCookies = cookies
-            binding.webview.postDelayed({
+            webView.postDelayed({
                 if (navigatingToEelab && !finished) {
                     LogUtils.w("eelabinfo timeout, finishing without token")
                     navigatingToEelab = false
                     finishWithCookies(cookies)
                 }
             }, 10000)
-            binding.webview.loadUrl(CampusUrls.EELABINFO_URL + "/api/cas/loginSuccess")
+            webView.loadUrl(CampusUrls.EELABINFO_URL + "/api/cas/loginSuccess")
         } else {
             finishWithCookies(cookies)
         }
@@ -406,7 +448,7 @@ class WebViewLoginActivity : HiltBaseActivity<ActivityWebviewLoginBinding>() {
 
                 if (eelabCookies.isNullOrBlank() || !eelabCookies.contains("JSESSIONID")) {
                     LogUtils.w("fetchEelabToken: JSESSIONID not found, student likely has no eelab access")
-                    binding.webview.post {
+                    webView.post {
                         if (!finished && navigatingToEelab) {
                             navigatingToEelab = false
                             finishWithCookies(collectedEasCookies ?: collectCookies())
@@ -449,7 +491,7 @@ class WebViewLoginActivity : HiltBaseActivity<ActivityWebviewLoginBinding>() {
                             val token = data?.optString("token", "") ?: ""
                             if (token.length >= 50) {
                                 LogUtils.success("fetchEelabToken: got JWT token, length=${token.length}")
-                                binding.webview.post {
+                                webView.post {
                                     if (!finished && navigatingToEelab) {
                                         navigatingToEelab = false
                                         finishWithCookies(collectedEasCookies ?: collectCookies(), token)
@@ -466,7 +508,7 @@ class WebViewLoginActivity : HiltBaseActivity<ActivityWebviewLoginBinding>() {
                     LogUtils.w("fetchEelabToken: HTTP ${response.statusCode()}")
                 }
 
-                binding.webview.post {
+                webView.post {
                     if (!finished && navigatingToEelab) {
                         navigatingToEelab = false
                         finishWithCookies(collectedEasCookies ?: collectCookies())
@@ -474,7 +516,7 @@ class WebViewLoginActivity : HiltBaseActivity<ActivityWebviewLoginBinding>() {
                 }
             } catch (e: Exception) {
                 LogUtils.e("fetchEelabToken: HTTP request failed", e)
-                binding.webview.post {
+                webView.post {
                     if (!finished && navigatingToEelab) {
                         navigatingToEelab = false
                         finishWithCookies(collectedEasCookies ?: collectCookies())
@@ -523,7 +565,7 @@ class WebViewLoginActivity : HiltBaseActivity<ActivityWebviewLoginBinding>() {
             }
         }
 
-        val currentUrl = binding.webview.url
+        val currentUrl = webView.url
         if (!currentUrl.isNullOrBlank() && currentUrl.startsWith("http")) {
             val parsed = parseCookies(cookieManager.getCookie(currentUrl))
             parsed.forEach { (key, value) ->
@@ -543,7 +585,7 @@ class WebViewLoginActivity : HiltBaseActivity<ActivityWebviewLoginBinding>() {
 
     private fun fetchVpnEasCookies(callback: (Map<String, String>) -> Unit) {
         // 在主线程上捕获 WebView 数据
-        val currentUrl = binding.webview.url ?: ""
+        val currentUrl = webView.url ?: ""
         val cookieHeader = buildCookieHeader(currentUrl)
 
         Thread {
@@ -593,7 +635,7 @@ class WebViewLoginActivity : HiltBaseActivity<ActivityWebviewLoginBinding>() {
                 LogUtils.e("fetchVpnEasCookies: failed", e)
             }
 
-            binding.webview.post {
+            webView.post {
                 callback(result)
             }
         }.start()
@@ -698,8 +740,8 @@ class WebViewLoginActivity : HiltBaseActivity<ActivityWebviewLoginBinding>() {
 
     private val onBackPressedCallback = object : OnBackPressedCallback(true) {
         override fun handleOnBackPressed() {
-            if (binding.webview.canGoBack()) {
-                binding.webview.goBack()
+            if (webView.canGoBack()) {
+                webView.goBack()
             } else {
                 isEnabled = false
                 onBackPressedDispatcher.onBackPressed()
@@ -709,14 +751,72 @@ class WebViewLoginActivity : HiltBaseActivity<ActivityWebviewLoginBinding>() {
     }
 
     override fun onDestroy() {
-        (binding.webview.parent as? ViewGroup)?.removeView(binding.webview)
-        binding.webview.stopLoading()
-        binding.webview.webChromeClient = WebChromeClient()
-        binding.webview.webViewClient = WebViewClient()
-        binding.webview.destroy()
+        if (::webView.isInitialized) {
+            (webView.parent as? ViewGroup)?.removeView(webView)
+            webView.stopLoading()
+            webView.webChromeClient = WebChromeClient()
+            webView.webViewClient = WebViewClient()
+            webView.destroy()
+        }
         super.onDestroy()
     }
 }
 
 @HiltViewModel
 class WebViewLoginViewModel @Inject constructor() : androidx.lifecycle.ViewModel()
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun WebViewLoginScreen(
+    silentMode: Boolean,
+    progressVisible: Boolean,
+    progressValue: Int,
+    onBack: () -> Unit,
+    onWebViewReady: (WebView) -> Unit,
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(MaterialTheme.colorScheme.background)
+    ) {
+        if (!silentMode) {
+            TopAppBar(
+                title = {
+                    Text(text = stringResource(R.string.webview_login_title))
+                },
+                navigationIcon = {
+                    IconButton(onClick = onBack) {
+                        Icon(
+                            painter = painterResource(R.drawable.ic_baseline_keyboard_arrow_right_24),
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onPrimary,
+                            modifier = Modifier.rotate(180f)
+                        )
+                    }
+                },
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = MaterialTheme.colorScheme.primary,
+                    titleContentColor = MaterialTheme.colorScheme.onPrimary,
+                    navigationIconContentColor = MaterialTheme.colorScheme.onPrimary
+                )
+            )
+        }
+        if (progressVisible && !silentMode) {
+            LinearProgressIndicator(
+                progress = { (progressValue.coerceIn(0, 100)) / 100f },
+                color = MaterialTheme.colorScheme.primary,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(3.dp)
+            )
+        }
+        AndroidView(
+            modifier = Modifier
+                .fillMaxWidth()
+                .weight(1f),
+            factory = { context ->
+                WebView(context).also(onWebViewReady)
+            }
+        )
+    }
+}

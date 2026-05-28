@@ -7,9 +7,9 @@ import com.limpu.hitax.data.model.timetable.TimeInDay
 class TimetableStyleSheet {
     var isColorEnabled: Boolean = true
     var isFadeEnabled: Boolean = true
-    var cardTitleColor: String = "auto"
-    var subTitleColor: String = "auto"
-    var iconColor: String = "auto"
+    var cardTitleColor: String = "white"
+    var subTitleColor: String = "white"
+    var iconColor: String = "white"
     var isBoldText: Boolean = true
     var drawBGLine: Boolean = true
     var cardIconEnabled: Boolean = false

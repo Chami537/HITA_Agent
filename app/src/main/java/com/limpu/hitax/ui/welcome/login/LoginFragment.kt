@@ -1,134 +1,241 @@
 package com.limpu.hitax.ui.welcome.login
 
-import android.text.Editable
-import android.text.TextWatcher
-import android.view.HapticFeedbackConstants
-import android.view.KeyEvent
+import android.os.Bundle
+import android.view.LayoutInflater
 import android.view.View
-import android.view.inputmethod.EditorInfo
-import android.widget.TextView
+import android.view.ViewGroup
 import android.widget.Toast
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Checkbox
+import androidx.compose.material3.CheckboxDefaults
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.livedata.observeAsState
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.ComposeView
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.fragment.app.Fragment
 import androidx.fragment.app.viewModels
-import com.limpu.hitax.databinding.FragmentLoginBinding
+import com.limpu.hitax.R
 import com.limpu.hitax.ui.about.UserAgreementDialog
-import com.limpu.hitax.ui.base.HiltBaseFragment
-import com.limpu.hitax.utils.AnimationUtils
+import com.limpu.hitax.ui.design.HitaComposeTheme
+import com.limpu.hitax.ui.design.HitaTheme
 import com.limpu.hitauser.data.model.LoginResult
 import dagger.hilt.android.AndroidEntryPoint
 
-/**
- * 登录页面Fragment
- */
 @AndroidEntryPoint
-class LoginFragment : HiltBaseFragment<FragmentLoginBinding>() {
+class LoginFragment : Fragment() {
 
-    protected val viewModel: LoginViewModel by viewModels()
+    private val viewModel: LoginViewModel by viewModels()
 
-    override fun initViews(view: View) {
-        //登录表单的数据变更监听器
-        viewModel.loginFormState.observe(this, { loginFormState: LoginFormState ->
-            //将表单合法性同步到登录按钮可用性
-            binding?.login?.let { AnimationUtils.enableLoadingButton(it,loginFormState.isDataValid) }
-            //若有表单上的错误，则通知View显示错误
-            if (loginFormState.usernameError != null) {
-                binding?.username?.error = getString(loginFormState.usernameError!!)
-            }
-            if (loginFormState.passwordError != null) {
-                binding?.password?.error = getString(loginFormState.passwordError!!)
-            }
-            if (loginFormState.agreementError != null && viewModel.isAgreementChecked.not()) {
-                binding?.agreementText?.let {
-                    Toast.makeText(context, getString(loginFormState.agreementError!!), Toast.LENGTH_SHORT).show()
+    override fun onCreateView(
+        inflater: LayoutInflater,
+        container: ViewGroup?,
+        savedInstanceState: Bundle?
+    ): View {
+        return ComposeView(requireContext()).apply {
+            setContent {
+                HitaComposeTheme() {
+                    LoginScreen(
+                        viewModel = viewModel,
+                        onLoginSuccess = { requireActivity().finish() },
+                        onShowAgreement = {
+                            UserAgreementDialog().show(childFragmentManager, "user_agreement")
+                        }
+                    )
                 }
             }
-        })
-
-        //登录结果的数据变更监听
-        viewModel.loginResult.observe(this, { loginResult ->
-            AnimationUtils.loadingButtonDone(binding?.login,loginResult != null&&loginResult.state==LoginResult.STATES.SUCCESS,toast = false)
-            if (loginResult != null) {
-                Toast.makeText(context, loginResult.message, Toast.LENGTH_SHORT).show()
-            }
-            if (loginResult != null) {
-                when (loginResult.state) {
-                    com.limpu.hitauser.data.model.LoginResult.STATES.SUCCESS -> {
-                        requireActivity().finish()
-                    }
-                    com.limpu.hitauser.data.model.LoginResult.STATES.WRONG_USERNAME -> {
-                        binding?.username?.error = getString(loginResult.message)
-                    }
-                    com.limpu.hitauser.data.model.LoginResult.STATES.WRONG_PASSWORD -> {
-                        binding?.password?.error = getString(loginResult.message)
-                    }
-                    else -> {
-
-                    }
-                }
-            }
-        })
-
-        // 登录表单的文本监视器
-        val afterTextChangedListener: TextWatcher = object : TextWatcher {
-            override fun beforeTextChanged(s: CharSequence, start: Int, count: Int, after: Int) {
-                // ignore
-            }
-
-            override fun onTextChanged(s: CharSequence, start: Int, before: Int, count: Int) {
-                // ignore
-            }
-
-            override fun afterTextChanged(s: Editable) {
-                //将文本信息改变通知给ViewModel
-                viewModel.loginDataChanged(binding?.username?.text.toString(),
-                        binding?.password?.text.toString())
-            }
         }
-        binding?.username?.addTextChangedListener(afterTextChangedListener)
-        binding?.password?.addTextChangedListener(afterTextChangedListener)
-
-        // 用户协议勾选监听
-        binding?.agreementCheckbox?.setOnCheckedChangeListener { _, isChecked ->
-            viewModel.isAgreementChecked = isChecked
-            viewModel.loginDataChanged(binding?.username?.text.toString(),
-                    binding?.password?.text.toString())
-        }
-
-        // 用户协议文本点击打开协议弹窗
-        binding?.agreementText?.setOnClickListener {
-            UserAgreementDialog().show(childFragmentManager, "user_agreement")
-        }
-
-        binding?.login?.let { AnimationUtils.enableLoadingButton(it,false) }
-        //使得手机输入法上"完成"按钮映射到登录动作
-        binding?.password?.setOnEditorActionListener { _: TextView?, actionId: Int, _: KeyEvent? ->
-            if (actionId == EditorInfo.IME_ACTION_DONE) {
-                attemptLogin()
-            }
-            false
-        }
-        binding?.login?.setOnClickListener {
-            attemptLogin()
-        }
-    }
-
-    private fun attemptLogin() {
-        if (!viewModel.isAgreementChecked) {
-            Toast.makeText(context, getString(com.limpu.hitax.R.string.user_agreement_required), Toast.LENGTH_SHORT).show()
-            return
-        }
-        binding?.login?.performHapticFeedback(HapticFeedbackConstants.CONTEXT_CLICK)
-        binding?.login?.startAnimation()
-        viewModel.login(binding?.username?.text.toString(),
-                binding?.password?.text.toString())
     }
 
     companion object {
-        fun newInstance(): LoginFragment {
-            return LoginFragment()
+        fun newInstance(): LoginFragment = LoginFragment()
+    }
+}
+
+@Composable
+private fun LoginScreen(
+    viewModel: LoginViewModel,
+    onLoginSuccess: () -> Unit,
+    onShowAgreement: () -> Unit
+) {
+    val tokens = HitaTheme.tokens
+    val context = LocalContext.current
+    val formState by viewModel.loginFormState.observeAsState()
+    val loginResultLiveData = remember { viewModel.loginResult }
+    val loginResult by loginResultLiveData.observeAsState()
+
+    var username by remember { mutableStateOf("") }
+    var password by remember { mutableStateOf("") }
+    var agreementChecked by remember { mutableStateOf(false) }
+    var isLoading by remember { mutableStateOf(false) }
+    var usernameFieldError by remember { mutableStateOf<Int?>(null) }
+    var passwordFieldError by remember { mutableStateOf<Int?>(null) }
+    var lastHandledResult by remember { mutableStateOf<LoginResult?>(null) }
+
+    LaunchedEffect(formState) {
+        formState?.let { state ->
+            if (state.usernameError != null) usernameFieldError = state.usernameError
+            if (state.passwordError != null) passwordFieldError = state.passwordError
+            if (state.agreementError != null && !agreementChecked) {
+                Toast.makeText(context, context.getString(state.agreementError!!), Toast.LENGTH_SHORT).show()
+            }
         }
     }
 
-    override fun initViewBinding(): FragmentLoginBinding {
-        return FragmentLoginBinding.inflate(layoutInflater)
+    LaunchedEffect(loginResult) {
+        val result = loginResult
+        if (result != null && result !== lastHandledResult) {
+            lastHandledResult = result
+            isLoading = false
+            Toast.makeText(context, context.getString(result.message), Toast.LENGTH_SHORT).show()
+            when (result.state) {
+                LoginResult.STATES.SUCCESS -> onLoginSuccess()
+                LoginResult.STATES.WRONG_USERNAME -> usernameFieldError = result.message
+                LoginResult.STATES.WRONG_PASSWORD -> passwordFieldError = result.message
+                else -> {}
+            }
+        }
+    }
+
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(tokens.spacing.sm),
+        shape = RoundedCornerShape(tokens.radius.xl),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
+    ) {
+        Column(modifier = Modifier.padding(top = tokens.spacing.sm)) {
+            OutlinedTextField(
+                value = username,
+                onValueChange = {
+                    username = it
+                    usernameFieldError = null
+                    viewModel.loginDataChanged(username, password)
+                },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = tokens.spacing.lg),
+                label = { Text(stringResource(R.string.username)) },
+                singleLine = true,
+                keyboardOptions = KeyboardOptions(
+                    keyboardType = KeyboardType.Text,
+                    imeAction = ImeAction.Next
+                ),
+                isError = usernameFieldError != null,
+                supportingText = usernameFieldError?.let { err -> { Text(stringResource(err)) } }
+            )
+
+            OutlinedTextField(
+                value = password,
+                onValueChange = {
+                    password = it
+                    passwordFieldError = null
+                    viewModel.loginDataChanged(username, password)
+                },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = tokens.spacing.lg),
+                label = { Text(stringResource(R.string.password)) },
+                singleLine = true,
+                visualTransformation = PasswordVisualTransformation(),
+                keyboardOptions = KeyboardOptions(
+                    keyboardType = KeyboardType.Password,
+                    imeAction = ImeAction.Done
+                ),
+                keyboardActions = KeyboardActions(onDone = {
+                    if (formState?.isDataValid == true && agreementChecked && !isLoading) {
+                        isLoading = true
+                        viewModel.login(username, password)
+                    }
+                }),
+                isError = passwordFieldError != null,
+                supportingText = passwordFieldError?.let { err -> { Text(stringResource(err)) } }
+            )
+
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = tokens.spacing.lg, vertical = tokens.spacing.xs),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Checkbox(
+                    checked = agreementChecked,
+                    onCheckedChange = {
+                        agreementChecked = it
+                        viewModel.isAgreementChecked = it
+                        viewModel.loginDataChanged(username, password)
+                    },
+                    colors = CheckboxDefaults.colors(checkedColor = MaterialTheme.colorScheme.primary)
+                )
+                Text(
+                    text = stringResource(R.string.user_agreement_hint),
+                    fontSize = 12.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(start = tokens.spacing.xs)
+                )
+            }
+
+            Button(
+                onClick = {
+                    if (!agreementChecked) {
+                        Toast.makeText(context, context.getString(R.string.user_agreement_required), Toast.LENGTH_SHORT).show()
+                        return@Button
+                    }
+                    isLoading = true
+                    viewModel.login(username, password)
+                },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(
+                        start = tokens.spacing.lg,
+                        end = tokens.spacing.lg,
+                        top = tokens.spacing.xs,
+                        bottom = tokens.spacing.sm
+                    )
+                    .height(48.dp),
+                enabled = formState?.isDataValid == true && !isLoading,
+                shape = RoundedCornerShape(tokens.radius.xl),
+                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
+            ) {
+                if (isLoading) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(24.dp),
+                        color = MaterialTheme.colorScheme.onPrimary,
+                        strokeWidth = 2.dp
+                    )
+                } else {
+                    Text(stringResource(R.string.login), fontSize = 18.sp)
+                }
+            }
+        }
     }
 }

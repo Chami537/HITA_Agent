@@ -2,9 +2,10 @@ package com.limpu.style.widgets
 
 import android.content.res.ColorStateList
 import android.graphics.Color
+import android.view.LayoutInflater
 import android.view.View
+import android.view.ViewGroup
 import android.widget.SeekBar
-import com.limpu.style.R
 import com.limpu.style.databinding.DialogBottomColorPickerBinding
 
 class PopUpColorPicker: TransparentBottomSheetDialog<DialogBottomColorPickerBinding>() {
@@ -16,12 +17,8 @@ class PopUpColorPicker: TransparentBottomSheetDialog<DialogBottomColorPickerBind
 
     private var color = Color.CYAN
 
-    override fun getLayoutId(): Int {
-        return R.layout.dialog_bottom_color_picker
-    }
-
-    override fun initViewBinding(v: View): DialogBottomColorPickerBinding {
-        return DialogBottomColorPickerBinding.bind(v)
+    override fun createViewBinding(inflater: LayoutInflater, container: ViewGroup?): DialogBottomColorPickerBinding {
+        return DialogBottomColorPickerBinding.inflate(inflater, container, false)
     }
 
     fun initColor(color: Int): PopUpColorPicker {

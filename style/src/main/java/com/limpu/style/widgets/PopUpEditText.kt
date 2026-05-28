@@ -1,8 +1,9 @@
 package com.limpu.style.widgets
 
+import android.view.LayoutInflater
 import android.view.View
+import android.view.ViewGroup
 import androidx.annotation.StringRes
-import com.limpu.style.R
 import com.limpu.style.databinding.DialogBottomEditTextBinding
 
 
@@ -69,11 +70,7 @@ class PopUpEditText : TransparentBottomSheetDialog<DialogBottomEditTextBinding>(
         }
     }
 
-    override fun getLayoutId(): Int {
-        return R.layout.dialog_bottom_edit_text
-    }
-
-    override fun initViewBinding(v: View): DialogBottomEditTextBinding {
-        return DialogBottomEditTextBinding.bind(v)
+    override fun createViewBinding(inflater: LayoutInflater, container: ViewGroup?): DialogBottomEditTextBinding {
+        return DialogBottomEditTextBinding.inflate(inflater, container, false)
     }
 }
