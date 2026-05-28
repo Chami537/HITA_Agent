@@ -854,7 +854,7 @@ private fun MainPillTabBar(
         shadowElevation = 8.dp
     ) {
         Row(
-            modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             tabs.forEachIndexed { index, tab ->
@@ -868,7 +868,7 @@ private fun MainPillTabBar(
                             view.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
                             onSelectTab(index)
                         }
-                        .padding(horizontal = 8.dp, vertical = 7.dp),
+                        .padding(horizontal = 8.dp, vertical = 4.dp),
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
                     Icon(
@@ -881,10 +881,11 @@ private fun MainPillTabBar(
                         text = stringResource(tab.titleRes),
                         color = Color.White.copy(alpha = if (active) 1f else 0.58f),
                         fontSize = 10.sp,
+                        lineHeight = 10.sp,
                         fontWeight = if (active) FontWeight.Bold else FontWeight.Normal,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.padding(top = 3.dp)
+                        modifier = Modifier.padding(top = 1.dp)
                     )
                 }
             }
