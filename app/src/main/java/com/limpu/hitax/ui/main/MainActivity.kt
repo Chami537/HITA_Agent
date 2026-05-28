@@ -638,10 +638,10 @@ private fun MainTopBar(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .height(64.dp)
             .statusBarsPadding()
+            .height(56.dp)
             .padding(start = HitaTheme.tokens.spacing.sm),
-        verticalAlignment = Alignment.Bottom
+        verticalAlignment = Alignment.CenterVertically
     ) {
         when (selectedTab) {
             0 -> ToolbarTitle(todayTitle)
@@ -677,7 +677,6 @@ private fun ToolbarTitle(title: String) {
         modifier = Modifier
             .height(56.dp)
             .padding(start = HitaTheme.tokens.spacing.sm)
-            .wrapContentCenter()
     )
 }
 
@@ -1009,7 +1008,3 @@ private fun DrawerItem(icon: Int, title: String, onClick: () -> Unit) {
         )
     }
 }
-
-private fun Modifier.wrapContentCenter(): Modifier = this.then(
-    Modifier.padding(top = 14.dp)
-)
