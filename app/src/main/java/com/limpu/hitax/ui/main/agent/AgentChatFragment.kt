@@ -25,7 +25,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.ime
-import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
@@ -223,9 +222,10 @@ private fun AgentChatScreen(
     val context = LocalContext.current
     val density = LocalDensity.current
     val keyboardController = LocalSoftwareKeyboardController.current
-    val imeVisible = WindowInsets.ime.getBottom(density) > 0
-    val inputBottomPadding = if (imeVisible) 32.dp else 92.dp
-    val listBottomPadding = if (imeVisible) 72.dp else 96.dp
+    val imeBottomPx = WindowInsets.ime.getBottom(density)
+    val imeBottomPadding = with(density) { imeBottomPx.toDp() }
+    val inputBottomPadding = if (imeBottomPx > 0) imeBottomPadding + 24.dp else 92.dp
+    val listBottomPadding = if (imeBottomPx > 0) imeBottomPadding + 96.dp else 96.dp
     val markwon = remember(context) {
         val builder = Markwon.builder(context)
             .usePlugin(LinkifyPlugin.create())
@@ -245,133 +245,135 @@ private fun AgentChatScreen(
         }
     }
 
-    Column(
+    Box(
         modifier = Modifier
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
-            .imePadding()
     ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(
-                    start = tokens.spacing.md,
-                    top = tokens.spacing.sm,
-                    end = tokens.spacing.md,
-                    bottom = tokens.spacing.xs
-                ),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Box(modifier = Modifier.weight(1f)) {
-                Surface(
-                    color = MaterialTheme.colorScheme.surface,
-                    shape = RoundedCornerShape(18.dp),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(36.dp)
-                        .clickable { sessionMenuExpanded = true }
-                ) {
-                    Row(
-                        modifier = Modifier.padding(horizontal = tokens.spacing.md),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            text = sessions.firstOrNull { it.id == viewModel.currentSessionId }?.title
-                                ?: sessions.firstOrNull()?.title
-                                ?: "新对话",
-                            color = MaterialTheme.colorScheme.onSurface,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.weight(1f)
-                        )
-                        Icon(
-                            painter = painterResource(R.drawable.ic_baseline_arrow_drop_down_24),
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                }
-                DropdownMenu(
-                    expanded = sessionMenuExpanded,
-                    onDismissRequest = { sessionMenuExpanded = false }
-                ) {
-                    sessions.forEach { session ->
-                        DropdownMenuItem(
-                            text = {
-                                Text(
-                                    text = session.title,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis
-                                )
-                            },
-                            onClick = {
-                                sessionMenuExpanded = false
-                                onSwitchSession(session)
-                            }
-                        )
-                    }
-                }
-            }
-            IconButton(onClick = onNewSession) {
-                Icon(
-                    painter = painterResource(R.drawable.ic_baseline_add_24),
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-            val currentSession = sessions.firstOrNull { it.id == viewModel.currentSessionId }
-                ?: sessions.firstOrNull()
-            IconButton(
-                onClick = {
-                    currentSession?.let(onDeleteSession)
-                }
+        Column(modifier = Modifier.fillMaxSize()) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(
+                        start = tokens.spacing.md,
+                        top = tokens.spacing.sm,
+                        end = tokens.spacing.md,
+                        bottom = tokens.spacing.xs
+                    ),
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Icon(
-                    painter = painterResource(R.drawable.ic_baseline_delete_24),
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                Box(modifier = Modifier.weight(1f)) {
+                    Surface(
+                        color = MaterialTheme.colorScheme.surface,
+                        shape = RoundedCornerShape(18.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(36.dp)
+                            .clickable { sessionMenuExpanded = true }
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = tokens.spacing.md),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = sessions.firstOrNull { it.id == viewModel.currentSessionId }?.title
+                                    ?: sessions.firstOrNull()?.title
+                                    ?: "新对话",
+                                color = MaterialTheme.colorScheme.onSurface,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.weight(1f)
+                            )
+                            Icon(
+                                painter = painterResource(R.drawable.ic_baseline_arrow_drop_down_24),
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                    DropdownMenu(
+                        expanded = sessionMenuExpanded,
+                        onDismissRequest = { sessionMenuExpanded = false }
+                    ) {
+                        sessions.forEach { session ->
+                            DropdownMenuItem(
+                                text = {
+                                    Text(
+                                        text = session.title,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                },
+                                onClick = {
+                                    sessionMenuExpanded = false
+                                    onSwitchSession(session)
+                                }
+                            )
+                        }
+                    }
+                }
+                IconButton(onClick = onNewSession) {
+                    Icon(
+                        painter = painterResource(R.drawable.ic_baseline_add_24),
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                val currentSession = sessions.firstOrNull { it.id == viewModel.currentSessionId }
+                    ?: sessions.firstOrNull()
+                IconButton(
+                    onClick = {
+                        currentSession?.let(onDeleteSession)
+                    }
+                ) {
+                    Icon(
+                        painter = painterResource(R.drawable.ic_baseline_delete_24),
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+
+            LazyColumn(
+                state = listState,
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxWidth(),
+                contentPadding = PaddingValues(
+                    start = tokens.spacing.sm,
+                    top = tokens.spacing.sm,
+                    end = tokens.spacing.sm,
+                    bottom = listBottomPadding
+                )
+            ) {
+                itemsIndexed(
+                    messages.filter { it.role != AgentChatMessage.Role.TRACE },
+                    key = { index, item -> "${item.timestampMs}-${item.role}-$index" }
+                ) { _, message ->
+                    AgentMessageBubble(
+                        message = message,
+                        markwon = markwon,
+                        onOpenResourceCard = onOpenResourceCard,
+                    )
+                }
+            }
+
+            pendingAttachment?.let { uri ->
+                Text(
+                    text = "附件: ${getFileName(context, uri)}",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    fontSize = 12.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.padding(horizontal = tokens.spacing.lg, vertical = tokens.spacing.xs)
                 )
             }
-        }
-
-        LazyColumn(
-            state = listState,
-            modifier = Modifier
-                .weight(1f)
-                .fillMaxWidth(),
-            contentPadding = PaddingValues(
-                start = tokens.spacing.sm,
-                top = tokens.spacing.sm,
-                end = tokens.spacing.sm,
-                bottom = listBottomPadding
-            )
-        ) {
-            itemsIndexed(
-                messages.filter { it.role != AgentChatMessage.Role.TRACE },
-                key = { index, item -> "${item.timestampMs}-${item.role}-$index" }
-            ) { _, message ->
-                AgentMessageBubble(
-                    message = message,
-                    markwon = markwon,
-                    onOpenResourceCard = onOpenResourceCard,
-                )
-            }
-        }
-
-        pendingAttachment?.let { uri ->
-            Text(
-                text = "附件: ${getFileName(context, uri)}",
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                fontSize = 12.sp,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.padding(horizontal = tokens.spacing.lg, vertical = tokens.spacing.xs)
-            )
         }
 
         Row(
             modifier = Modifier
                 .fillMaxWidth()
+                .align(Alignment.BottomCenter)
                 .padding(
                     start = tokens.spacing.md,
                     end = tokens.spacing.md,
