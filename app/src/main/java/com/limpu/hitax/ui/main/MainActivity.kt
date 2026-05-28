@@ -33,6 +33,7 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
@@ -515,6 +516,7 @@ private fun MainScreen(
     val drawerProgress by animateFloatAsState(if (drawerOpen) 1f else 0f, label = "drawer")
     val contentScale = 1f - drawerProgress * 0.2f
     val contentOffset = -drawerWidthPx * drawerProgress
+    val imeVisible = WindowInsets.ime.getBottom(density) > 0
 
     Box(
         modifier = Modifier
@@ -583,15 +585,17 @@ private fun MainScreen(
             }
         }
 
-        MainPillTabBar(
-            selectedTab = selectedTab,
-            alpha = if (wallpaperVisible) 0.72f else 1f,
-            onSelectTab = onSelectTab,
-            modifier = Modifier
-                .align(Alignment.BottomCenter)
-                .navigationBarsPadding()
-                .padding(bottom = 20.dp)
-        )
+        if (!imeVisible) {
+            MainPillTabBar(
+                selectedTab = selectedTab,
+                alpha = if (wallpaperVisible) 0.72f else 1f,
+                onSelectTab = onSelectTab,
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .navigationBarsPadding()
+                    .padding(bottom = 20.dp)
+            )
+        }
 
         if (drawerProgress > 0.01f) {
             Box(

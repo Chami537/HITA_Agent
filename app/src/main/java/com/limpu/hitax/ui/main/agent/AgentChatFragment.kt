@@ -20,9 +20,11 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -60,6 +62,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -218,7 +221,9 @@ private fun AgentChatScreen(
     val pendingAttachment by viewModel.pendingAttachment.observeAsState()
     val listState = rememberLazyListState()
     val context = LocalContext.current
+    val density = LocalDensity.current
     val keyboardController = LocalSoftwareKeyboardController.current
+    val imeVisible = WindowInsets.ime.getBottom(density) > 0
     val markwon = remember(context) {
         val builder = Markwon.builder(context)
             .usePlugin(LinkifyPlugin.create())
@@ -332,7 +337,12 @@ private fun AgentChatScreen(
             modifier = Modifier
                 .weight(1f)
                 .fillMaxWidth(),
-            contentPadding = PaddingValues(tokens.spacing.sm)
+            contentPadding = PaddingValues(
+                start = tokens.spacing.sm,
+                top = tokens.spacing.sm,
+                end = tokens.spacing.sm,
+                bottom = if (imeVisible) tokens.spacing.lg else 96.dp
+            )
         ) {
             itemsIndexed(
                 messages.filter { it.role != AgentChatMessage.Role.TRACE },
@@ -363,7 +373,7 @@ private fun AgentChatScreen(
                 .padding(
                     start = tokens.spacing.md,
                     end = tokens.spacing.md,
-                    bottom = tokens.spacing.md
+                    bottom = if (imeVisible) tokens.spacing.md else 92.dp
                 ),
             verticalAlignment = Alignment.CenterVertically
         ) {
