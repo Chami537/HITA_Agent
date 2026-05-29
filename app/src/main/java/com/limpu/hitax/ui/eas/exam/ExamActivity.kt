@@ -4,8 +4,15 @@ import android.os.Bundle
 import android.widget.Toast
 import androidx.activity.viewModels
 import androidx.compose.foundation.Image
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.scaleIn
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -46,6 +53,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.ColorFilter
@@ -429,24 +437,53 @@ private fun ExamHeader(
                     .padding(top = tokens.spacing.md),
                 horizontalArrangement = Arrangement.End
             ) {
-                Button(
-                    onClick = onImportAll,
-                    enabled = !importInProgress,
-                    shape = RoundedCornerShape(18.dp),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = MaterialTheme.colorScheme.primary
-                    ),
-                    contentPadding = PaddingValues(horizontal = tokens.spacing.lg)
+                val bgColor by animateColorAsState(
+                    targetValue = if (importInProgress)
+                        MaterialTheme.colorScheme.primary.copy(alpha = 0.7f)
+                    else MaterialTheme.colorScheme.primary,
+                    animationSpec = tween(350),
+                    label = "import_bg"
+                )
+                Row(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(18.dp))
+                        .background(bgColor)
+                        .then(
+                            if (!importInProgress) Modifier.clickable(
+                                indication = null,
+                                interactionSource = remember { MutableInteractionSource() }
+                            ) { onImportAll() }
+                            else Modifier
+                        ),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    if (importInProgress) {
-                        CircularProgressIndicator(
-                            modifier = Modifier.size(16.dp),
-                            strokeWidth = 2.dp,
-                            color = MaterialTheme.colorScheme.onPrimary
+                    AnimatedVisibility(
+                        visible = importInProgress,
+                        enter = fadeIn(tween(350)) + scaleIn(
+                            initialScale = 0.5f,
+                            animationSpec = spring(dampingRatio = 0.6f, stiffness = 300f)
                         )
-                        Spacer(modifier = Modifier.size(tokens.spacing.sm))
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Spacer(modifier = Modifier.size(tokens.spacing.lg))
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(16.dp),
+                                strokeWidth = 2.dp,
+                                color = MaterialTheme.colorScheme.onPrimary
+                            )
+                            Spacer(modifier = Modifier.size(tokens.spacing.sm))
+                        }
                     }
-                    Text(text = stringResource(R.string.import_all_exams), fontSize = 15.sp)
+                    Text(
+                        text = stringResource(R.string.import_all_exams),
+                        fontSize = 15.sp,
+                        color = MaterialTheme.colorScheme.onPrimary,
+                        modifier = Modifier.padding(
+                            start = if (importInProgress) 0.dp else tokens.spacing.lg,
+                            end = tokens.spacing.lg,
+                            top = 10.dp, bottom = 10.dp
+                        )
+                    )
                 }
             }
         }
