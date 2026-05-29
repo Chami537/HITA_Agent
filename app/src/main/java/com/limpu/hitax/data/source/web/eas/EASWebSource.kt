@@ -434,8 +434,13 @@ class EASWebSource internal constructor(
             )
 
         val rsaResp = formPost(session, "/component/queryApplicationSetting/rsa", basicAuth, rolecode = "01")
+        LogUtils.d("loginCore: RSA step status=${rsaResp.statusCode()}, body=${rsaResp.body().take(300)}")
+
         val raskeyResp = formPost(session, "/c_raskey", basicAuth, rolecode = "06")
+        LogUtils.d("loginCore: raskey step status=${raskeyResp.statusCode()}, body=${raskeyResp.body().take(300)}")
+
         val rsaPublicKeys = parseRsaPublicKeysFromRaskey(raskeyResp.body())
+        LogUtils.d("loginCore: parsed ${rsaPublicKeys.size} RSA public keys")
         val rolecodes = listOf("06", "01")
 
         var payload: JSONObject? = null
@@ -445,6 +450,7 @@ class EASWebSource internal constructor(
                 session, "/authentication/ldap", basicAuth, rolecode = role,
                 data = mapOf("username" to username, "password" to password)
             )
+            LogUtils.d("loginCore: LDAP plain role=$role status=${ldapResp.statusCode()}, body=${ldapResp.body().take(300)}")
             payload = JsonUtils.getJsonObject(ldapResp.body())
             token = buildTokenFromPayload(
                 payload,
@@ -452,16 +458,21 @@ class EASWebSource internal constructor(
                 password,
                 buildCookieMap(rsaResp, raskeyResp, ldapResp)
             )
-            if (token != null) return token
+            if (token != null) {
+                LogUtils.d("loginCore: plain-text login SUCCESS with role=$role")
+                return token
+            }
         }
         if (rsaPublicKeys.isNotEmpty()) {
+            LogUtils.d("loginCore: trying RSA-encrypted login with ${rsaPublicKeys.size} keys")
             loop@ for (role in rolecodes) {
-                for (publicKey in rsaPublicKeys) {
+                for ((keyIdx, publicKey) in rsaPublicKeys.withIndex()) {
                     val encrypted = encryptPasswordWithRsa(password, publicKey) ?: continue
                     val ldapResp = formPost(
                         session, "/authentication/ldap", basicAuth, rolecode = role,
                         data = mapOf("username" to username, "password" to encrypted)
                     )
+                    LogUtils.d("loginCore: LDAP RSA role=$role key=$keyIdx status=${ldapResp.statusCode()}, body=${ldapResp.body().take(300)}")
                     payload = JsonUtils.getJsonObject(ldapResp.body())
                     token = buildTokenFromPayload(
                         payload,
@@ -469,10 +480,14 @@ class EASWebSource internal constructor(
                         password,
                         buildCookieMap(rsaResp, raskeyResp, ldapResp)
                     )
-                    if (token != null) break@loop
+                    if (token != null) {
+                        LogUtils.d("loginCore: RSA login SUCCESS with role=$role key=$keyIdx")
+                        break@loop
+                    }
                 }
             }
         }
+        LogUtils.e("loginCore: ALL login attempts failed, username=$username")
         return token
     }
 
