@@ -559,7 +559,9 @@ private fun TimetableLeftLabels(
                 Text(
                     text = TimeInDay(hour, 0).toString(),
                     color = labelColor,
-                    fontSize = 12.sp,
+                    fontSize = 10.sp,
+                    maxLines = 1,
+                    softWrap = false,
                     textAlign = TextAlign.Center,
                     modifier = Modifier
                         .fillMaxWidth()
