@@ -85,6 +85,7 @@ import com.limpu.hitax.ui.base.HiltBaseFragment
 import com.limpu.hitax.ui.design.HitaComposeTheme
 import com.limpu.hitax.ui.design.HitaTheme
 import com.limpu.hitax.ui.event.add.PopupAddEvent
+import com.limpu.hitax.ui.main.timetable.views.TimetableCardTextScale
 import com.limpu.hitax.ui.main.timetable.views.TimetableOverlapLayout
 import com.limpu.hitax.ui.widgets.WidgetUtils
 import com.limpu.hitax.utils.ActivityUtils
@@ -662,11 +663,8 @@ private fun TimetableEventCard(
     val effectiveBg = background.toArgb()
     val titleColor = resolveCardTextColor(style.cardTitleColor, style.isColorEnabled, event.color, effectiveBg)
     val subtitleColor = resolveCardTextColor(style.subTitleColor, style.isColorEnabled, event.color, effectiveBg)
-    val textScale = when {
-        columnCount >= 3 -> 0.78f
-        columnCount == 2 -> 0.88f
-        else -> 1f
-    }
+    val textScale = TimetableCardTextScale.forColumnCount(columnCount)
+    val marginScale = TimetableCardTextScale.marginScaleForColumnCount(columnCount)
     Card(
         modifier = modifier
             .padding(start = 1.dp, top = 1.dp, end = 1.dp, bottom = 2.dp)
@@ -686,7 +684,7 @@ private fun TimetableEventCard(
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(horizontal = (4 * textScale).dp, vertical = (3 * textScale).dp),
+                .padding(horizontal = (4 * marginScale).dp, vertical = (3 * marginScale).dp),
             verticalArrangement = Arrangement.Center,
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
