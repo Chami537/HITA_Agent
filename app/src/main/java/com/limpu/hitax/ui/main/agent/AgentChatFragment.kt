@@ -26,6 +26,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.ime
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
@@ -229,6 +230,7 @@ private fun AgentChatScreen(
     val view = LocalView.current
     val keyboardController = LocalSoftwareKeyboardController.current
     val composeImeBottomPx = WindowInsets.ime.getBottom(density)
+    val navBottomPx = WindowInsets.navigationBars.getBottom(density)
     val keyboardVisibilityThresholdPx = with(density) { 100.dp.roundToPx() }
     var visibleKeyboardBottomPx by remember { mutableIntStateOf(0) }
     DisposableEffect(view, keyboardVisibilityThresholdPx) {
@@ -249,12 +251,19 @@ private fun AgentChatScreen(
     }
     val keyboardBottomPx = maxOf(composeImeBottomPx, visibleKeyboardBottomPx)
     val keyboardBottomPadding = with(density) { keyboardBottomPx.toDp() }
-    // Fragment sits above pillBar (~60dp) + navBar; subtract to align with keyboard
-    val bottomBarReservedDp = 72.dp
-    val inputBottomPadding = if (keyboardBottomPx > 0)
-        (keyboardBottomPadding - bottomBarReservedDp).coerceAtLeast(0.dp) else 8.dp
-    val listBottomPadding = if (keyboardBottomPx > 0)
-        keyboardBottomPadding - bottomBarReservedDp + 64.dp else 64.dp
+    val threeButtonThresholdPx = with(density) { 32.dp.toPx() }
+    val appNavBottomPadding = if (navBottomPx >= threeButtonThresholdPx) {
+        with(density) { navBottomPx.toDp() } + 8.dp
+    } else {
+        12.dp
+    }
+    val appNavAvoidance = 52.dp + appNavBottomPadding + 8.dp
+    val inputBottomPadding = if (keyboardBottomPx > 0) {
+        keyboardBottomPadding + 8.dp
+    } else {
+        appNavAvoidance
+    }
+    val listBottomPadding = inputBottomPadding + 64.dp
     val markwon = remember(context) {
         val builder = Markwon.builder(context)
             .usePlugin(LinkifyPlugin.create())

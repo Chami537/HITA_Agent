@@ -40,7 +40,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.ime
-import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -537,6 +537,13 @@ private fun MainScreen(
     val contentScale = 1f - drawerProgress * 0.2f
     val contentOffset = -drawerWidthPx * drawerProgress
     val imeVisible = WindowInsets.ime.getBottom(density) > 0
+    val navBottomPx = WindowInsets.navigationBars.getBottom(density)
+    val threeButtonThresholdPx = with(density) { 32.dp.toPx() }
+    val systemNavAvoidance = if (navBottomPx >= threeButtonThresholdPx) {
+        with(density) { navBottomPx.toDp() } + 8.dp
+    } else {
+        12.dp
+    }
 
     Box(
         modifier = Modifier
@@ -600,7 +607,6 @@ private fun MainScreen(
                 modifier = Modifier
                     .weight(1f)
                     .fillMaxWidth()
-                    .padding(bottom = 70.dp)
             ) {
                 MainFragmentPager(
                     selectedTab = selectedTab,
@@ -638,8 +644,7 @@ private fun MainScreen(
                 onSelectTab = onSelectTab,
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
-                    .navigationBarsPadding()
-                    .padding(bottom = 20.dp)
+                    .padding(bottom = systemNavAvoidance)
             )
         }
 
