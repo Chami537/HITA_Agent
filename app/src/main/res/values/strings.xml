@@ -123,7 +123,7 @@
     <string name="navi_hint_button">知道啦</string>
     <string name="navi_campus_title">校园生活</string>
     <string name="navi_course_resource_title">深圳资源</string>
-    <string name="navi_course_lookup">查询深圳资源</string>
+    <string name="navi_course_lookup">查询资源</string>
     <string name="navi_course_lookup_sub">在应用内搜索深圳资源与 README</string>
     <string name="navi_course_submit_pr">提交课程资料 PR</string>
     <string name="navi_course_submit_pr_sub">只追加新的课程内容，不直接改动原文</string>
