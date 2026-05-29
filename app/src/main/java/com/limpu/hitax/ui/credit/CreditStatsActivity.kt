@@ -143,45 +143,44 @@ private fun CreditStatsScreen(
 
         if (state.isEmpty) {
             EmptyCreditView()
-            return@Column
-        }
-
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .verticalScroll(rememberScrollState())
-        ) {
-            CreditSummaryCard(state = state)
-            state.categories.forEach { category ->
-                val isExpanded = expanded[category.type] ?: category.expanded
-                CreditCategoryCard(
-                    category = category,
-                    expanded = isExpanded,
-                    onToggleExpanded = {
-                        expanded[category.type] = !isExpanded
-                    },
-                    onEditGoal = { onEditGoal(category) },
-                    modifier = Modifier.padding(
-                        start = tokens.spacing.lg,
-                        top = tokens.spacing.sm,
-                        end = tokens.spacing.lg
+        } else {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .verticalScroll(rememberScrollState())
+            ) {
+                CreditSummaryCard(state = state)
+                state.categories.forEach { category ->
+                    val isExpanded = expanded[category.type] ?: category.expanded
+                    CreditCategoryCard(
+                        category = category,
+                        expanded = isExpanded,
+                        onToggleExpanded = {
+                            expanded[category.type] = !isExpanded
+                        },
+                        onEditGoal = { onEditGoal(category) },
+                        modifier = Modifier.padding(
+                            start = tokens.spacing.lg,
+                            top = tokens.spacing.sm,
+                            end = tokens.spacing.lg
+                        )
                     )
+                }
+                Text(
+                    text = stringResource(R.string.credit_data_from_timetable),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    fontSize = 12.sp,
+                    modifier = Modifier
+                        .align(Alignment.CenterHorizontally)
+                        .alpha(0.5f)
+                        .padding(
+                            start = tokens.spacing.xl,
+                            top = tokens.spacing.xs,
+                            end = tokens.spacing.xl,
+                            bottom = tokens.spacing.xl
+                        )
                 )
             }
-            Text(
-                text = stringResource(R.string.credit_data_from_timetable),
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                fontSize = 12.sp,
-                modifier = Modifier
-                    .align(Alignment.CenterHorizontally)
-                    .alpha(0.5f)
-                    .padding(
-                        start = tokens.spacing.xl,
-                        top = tokens.spacing.xs,
-                        end = tokens.spacing.xl,
-                        bottom = tokens.spacing.xl
-                    )
-            )
         }
     }
 }
