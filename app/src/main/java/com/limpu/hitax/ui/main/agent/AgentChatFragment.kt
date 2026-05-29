@@ -230,9 +230,10 @@ private fun AgentChatScreen(
     val view = LocalView.current
     val keyboardController = LocalSoftwareKeyboardController.current
     val composeImeBottomPx = WindowInsets.ime.getBottom(density)
-    val navBottomPx = WindowInsets.navigationBars.getBottom(density)
+    val composeNavBottomPx = WindowInsets.navigationBars.getBottom(density)
     val keyboardVisibilityThresholdPx = with(density) { 100.dp.roundToPx() }
     var visibleKeyboardBottomPx by remember { mutableIntStateOf(0) }
+    var rootNavigationBottomPx by remember { mutableIntStateOf(0) }
     DisposableEffect(view, keyboardVisibilityThresholdPx) {
         val rootView = view.rootView
         val rect = Rect()
@@ -240,8 +241,16 @@ private fun AgentChatScreen(
             rootView.getWindowVisibleDisplayFrame(rect)
             val bottomInset = (rootView.height - rect.bottom).coerceAtLeast(0)
             visibleKeyboardBottomPx = if (bottomInset > keyboardVisibilityThresholdPx) bottomInset else 0
+            rootNavigationBottomPx = androidx.core.view.ViewCompat.getRootWindowInsets(rootView)
+                ?.getInsets(androidx.core.view.WindowInsetsCompat.Type.navigationBars())
+                ?.bottom
+                ?: 0
         }
         rootView.viewTreeObserver.addOnGlobalLayoutListener(listener)
+        rootNavigationBottomPx = androidx.core.view.ViewCompat.getRootWindowInsets(rootView)
+            ?.getInsets(androidx.core.view.WindowInsetsCompat.Type.navigationBars())
+            ?.bottom
+            ?: 0
         onDispose {
             val observer = rootView.viewTreeObserver
             if (observer.isAlive) {
@@ -250,6 +259,7 @@ private fun AgentChatScreen(
         }
     }
     val keyboardBottomPx = maxOf(composeImeBottomPx, visibleKeyboardBottomPx)
+    val navBottomPx = maxOf(composeNavBottomPx, rootNavigationBottomPx)
     val keyboardBottomPadding = with(density) { keyboardBottomPx.toDp() }
     val threeButtonThresholdPx = with(density) { 32.dp.toPx() }
     val appNavBottomPadding = if (navBottomPx >= threeButtonThresholdPx) {
