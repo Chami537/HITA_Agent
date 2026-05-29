@@ -678,17 +678,21 @@ private fun MainTopBar(
 
 @Composable
 private fun ToolbarTitle(title: String) {
-    Text(
-        text = title,
-        color = MaterialTheme.colorScheme.onSurface,
-        fontSize = 24.sp,
-        fontWeight = FontWeight.Bold,
-        maxLines = 1,
-        overflow = TextOverflow.Ellipsis,
+    Box(
         modifier = Modifier
             .height(56.dp)
-            .padding(start = HitaTheme.tokens.spacing.sm)
-    )
+            .padding(start = HitaTheme.tokens.spacing.sm),
+        contentAlignment = Alignment.CenterStart
+    ) {
+        Text(
+            text = title,
+            color = MaterialTheme.colorScheme.onSurface,
+            fontSize = 24.sp,
+            fontWeight = FontWeight.Bold,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+    }
 }
 
 @Composable
@@ -706,14 +710,19 @@ private fun TimetableToolbarTitle(
         modifier = Modifier.fillMaxWidth(),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Text(
-            text = title,
-            color = MaterialTheme.colorScheme.onSurface,
-            fontSize = 24.sp,
-            fontWeight = FontWeight.Bold,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis
-        )
+        Box(
+            modifier = Modifier.height(56.dp),
+            contentAlignment = Alignment.CenterStart
+        ) {
+            Text(
+                text = title,
+                color = MaterialTheme.colorScheme.onSurface,
+                fontSize = 24.sp,
+                fontWeight = FontWeight.Bold,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
         AnimatedVisibility(visible = showName && name.isNotBlank()) {
             Text(
                 text = name,
