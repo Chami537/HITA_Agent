@@ -5,21 +5,21 @@
     <!-- ========================================== -->
 
     <!-- Primary -->
-    <color name="primary">#FF7B8CFF</color>
-    <color name="on_primary">#FF00004A</color>
-    <color name="primary_container">#FF0004A3</color>
-    <color name="on_primary_container">#FFE8E6FF</color>
-    <color name="primary_disabled">#77cbd4e2</color>
+    <color name="primary">#FF6BB5F7</color>
+    <color name="on_primary">#FF001A33</color>
+    <color name="primary_container">#FF003355</color>
+    <color name="on_primary_container">#FFD0E7FF</color>
+    <color name="primary_disabled">#776BB5F7</color>
 
     <!-- Secondary -->
-    <color name="secondary">#FFA4A0FF</color>
-    <color name="on_secondary">#FF00004A</color>
-    <color name="secondary_container">#FF0004A3</color>
-    <color name="on_secondary_container">#FFE8E6FF</color>
+    <color name="secondary">#FF33AAEE</color>
+    <color name="on_secondary">#FF001A33</color>
+    <color name="secondary_container">#FF003355</color>
+    <color name="on_secondary_container">#FFCCE5FF</color>
 
     <!-- Tertiary -->
-    <color name="tertiary">#FF7BB8FF</color>
-    <color name="on_tertiary">#FF00004A</color>
+    <color name="tertiary">#FF55AADD</color>
+    <color name="on_tertiary">#FF001A33</color>
     <color name="tertiary_container">#FF003366</color>
     <color name="on_tertiary_container">#FFD6E4FF</color>
 
