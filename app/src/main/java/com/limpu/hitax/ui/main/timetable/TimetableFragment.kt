@@ -679,7 +679,7 @@ private fun TimetableEventCard(
                     onTap = { onClick() }
                 )
             },
-        shape = RoundedCornerShape(8.dp),
+        shape = RoundedCornerShape(50),
         colors = CardDefaults.cardColors(containerColor = background),
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
     ) {
