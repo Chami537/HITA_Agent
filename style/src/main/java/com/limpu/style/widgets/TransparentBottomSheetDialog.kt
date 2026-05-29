@@ -72,6 +72,14 @@ abstract class TransparentBottomSheetDialog<V:ViewBinding> : BottomSheetDialogFr
         setStyle(STYLE_NORMAL, R.style.TransparentBottomSheetDialogTheme)
     }
 
+    override fun onStart() {
+        super.onStart()
+        dialog?.window?.apply {
+            addFlags(android.view.WindowManager.LayoutParams.FLAG_DIM_BEHIND)
+            setDimAmount(0.6f)
+        }
+    }
+
     override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View? {
         val contextThemeWrapper = ContextThemeWrapper(context,R.style.AppTheme)
         val themedInflater = inflater.cloneInContext(contextThemeWrapper)
