@@ -806,6 +806,9 @@ private fun MainFragmentPager(
     val createdTabs = remember {
         mutableStateListOf(0)
     }
+    val committedTags = remember {
+        mutableSetOf<String>()
+    }
     LaunchedEffect(selectedTab) {
         if (!createdTabs.contains(selectedTab)) {
             createdTabs.add(selectedTab)
@@ -839,10 +842,17 @@ private fun MainFragmentPager(
                 container.visibility = if (index == selectedTab) View.VISIBLE else View.GONE
                 if (!createdTabs.contains(index)) return@repeat
                 val tag = "main_tab_$index"
-                if (activity.supportFragmentManager.findFragmentByTag(tag) == null) {
+                if (tag !in committedTags) {
+                    val existing = activity.supportFragmentManager.findFragmentByTag(tag)
+                    if (existing != null) {
+                        activity.supportFragmentManager.beginTransaction()
+                            .remove(existing)
+                            .commitNowAllowingStateLoss()
+                    }
                     activity.supportFragmentManager.beginTransaction()
                         .replace(containerIds[index], fragmentFactory(index), tag)
                         .commitNowAllowingStateLoss()
+                    committedTags.add(tag)
                 }
             }
         }
@@ -882,7 +892,7 @@ private fun MainPillTabBar(
     Surface(
         modifier = modifier.alpha(alpha),
         shape = RoundedCornerShape(28.dp),
-        color = Color.White,
+        color = MaterialTheme.colorScheme.surface,
         shadowElevation = 6.dp
     ) {
         Box(modifier = Modifier.padding(horizontal = 4.dp, vertical = 4.dp)) {
@@ -900,7 +910,7 @@ private fun MainPillTabBar(
                     val active = index == selectedTab
 
                     val tint by animateColorAsState(
-                        targetValue = if (active) ActiveBlue else Color.Black,
+                        targetValue = if (active) ActiveBlue else MaterialTheme.colorScheme.onSurface,
                         animationSpec = spring(dampingRatio = 0.85f, stiffness = 350f),
                         label = "tab_tint_$index"
                     )
