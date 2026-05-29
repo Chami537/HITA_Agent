@@ -5,17 +5,17 @@
     <!-- ========================================== -->
 
     <!-- Primary -->
-    <color name="primary">#304ffe</color>
+    <color name="primary">#3390EC</color>
     <color name="on_primary">#FFFFFFFF</color>
-    <color name="primary_container">#FFE8E6FF</color>
-    <color name="on_primary_container">#FF0004A3</color>
-    <color name="primary_disabled">#FFcbd4e2</color>
+    <color name="primary_container">#FFEBF4FC</color>
+    <color name="on_primary_container">#FF003366</color>
+    <color name="primary_disabled">#FFB3D7F7</color>
 
     <!-- Secondary -->
-    <color name="secondary">#FF736dfe</color>
+    <color name="secondary">#FF0088CC</color>
     <color name="on_secondary">#FFFFFFFF</color>
-    <color name="secondary_container">#FFE8E6FF</color>
-    <color name="on_secondary_container">#FF0004A3</color>
+    <color name="secondary_container">#FFE0F0FF</color>
+    <color name="on_secondary_container">#FF003355</color>
 
     <!-- Tertiary -->
     <color name="tertiary">#FF3C8CE7</color>
@@ -26,14 +26,14 @@
     <!-- Surface / Background -->
     <color name="surface">#FFF6F7Fa</color>
     <color name="surface_variant">#FFFFFFFF</color>
-    <color name="surface_tint">#11304ffe</color>
+    <color name="surface_tint">#113390EC</color>
     <color name="on_surface">#FF000000</color>
     <color name="on_surface_variant">#FF808080</color>
 
     <!-- Inverse Surface -->
     <color name="inverse_surface">#FF1E1E1E</color>
     <color name="inverse_on_surface">#FFFFFFFF</color>
-    <color name="inverse_primary">#FF7B8CFF</color>
+    <color name="inverse_primary">#FF66B4F0</color>
 
     <!-- Error -->
     <color name="error">#FFB3261E</color>
@@ -56,13 +56,13 @@
     <!-- ========================================== -->
     <!-- 品牌扩展色（保留原有值）                      -->
     <!-- ========================================== -->
-    <color name="color_fade">#736dfe</color>
+    <color name="color_fade">#0088CC</color>
     <color name="color_cruel_summer_fade">#3C8CE7</color>
 
     <!-- ========================================== -->
     <!-- 半透明功能色                                -->
     <!-- ========================================== -->
-    <color name="primary_subtle">#11304ffe</color>
+    <color name="primary_subtle">#113390EC</color>
     <color name="on_surface_hint">#77ffffff</color>
     <color name="surface_disabled">#66FFFFFF</color>
 
@@ -135,7 +135,7 @@
     <color name="widget_divider">#1F000000</color>
     <color name="widget_divider_light">#1F000000</color>
     <color name="widget_divider_dark">#33FFFFFF</color>
-    <color name="widget_location_chip_dark">#22304FFE</color>
+    <color name="widget_location_chip_dark">#223390EC</color>
     <color name="widget_icon_subtle_dark">#80FFFFFF</color>
     <color name="widget_placeholder_tint_dark">#40FFFFFF</color>
 </resources>

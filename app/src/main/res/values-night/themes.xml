@@ -59,10 +59,10 @@
         <item name="backgroundColorSecond">@color/surface_variant</item>
         <item name="backgroundColorSecondAsTint">#6F242424</item>
         <item name="backgroundColorBar">#30e7e7f2</item>
-        <item name="backgroundIconColorBottom">#33304ffe</item>
+        <item name="backgroundIconColorBottom">#333390EC</item>
         <item name="colorPrimaryDisabled">#77cbd4e2</item>
         <item name="colorControlDisabled">#ffE0E0E0</item>
-        <item name="colorFade">#736dfe</item>
+        <item name="colorFade">#0088CC</item>
 
         <!-- ==========================================
              状态栏与系统栏 (夜间状态栏图标应为白色)

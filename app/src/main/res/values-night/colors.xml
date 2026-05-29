@@ -26,14 +26,14 @@
     <!-- Surface / Background -->
     <color name="surface">#FF000000</color>
     <color name="surface_variant">#FF121212</color>
-    <color name="surface_tint">#33304ffe</color>
+    <color name="surface_tint">#333390EC</color>
     <color name="on_surface">#FFFFFFFF</color>
     <color name="on_surface_variant">#FF858585</color>
 
     <!-- Inverse Surface -->
     <color name="inverse_surface">#FFF6F7Fa</color>
     <color name="inverse_on_surface">#FF000000</color>
-    <color name="inverse_primary">#FF304ffe</color>
+    <color name="inverse_primary">#FF3390EC</color>
 
     <!-- Error -->
     <color name="error">#FFF2B8B5</color>
@@ -56,7 +56,7 @@
     <!-- ========================================== -->
     <!-- 品牌扩展色（保留原有值）                      -->
     <!-- ========================================== -->
-    <color name="color_fade">#FF736dfe</color>
+    <color name="color_fade">#FF0088CC</color>
     <color name="color_cruel_summer_fade">#FF3C8CE7</color>
 
     <!-- ========================================== -->
@@ -135,7 +135,7 @@
     <color name="widget_divider">#33FFFFFF</color>
     <color name="widget_divider_light">#1F000000</color>
     <color name="widget_divider_dark">#33FFFFFF</color>
-    <color name="widget_location_chip_dark">#22304FFE</color>
+    <color name="widget_location_chip_dark">#223390EC</color>
     <color name="widget_icon_subtle_dark">#80FFFFFF</color>
     <color name="widget_placeholder_tint_dark">#40FFFFFF</color>
 </resources>

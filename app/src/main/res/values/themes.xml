@@ -59,10 +59,10 @@
         <item name="backgroundColorSecond">@color/surface_variant</item>
         <item name="backgroundColorSecondAsTint">#CFFAFAFA</item>
         <item name="backgroundColorBar">#70e7e7f2</item>
-        <item name="backgroundIconColorBottom">#11304ffe</item>
+        <item name="backgroundIconColorBottom">#113390EC</item>
         <item name="colorPrimaryDisabled">@color/primary_disabled</item>
         <item name="colorControlDisabled">#FFE0E0E0</item>
-        <item name="colorFade">#736dfe</item>
+        <item name="colorFade">#0088CC</item>
 
         <!-- ========================================== -->
         <!-- 状态栏与系统栏                               -->
