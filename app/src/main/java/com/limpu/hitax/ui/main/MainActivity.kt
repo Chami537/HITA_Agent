@@ -70,6 +70,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.ComposeView
@@ -150,6 +151,8 @@ class MainActivity : HiltBaseActivity<ComposeViewBinding>(),
     private var wallpaperBitmap by mutableStateOf<Bitmap?>(null)
     private var wallpaperVisible by mutableStateOf(false)
     private var wallpaperScrimOpacity by mutableIntStateOf(0)
+    private var wallpaperTitleColor by mutableStateOf(AndroidColor.WHITE)
+    private var wallpaperLabelColor by mutableStateOf(AndroidColor.WHITE)
 
     private val easTokenObserver = Observer<com.limpu.hitax.data.model.eas.EASToken> {
         refreshDrawerState()
@@ -193,6 +196,8 @@ class MainActivity : HiltBaseActivity<ComposeViewBinding>(),
                     wallpaperBitmap = wallpaperBitmap,
                     wallpaperVisible = wallpaperVisible,
                     wallpaperScrimOpacity = wallpaperScrimOpacity,
+                    wallpaperTitleColor = Color(wallpaperTitleColor),
+                    wallpaperLabelColor = Color(wallpaperLabelColor),
                     drawerState = drawerState,
                     onSelectTab = { selectedTab = it },
                     onOpenDrawer = { drawerOpen = true },
@@ -226,6 +231,12 @@ class MainActivity : HiltBaseActivity<ComposeViewBinding>(),
         timetableStyleRepository.wallpaperPathLiveData.observe(this) { loadWallpaper(it) }
         timetableStyleRepository.wallpaperScrimLiveData.observe(this) { opacity ->
             wallpaperScrimOpacity = opacity
+        }
+        timetableStyleRepository.wallpaperDateColorLiveData.observe(this) { color ->
+            wallpaperTitleColor = color
+        }
+        timetableStyleRepository.wallpaperLabelColorLiveData.observe(this) { color ->
+            wallpaperLabelColor = color
         }
         viewModel.checkUpdateResult.observe(this) {
             if (it.state == DataState.STATE.SUCCESS) {
@@ -497,6 +508,8 @@ private fun MainScreen(
     wallpaperBitmap: Bitmap?,
     wallpaperVisible: Boolean,
     wallpaperScrimOpacity: Int,
+    wallpaperTitleColor: Color,
+    wallpaperLabelColor: Color,
     drawerState: DrawerUserState,
     onSelectTab: (Int) -> Unit,
     onOpenDrawer: () -> Unit,
@@ -526,7 +539,7 @@ private fun MainScreen(
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
     ) {
-        if (wallpaperVisible && wallpaperBitmap != null) {
+        if (selectedTab == 1 && wallpaperVisible && wallpaperBitmap != null) {
             Image(
                 bitmap = wallpaperBitmap.asImageBitmap(),
                 contentDescription = stringResource(R.string.timetable_wallpaper_description),
@@ -544,7 +557,7 @@ private fun MainScreen(
                     .windowInsetsTopHeight(WindowInsets.statusBars)
                     .background(
                         Brush.verticalGradient(
-                            colors = listOf(Color.Black.copy(alpha = 0.42f), Color.Transparent)
+                            colors = listOf(Color.Black.copy(alpha = 0.55f), Color.Transparent)
                         )
                     )
             )
@@ -568,6 +581,8 @@ private fun MainScreen(
                 timetableName = timetableName,
                 showTimetableName = showTimetableName,
                 themeIcon = themeIcon,
+                wallpaperVisible = wallpaperVisible,
+                wallpaperTitleColor = wallpaperTitleColor,
                 onOpenDrawer = onOpenDrawer,
                 onTheme = onTheme,
                 onWallpaper = onWallpaper,
@@ -594,7 +609,7 @@ private fun MainScreen(
         if (!imeVisible) {
             MainPillTabBar(
                 selectedTab = selectedTab,
-                alpha = if (wallpaperVisible) 0.72f else 1f,
+                alpha = if (selectedTab == 1 && wallpaperVisible) 0.72f else 1f,
                 onSelectTab = onSelectTab,
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
@@ -637,6 +652,8 @@ private fun MainTopBar(
     timetableName: String,
     showTimetableName: Boolean,
     themeIcon: Int,
+    wallpaperVisible: Boolean,
+    wallpaperTitleColor: Color,
     onOpenDrawer: () -> Unit,
     onTheme: () -> Unit,
     onWallpaper: () -> Unit,
@@ -645,6 +662,24 @@ private fun MainTopBar(
     onAgentShortcut: () -> Unit,
     onAddEvent: () -> Unit,
 ) {
+    val isWallpaperTab = selectedTab == 1 && wallpaperVisible
+    val titleColor = if (isWallpaperTab) wallpaperTitleColor else MaterialTheme.colorScheme.onSurface
+
+    // Wallpaper tab: force light status bar icons on dark overlay; restore otherwise
+    val view = LocalView.current
+    LaunchedEffect(isWallpaperTab) {
+        val window = (view.context as android.app.Activity).window
+        @Suppress("DEPRECATION")
+        val ctrl = androidx.core.view.WindowInsetsControllerCompat(window, view)
+        if (isWallpaperTab) {
+            ctrl.isAppearanceLightStatusBars = false // light icons on dark overlay
+        } else {
+            val isDark = (view.context.resources.configuration.uiMode
+                and android.content.res.Configuration.UI_MODE_NIGHT_MASK) ==
+                android.content.res.Configuration.UI_MODE_NIGHT_YES
+            ctrl.isAppearanceLightStatusBars = !isDark
+        }
+    }
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -655,18 +690,19 @@ private fun MainTopBar(
         verticalAlignment = Alignment.Bottom
     ) {
         when (selectedTab) {
-            0 -> ToolbarTitle(todayTitle)
+            0 -> ToolbarTitle(todayTitle, titleColor)
             1 -> TimetableToolbarTitle(
                 title = timetableTitle,
                 name = timetableName,
                 showName = showTimetableName,
+                titleColor = titleColor,
                 onWallpaper = onWallpaper,
                 onWallpaperLongPress = onWallpaperLongPress,
                 onTimetableSetting = onTimetableSetting,
                 onAgentShortcut = onAgentShortcut,
                 onAddEvent = onAddEvent
             )
-            2 -> ToolbarTitle(stringResource(R.string.title_agent))
+            2 -> ToolbarTitle(stringResource(R.string.title_agent), titleColor)
             else -> NavigationToolbar(
                 themeIcon = themeIcon,
                 onTheme = onTheme,
@@ -677,7 +713,7 @@ private fun MainTopBar(
 }
 
 @Composable
-private fun ToolbarTitle(title: String) {
+private fun ToolbarTitle(title: String, textColor: Color = MaterialTheme.colorScheme.onSurface) {
     Box(
         modifier = Modifier
             .height(56.dp)
@@ -686,7 +722,7 @@ private fun ToolbarTitle(title: String) {
     ) {
         Text(
             text = title,
-            color = MaterialTheme.colorScheme.onSurface,
+            color = textColor,
             fontSize = 24.sp,
             fontWeight = FontWeight.Bold,
             maxLines = 1,
@@ -700,6 +736,7 @@ private fun TimetableToolbarTitle(
     title: String,
     name: String,
     showName: Boolean,
+    titleColor: Color = MaterialTheme.colorScheme.onSurface,
     onWallpaper: () -> Unit,
     onWallpaperLongPress: () -> Unit,
     onTimetableSetting: () -> Unit,
@@ -716,7 +753,7 @@ private fun TimetableToolbarTitle(
         ) {
             Text(
                 text = title,
-                color = MaterialTheme.colorScheme.onSurface,
+                color = titleColor,
                 fontSize = 24.sp,
                 fontWeight = FontWeight.Bold,
                 maxLines = 1,
