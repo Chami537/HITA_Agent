@@ -195,6 +195,7 @@ private fun CourseReadmeScreen(
     val tokens = HitaTheme.tokens
     val state by viewModel.readmeLiveData.observeAsState()
     val current = state
+    val readmeData = current?.data
 
     Column(
         modifier = Modifier
@@ -266,41 +267,42 @@ private fun CourseReadmeScreen(
             }
         }
 
-        val loading = current == null || current.state == DataState.STATE.LOADING
-        if (loading) {
-            Box(
-                modifier = Modifier.fillMaxSize(),
-                contentAlignment = Alignment.TopCenter
-            ) {
-                CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
+        when {
+            current == null || current.state == DataState.STATE.LOADING -> {
+                Box(
+                    modifier = Modifier.fillMaxSize(),
+                    contentAlignment = Alignment.TopCenter
+                ) {
+                    CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
+                }
             }
-            return@Column
-        }
 
-        if (current?.state == DataState.STATE.SUCCESS) {
-            val data = current.data ?: return@Column
-            ReadmeContent(
-                data = data,
-                preprocessReadme = preprocessReadme,
-                resolveReadmeLink = resolveReadmeLink,
-                openLink = openLink,
-                contentPadding = PaddingValues(tokens.spacing.lg)
-            )
-        } else {
-            val rawMessage = current?.message?.trim().orEmpty()
-            val friendly = if (rawMessage.contains("invalid repo name", ignoreCase = true)) {
-                stringResource(R.string.course_readme_missing)
-            } else {
-                rawMessage.ifBlank { stringResource(R.string.course_resource_failed) }
+            current.state == DataState.STATE.SUCCESS && readmeData != null -> {
+                ReadmeContent(
+                    data = readmeData,
+                    preprocessReadme = preprocessReadme,
+                    resolveReadmeLink = resolveReadmeLink,
+                    openLink = openLink,
+                    contentPadding = PaddingValues(tokens.spacing.lg)
+                )
             }
-            LaunchedEffect(friendly) {
-                Toast.makeText(context, friendly, Toast.LENGTH_LONG).show()
+
+            else -> {
+                val rawMessage = current.message?.trim().orEmpty()
+                val friendly = if (rawMessage.contains("invalid repo name", ignoreCase = true)) {
+                    stringResource(R.string.course_readme_missing)
+                } else {
+                    rawMessage.ifBlank { stringResource(R.string.course_resource_failed) }
+                }
+                LaunchedEffect(friendly) {
+                    Toast.makeText(context, friendly, Toast.LENGTH_LONG).show()
+                }
+                Text(
+                    text = friendly,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    modifier = Modifier.padding(tokens.spacing.lg)
+                )
             }
-            Text(
-                text = friendly,
-                color = MaterialTheme.colorScheme.onSurface,
-                modifier = Modifier.padding(tokens.spacing.lg)
-            )
         }
     }
 }

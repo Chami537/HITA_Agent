@@ -432,7 +432,7 @@ private fun UnifiedResourceSearchScreen(
                 modifier = Modifier.fillMaxSize()
             ) {
                 if (isBrowseMode) {
-                    items(entryItems, key = { "${it.source}:${it.path}:${it.name}" }) { entry ->
+                    items(entryItems, key = { "entry:${it.source}:${it.path}:${it.name}:${it.isDir}" }) { entry ->
                         ExternalEntryCard(
                             entry = entry,
                             onClick = { navigateInto(entry) }
@@ -441,7 +441,14 @@ private fun UnifiedResourceSearchScreen(
                 } else {
                     items(
                         searchItems,
-                        key = { "${it.sourceTag}:${it.displayName}:${it.subtitle}" }
+                        key = { item ->
+                            when (item) {
+                                is UnifiedResourceItem.HoaCourse ->
+                                    "hoa:${item.repoType}:${item.repoName}:${item.courseCode}:${item.courseName}"
+                                is UnifiedResourceItem.ExternalCourse ->
+                                    "external:${item.source}:${item.path}:${item.courseName}"
+                            }
+                        }
                     ) { item ->
                         UnifiedResourceCard(
                             item = item,
