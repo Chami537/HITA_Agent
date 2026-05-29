@@ -19,8 +19,11 @@ import androidx.activity.viewModels
 import androidx.appcompat.app.AlertDialog
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
+import kotlinx.coroutines.delay
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -86,6 +89,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.view.WindowCompat
+import androidx.core.view.doOnPreDraw
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.FragmentContainerView
 import androidx.lifecycle.Observer
@@ -603,6 +607,27 @@ private fun MainScreen(
                     fragmentFactory = fragmentFactory,
                     modifier = Modifier.fillMaxSize()
                 )
+
+                val overlayAlpha = remember { Animatable(0f) }
+                val prevTab = remember { mutableIntStateOf(selectedTab) }
+
+                LaunchedEffect(selectedTab) {
+                    if (prevTab.intValue != selectedTab) {
+                        overlayAlpha.snapTo(1f)
+                        delay(100)
+                        overlayAlpha.animateTo(0f, tween(250))
+                    }
+                    prevTab.intValue = selectedTab
+                }
+
+                if (overlayAlpha.value > 0.01f) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .graphicsLayer { alpha = overlayAlpha.value }
+                            .background(MaterialTheme.colorScheme.background)
+                    )
+                }
             }
         }
 
