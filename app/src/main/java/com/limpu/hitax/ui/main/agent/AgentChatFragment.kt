@@ -249,8 +249,12 @@ private fun AgentChatScreen(
     }
     val keyboardBottomPx = maxOf(composeImeBottomPx, visibleKeyboardBottomPx)
     val keyboardBottomPadding = with(density) { keyboardBottomPx.toDp() }
-    val inputBottomPadding = if (keyboardBottomPx > 0) keyboardBottomPadding else 92.dp
-    val listBottomPadding = if (keyboardBottomPx > 0) keyboardBottomPadding + 96.dp else 96.dp
+    // Fragment sits above pillBar (~60dp) + navBar; subtract to align with keyboard
+    val bottomBarReservedDp = 72.dp
+    val inputBottomPadding = if (keyboardBottomPx > 0)
+        (keyboardBottomPadding - bottomBarReservedDp).coerceAtLeast(0.dp) else 8.dp
+    val listBottomPadding = if (keyboardBottomPx > 0)
+        keyboardBottomPadding - bottomBarReservedDp + 64.dp else 64.dp
     val markwon = remember(context) {
         val builder = Markwon.builder(context)
             .usePlugin(LinkifyPlugin.create())
