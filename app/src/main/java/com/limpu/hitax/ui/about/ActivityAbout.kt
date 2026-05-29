@@ -26,6 +26,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
@@ -216,7 +217,7 @@ private fun AboutScreen(
                 ),
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(top = (-36).dp)
+                    .offset(y = (-36).dp)
             ) {
                 Column(
                     modifier = Modifier.padding(
