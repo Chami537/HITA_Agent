@@ -71,6 +71,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.fragment.app.viewModels
@@ -632,6 +633,7 @@ private fun TimetableEventLayer(
                     .offset(x = dayLeft + columnWidth * positioned.columnIndex, y = top)
                     .width(columnWidth)
                     .height(height),
+                cardWidth = columnWidth,
                 columnCount = positioned.columnCount,
                 onClick = { onEventClick(event) },
                 onLongClick = { onEventLongClick(event) }
@@ -650,6 +652,7 @@ private fun TimetableEventCard(
     event: EventItem,
     style: TimetableStyleSheet,
     modifier: Modifier = Modifier,
+    cardWidth: Dp,
     columnCount: Int,
     onClick: () -> Unit,
     onLongClick: () -> Unit,
@@ -665,9 +668,19 @@ private fun TimetableEventCard(
     val subtitleColor = resolveCardTextColor(style.subTitleColor, style.isColorEnabled, event.color, effectiveBg)
     val textScale = TimetableCardTextScale.forColumnCount(columnCount)
     val marginScale = TimetableCardTextScale.marginScaleForColumnCount(columnCount)
+    val density = LocalDensity.current
+    val horizontalPadding = (2 * marginScale).dp
+    val availableTextWidth = (cardWidth - horizontalPadding * 2).coerceAtLeast(1.dp)
+    val availableTextWidthSp = with(density) { availableTextWidth.toPx().toSp().value }
+    val minTitleSize = if (columnCount > 1) 6f else 8f
+    val titleFontSize = (12f * textScale)
+        .coerceAtMost(availableTextWidthSp / 4f)
+        .coerceAtLeast(minTitleSize)
+        .sp
+    val subtitleFontSize = (titleFontSize.value - 1f).coerceAtLeast(6f).sp
     Card(
         modifier = modifier
-            .padding(start = 1.dp, top = 1.dp, end = 1.dp, bottom = 2.dp)
+            .padding(1.dp)
             .pointerInput(event.id) {
                 detectTapGestures(
                     onLongPress = {
@@ -684,7 +697,7 @@ private fun TimetableEventCard(
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(horizontal = (4 * marginScale).dp, vertical = (3 * marginScale).dp),
+                .padding(horizontal = horizontalPadding, vertical = (2 * marginScale).dp),
             verticalArrangement = Arrangement.Center,
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
@@ -700,10 +713,11 @@ private fun TimetableEventCard(
             Text(
                 text = event.name,
                 color = titleColor,
-                fontSize = (12 * textScale).sp,
+                fontSize = titleFontSize,
+                lineHeight = (titleFontSize.value * 1.05f).sp,
                 fontWeight = if (style.isBoldText) FontWeight.Bold else FontWeight.Normal,
                 textAlign = textAlignFromGravity(style.titleGravity),
-                maxLines = 4,
+                maxLines = 3,
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier
                     .fillMaxWidth()
@@ -713,7 +727,8 @@ private fun TimetableEventCard(
                 Text(
                     text = event.place.orEmpty(),
                     color = subtitleColor,
-                    fontSize = (11 * textScale).sp,
+                    fontSize = subtitleFontSize,
+                    lineHeight = (subtitleFontSize.value * 1.05f).sp,
                     fontWeight = if (style.isBoldText) FontWeight.Bold else FontWeight.Normal,
                     textAlign = TextAlign.Center,
                     maxLines = 1,
