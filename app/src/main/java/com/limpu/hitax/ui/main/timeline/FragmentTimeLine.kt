@@ -12,6 +12,7 @@ import android.view.View
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -25,7 +26,9 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -55,6 +58,7 @@ import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -217,16 +221,24 @@ private fun TimelineScreen(
             )
         }
 
-        items(displayEvents, key = { "timeline_${it.id}_${it.from.time}" }) { event ->
+        itemsIndexed(displayEvents, key = { _, event -> "timeline_${event.id}_${event.from.time}" }) { index, event ->
             if (event.type == EventItem.TYPE.TAG) {
                 TimelineHintCard(event = event, onConfirmed = onHintConfirmed)
             } else {
+                val isFirstTimeline = remember(displayEvents) {
+                    index == displayEvents.indexOfFirst { it.type != EventItem.TYPE.TAG }
+                }
+                val isLastTimeline = remember(displayEvents) {
+                    index == displayEvents.indexOfLast { it.type != EventItem.TYPE.TAG }
+                }
                 TimelineEventRow(
                     event = event,
                     isPassed = TimeTools.passed(event.to),
                     isUpcomingExam = SpecialEventReminderUtils.isExamEvent(event) &&
                             event.from.time > System.currentTimeMillis(),
                     isNow = event.containsTimeStamp(System.currentTimeMillis()),
+                    isFirstTimeline = isFirstTimeline,
+                    isLastTimeline = isLastTimeline,
                     onClick = { onEventClick(event) },
                 )
             }
@@ -752,6 +764,8 @@ private fun TimelineEventRow(
     isPassed: Boolean,
     isUpcomingExam: Boolean,
     isNow: Boolean,
+    isFirstTimeline: Boolean,
+    isLastTimeline: Boolean,
     onClick: () -> Unit,
 ) {
     val context = LocalContext.current
@@ -763,7 +777,7 @@ private fun TimelineEventRow(
             .fillMaxWidth()
             .padding(start = HitaTheme.tokens.spacing.xl),
     ) {
-        TimelineRail(isPassed = isPassed)
+        TimelineRail(isPassed = isPassed, isFirst = isFirstTimeline, isLast = isLastTimeline)
         val cardShape = RoundedCornerShape(if (isPassed) 24.dp else 16.dp)
         Card(
             modifier = Modifier
@@ -860,6 +874,11 @@ private fun TimelineEventRow(
                             modifier = Modifier
                                 .clip(RoundedCornerShape(10.dp))
                                 .background(MaterialTheme.colorScheme.primaryContainer)
+                                .border(
+                                    width = 1.dp,
+                                    color = MaterialTheme.colorScheme.primary.copy(alpha = 0.25f),
+                                    shape = RoundedCornerShape(10.dp)
+                                )
                                 .padding(HitaTheme.tokens.spacing.sm),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
@@ -869,16 +888,24 @@ private fun TimelineEventRow(
                                 tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.8f),
                                 modifier = Modifier.size(14.dp)
                             )
+                            val placeText = event.place?.takeIf { it.isNotBlank() }
+                                ?: context.getString(R.string.unknown_location)
+                            val placeFontSize = when {
+                                placeText.length <= 3 -> 14.sp
+                                placeText.length <= 5 -> 12.sp
+                                placeText.length <= 8 -> 10.sp
+                                else -> 9.sp
+                            }
                             Text(
-                                text = event.place?.takeIf { it.isNotBlank() }
-                                    ?: context.getString(R.string.unknown_location),
+                                text = placeText,
                                 color = MaterialTheme.colorScheme.primary,
-                                fontSize = 14.sp,
+                                fontSize = placeFontSize,
                                 fontWeight = FontWeight.Black,
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis,
+                                textAlign = TextAlign.Center,
                                 modifier = Modifier
-                                    .width(56.dp)
+                                    .widthIn(max = 72.dp)
                                     .padding(start = HitaTheme.tokens.spacing.xs)
                             )
                         }
@@ -900,7 +927,8 @@ private fun TimelineEventRow(
 }
 
 @Composable
-private fun TimelineRail(isPassed: Boolean) {
+private fun TimelineRail(isPassed: Boolean, isFirst: Boolean, isLast: Boolean) {
+    val lineColor = MaterialTheme.colorScheme.outlineVariant
     Column(
         modifier = Modifier
             .width(24.dp)
@@ -911,14 +939,24 @@ private fun TimelineRail(isPassed: Boolean) {
             modifier = Modifier
                 .width(HitaTheme.tokens.componentSize.timelineWidth)
                 .weight(1f)
-                .background(MaterialTheme.colorScheme.outlineVariant)
+                .background(
+                    if (isFirst) {
+                        Brush.verticalGradient(
+                            colors = listOf(lineColor.copy(alpha = 0f), lineColor)
+                        )
+                    } else {
+                        Brush.verticalGradient(
+                            colors = listOf(lineColor, lineColor)
+                        )
+                    }
+                )
         )
         Box(
             modifier = Modifier
                 .size(if (isPassed) 18.dp else 10.dp)
                 .clip(CircleShape)
                 .background(
-                    if (isPassed) MaterialTheme.colorScheme.outlineVariant
+                    if (isPassed) lineColor
                     else MaterialTheme.colorScheme.primary
                 ),
             contentAlignment = Alignment.Center
@@ -936,7 +974,17 @@ private fun TimelineRail(isPassed: Boolean) {
             modifier = Modifier
                 .width(HitaTheme.tokens.componentSize.timelineWidth)
                 .weight(1f)
-                .background(MaterialTheme.colorScheme.outlineVariant)
+                .background(
+                    if (isLast) {
+                        Brush.verticalGradient(
+                            colors = listOf(lineColor, lineColor.copy(alpha = 0f))
+                        )
+                    } else {
+                        Brush.verticalGradient(
+                            colors = listOf(lineColor, lineColor)
+                        )
+                    }
+                )
         )
     }
 }
