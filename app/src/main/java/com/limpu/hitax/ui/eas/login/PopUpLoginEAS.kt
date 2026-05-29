@@ -119,8 +119,8 @@ class PopUpLoginEAS : BottomSheetDialogFragment() {
                         isAgreementAccepted = isUserAgreementAccepted(),
                         onMarkAgreementAccepted = { markUserAgreementAccepted() },
                         initialCampus = preferredCampus ?: viewModel.easRepo.getEasToken().campus,
-                        onLogin = { campus ->
-                            performLogin(campus, webViewLauncher)
+                        onLogin = { campus, username, password ->
+                            performLogin(campus, username, password, webViewLauncher)
                         },
                         onAutoLaunch = { campus ->
                             if (!autoLaunchTriggered && autoLaunchWebLogin &&
@@ -151,14 +151,12 @@ class PopUpLoginEAS : BottomSheetDialogFragment() {
 
     private fun performLogin(
         campus: EASToken.Campus,
+        username: String,
+        password: String,
         launcher: androidx.activity.result.ActivityResultLauncher<Intent>
     ) {
         when (campus) {
-            EASToken.Campus.SHENZHEN -> viewModel.startLogin(
-                viewModel.easRepo.getEasToken().username ?: "",
-                viewModel.easRepo.getEasToken().password ?: "",
-                campus
-            )
+            EASToken.Campus.SHENZHEN -> viewModel.startLogin(username, password, campus)
             EASToken.Campus.BENBU, EASToken.Campus.WEIHAI -> {
                 launchCampusWebLogin(campus, silentMode = false, launcher)
             }
@@ -248,7 +246,7 @@ private fun LoginEASScreen(
     isAgreementAccepted: Boolean,
     onMarkAgreementAccepted: () -> Unit,
     initialCampus: EASToken.Campus,
-    onLogin: (EASToken.Campus) -> Unit,
+    onLogin: (EASToken.Campus, String, String) -> Unit,
     onAutoLaunch: (EASToken.Campus) -> Unit,
     onSuccess: () -> Unit,
     onFailed: () -> Unit,
@@ -347,7 +345,7 @@ private fun LoginEASScreen(
                     }
                     onMarkAgreementAccepted()
                     isLoading = true
-                    onLogin(selectedCampus)
+                    onLogin(selectedCampus, username, password)
                 },
                 enabled = isFormValid && !isLoading,
                 shape = RoundedCornerShape(16.dp),
