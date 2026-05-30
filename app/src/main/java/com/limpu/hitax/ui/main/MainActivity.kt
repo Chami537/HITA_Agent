@@ -22,10 +22,6 @@ import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.spring
-import androidx.compose.animation.core.tween
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import kotlinx.coroutines.delay
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -559,17 +555,6 @@ private fun MainScreen(
         label = "wallpaper_alpha"
     )
 
-    var overlayVisible by remember { mutableStateOf(false) }
-    val prevTab = remember { mutableIntStateOf(selectedTab) }
-    LaunchedEffect(selectedTab) {
-        if (prevTab.intValue != selectedTab) {
-            overlayVisible = true
-            delay(150)
-            overlayVisible = false
-        }
-        prevTab.intValue = selectedTab
-    }
-
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -677,18 +662,6 @@ private fun MainScreen(
                 .fillMaxHeight()
                 .offset { IntOffset(((1f - drawerProgress) * drawerWidthPx).roundToInt(), 0) }
         )
-
-        AnimatedVisibility(
-            visible = overlayVisible,
-            enter = fadeIn(animationSpec = snap()),
-            exit = fadeOut(animationSpec = tween(300))
-        ) {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(Color.Black.copy(alpha = 0.35f))
-            )
-        }
     }
 }
 
