@@ -923,6 +923,14 @@ private fun MainFragmentPager(
                     }
                 },
                 update = { container ->
+                    val selected = index == selectedTab
+                    container.alpha = alpha
+                    container.visibility = if (selected) View.VISIBLE else View.INVISIBLE
+                    container.isEnabled = selected
+                    if (selected) {
+                        container.bringToFront()
+                    }
+
                     val tag = "main_tab_$index"
                     if (tag !in committedTags) {
                         val existing = activity.supportFragmentManager.findFragmentByTag(tag)
