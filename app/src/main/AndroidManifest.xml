@@ -62,23 +62,23 @@
 
         <activity
             android:name=".ui.main.MainActivity"
+            android:exported="true"
             android:launchMode="singleTop"
-            android:theme="@style/AppTheme.ChatTheme"
-            android:windowSoftInputMode="stateHidden|adjustResize" />
+            android:theme="@style/Theme.HITA.SplashScreen"
+            android:windowSoftInputMode="stateHidden|adjustResize">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
         <activity android:name=".ui.timetable.manager.TimetableManagerActivity" />
         <activity android:name=".ui.subject.SubjectActivity" />
         <activity android:name=".ui.myprofile.MyProfileActivity" />
         <activity android:name=".ui.timetable.detail.TimetableDetailActivity" />
         <activity
             android:name=".ui.ActivitySplash"
-            android:exported="true"
-            android:theme="@style/SplashTheme">
-            <intent-filter>
-                <action android:name="android.intent.action.MAIN" />
-
-                <category android:name="android.intent.category.LAUNCHER" />
-            </intent-filter>
-        </activity>
+            android:exported="false"
+            android:theme="@style/SplashTheme" />
         <activity android:name=".ui.teacher.ActivityTeacherOfficial" />
         <activity
             android:name=".ui.search.SearchActivity"

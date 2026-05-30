@@ -19,10 +19,12 @@ import androidx.activity.viewModels
 import androidx.appcompat.app.AlertDialog
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
-import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import kotlinx.coroutines.delay
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -88,8 +90,8 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.core.view.WindowCompat
-import androidx.core.view.doOnPreDraw
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.FragmentContainerView
 import androidx.lifecycle.Observer
@@ -169,6 +171,7 @@ class MainActivity : HiltBaseActivity<ComposeViewBinding>(),
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        installSplashScreen()
         selectedTab = savedInstanceState?.getInt(STATE_SELECTED_TAB, selectedTab) ?: selectedTab
         super.onCreate(savedInstanceState)
         @Suppress("DEPRECATION")
@@ -533,7 +536,11 @@ private fun MainScreen(
     val density = LocalDensity.current
     val drawerWidth = 260.dp
     val drawerWidthPx = with(density) { drawerWidth.toPx() }
-    val drawerProgress by animateFloatAsState(if (drawerOpen) 1f else 0f, label = "drawer")
+    val drawerProgress by animateFloatAsState(
+        targetValue = if (drawerOpen) 1f else 0f,
+        animationSpec = spring(dampingRatio = 0.9f, stiffness = 300f),
+        label = "drawer"
+    )
     val contentScale = 1f - drawerProgress * 0.2f
     val contentOffset = -drawerWidthPx * drawerProgress
     val imeVisible = WindowInsets.ime.getBottom(density) > 0
@@ -545,33 +552,53 @@ private fun MainScreen(
         12.dp
     }
 
+    val wallpaperTargetAlpha = if (selectedTab == 1 && wallpaperVisible && wallpaperBitmap != null) 1f else 0f
+    val wallpaperAlpha by animateFloatAsState(
+        targetValue = wallpaperTargetAlpha,
+        animationSpec = spring(dampingRatio = 0.9f, stiffness = 300f),
+        label = "wallpaper_alpha"
+    )
+
+    var overlayVisible by remember { mutableStateOf(false) }
+    val prevTab = remember { mutableIntStateOf(selectedTab) }
+    LaunchedEffect(selectedTab) {
+        if (prevTab.intValue != selectedTab) {
+            overlayVisible = true
+            delay(150)
+            overlayVisible = false
+        }
+        prevTab.intValue = selectedTab
+    }
+
     Box(
         modifier = Modifier
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
     ) {
-        if (selectedTab == 1 && wallpaperVisible && wallpaperBitmap != null) {
-            Image(
-                bitmap = wallpaperBitmap.asImageBitmap(),
-                contentDescription = stringResource(R.string.timetable_wallpaper_description),
-                contentScale = ContentScale.Crop,
-                modifier = Modifier.fillMaxSize()
-            )
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(Color.Black.copy(alpha = wallpaperScrimOpacity / 100f))
-            )
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .windowInsetsTopHeight(WindowInsets.statusBars)
-                    .background(
-                        Brush.verticalGradient(
-                            colors = listOf(Color.Black.copy(alpha = 0.55f), Color.Transparent)
+        if (wallpaperBitmap != null) {
+            Box(modifier = Modifier.fillMaxSize().graphicsLayer { alpha = wallpaperAlpha }) {
+                Image(
+                    bitmap = wallpaperBitmap.asImageBitmap(),
+                    contentDescription = stringResource(R.string.timetable_wallpaper_description),
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxSize()
+                )
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(Color.Black.copy(alpha = wallpaperScrimOpacity / 100f))
+                )
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .windowInsetsTopHeight(WindowInsets.statusBars)
+                        .background(
+                            Brush.verticalGradient(
+                                colors = listOf(Color.Black.copy(alpha = 0.55f), Color.Transparent)
+                            )
                         )
-                    )
-            )
+                )
+            }
         }
 
         Column(
@@ -592,7 +619,7 @@ private fun MainScreen(
                 timetableName = timetableName,
                 showTimetableName = showTimetableName,
                 themeIcon = themeIcon,
-                wallpaperVisible = wallpaperVisible,
+                wallpaperAlpha = wallpaperAlpha,
                 wallpaperTitleColor = wallpaperTitleColor,
                 onOpenDrawer = onOpenDrawer,
                 onTheme = onTheme,
@@ -613,27 +640,6 @@ private fun MainScreen(
                     fragmentFactory = fragmentFactory,
                     modifier = Modifier.fillMaxSize()
                 )
-
-                val overlayAlpha = remember { Animatable(0f) }
-                val prevTab = remember { mutableIntStateOf(selectedTab) }
-
-                LaunchedEffect(selectedTab) {
-                    if (prevTab.intValue != selectedTab) {
-                        overlayAlpha.snapTo(1f)
-                        delay(100)
-                        overlayAlpha.animateTo(0f, tween(250))
-                    }
-                    prevTab.intValue = selectedTab
-                }
-
-                if (overlayAlpha.value > 0.01f) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .graphicsLayer { alpha = overlayAlpha.value }
-                            .background(MaterialTheme.colorScheme.background)
-                    )
-                }
             }
         }
 
@@ -652,7 +658,7 @@ private fun MainScreen(
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.42f * drawerProgress))
+                    .background(Color.Black.copy(alpha = 0.32f * drawerProgress))
                     .pointerInput(drawerOpen) {
                         detectTapGestures { onCloseDrawer() }
                     }
@@ -671,6 +677,18 @@ private fun MainScreen(
                 .fillMaxHeight()
                 .offset { IntOffset(((1f - drawerProgress) * drawerWidthPx).roundToInt(), 0) }
         )
+
+        AnimatedVisibility(
+            visible = overlayVisible,
+            enter = fadeIn(animationSpec = snap()),
+            exit = fadeOut(animationSpec = tween(300))
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color.Black.copy(alpha = 0.35f))
+            )
+        }
     }
 }
 
@@ -682,7 +700,7 @@ private fun MainTopBar(
     timetableName: String,
     showTimetableName: Boolean,
     themeIcon: Int,
-    wallpaperVisible: Boolean,
+    wallpaperAlpha: Float,
     wallpaperTitleColor: Color,
     onOpenDrawer: () -> Unit,
     onTheme: () -> Unit,
@@ -692,8 +710,13 @@ private fun MainTopBar(
     onAgentShortcut: () -> Unit,
     onAddEvent: () -> Unit,
 ) {
-    val isWallpaperTab = selectedTab == 1 && wallpaperVisible
-    val titleColor = if (isWallpaperTab) wallpaperTitleColor else MaterialTheme.colorScheme.onSurface
+    val isWallpaperTab = wallpaperAlpha > 0.5f
+
+    val titleColor by animateColorAsState(
+        targetValue = if (isWallpaperTab) wallpaperTitleColor else MaterialTheme.colorScheme.onSurface,
+        animationSpec = spring(dampingRatio = 0.9f, stiffness = 300f),
+        label = "titleColor"
+    )
 
     // Wallpaper tab: force light status bar icons on dark overlay; restore otherwise
     val view = LocalView.current
@@ -867,63 +890,56 @@ private fun MainFragmentPager(
 ) {
     val context = LocalContext.current
     val activity = context as MainActivity
-    val containerIds = remember {
-        IntArray(4) { View.generateViewId() }
-    }
-    val createdTabs = remember {
-        mutableStateListOf(0)
-    }
-    val committedTags = remember {
-        mutableSetOf<String>()
-    }
+    val containerIds = remember { IntArray(4) { View.generateViewId() } }
+    val createdTabs = remember { mutableStateListOf(0) }
+    val committedTags = remember { mutableSetOf<String>() }
+
     LaunchedEffect(selectedTab) {
         if (!createdTabs.contains(selectedTab)) {
             createdTabs.add(selectedTab)
         }
     }
-    AndroidView(
-        modifier = modifier,
-        factory = {
-            android.widget.FrameLayout(it).apply {
-                layoutParams = android.widget.FrameLayout.LayoutParams(
-                    android.view.ViewGroup.LayoutParams.MATCH_PARENT,
-                    android.view.ViewGroup.LayoutParams.MATCH_PARENT
-                )
-                repeat(4) { index ->
-                    addView(
-                        FragmentContainerView(it).apply {
-                            id = containerIds[index]
-                            visibility = if (index == selectedTab) View.VISIBLE else View.GONE
-                            layoutParams = android.widget.FrameLayout.LayoutParams(
-                                android.view.ViewGroup.LayoutParams.MATCH_PARENT,
-                                android.view.ViewGroup.LayoutParams.MATCH_PARENT
-                            )
-                        }
-                    )
-                }
-            }
-        },
-        update = { root ->
-            repeat(4) { index ->
-                val container = root.findViewById<FragmentContainerView>(containerIds[index])
-                container.visibility = if (index == selectedTab) View.VISIBLE else View.GONE
-                if (!createdTabs.contains(index)) return@repeat
-                val tag = "main_tab_$index"
-                if (tag !in committedTags) {
-                    val existing = activity.supportFragmentManager.findFragmentByTag(tag)
-                    if (existing != null) {
-                        activity.supportFragmentManager.beginTransaction()
-                            .remove(existing)
-                            .commitNowAllowingStateLoss()
+
+    Box(modifier = modifier) {
+        createdTabs.forEach { index ->
+            val targetAlpha = if (index == selectedTab) 1f else 0f
+            val alpha by animateFloatAsState(
+                targetValue = targetAlpha,
+                animationSpec = if (targetAlpha > 0f) spring(dampingRatio = 0.9f, stiffness = 300f) else snap(),
+                label = "tab_alpha_$index"
+            )
+
+            AndroidView(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .graphicsLayer { this.alpha = alpha },
+                factory = { ctx ->
+                    FragmentContainerView(ctx).apply {
+                        id = containerIds[index]
+                        layoutParams = android.view.ViewGroup.LayoutParams(
+                            android.view.ViewGroup.LayoutParams.MATCH_PARENT,
+                            android.view.ViewGroup.LayoutParams.MATCH_PARENT
+                        )
                     }
-                    activity.supportFragmentManager.beginTransaction()
-                        .replace(containerIds[index], fragmentFactory(index), tag)
-                        .commitNowAllowingStateLoss()
-                    committedTags.add(tag)
+                },
+                update = { container ->
+                    val tag = "main_tab_$index"
+                    if (tag !in committedTags) {
+                        val existing = activity.supportFragmentManager.findFragmentByTag(tag)
+                        if (existing != null) {
+                            activity.supportFragmentManager.beginTransaction()
+                                .remove(existing)
+                                .commitNowAllowingStateLoss()
+                        }
+                        activity.supportFragmentManager.beginTransaction()
+                            .replace(containerIds[index], fragmentFactory(index), tag)
+                            .commitNowAllowingStateLoss()
+                        committedTags.add(tag)
+                    }
                 }
-            }
+            )
         }
-    )
+    }
 }
 
 private val CapsuleBlue = Color(0xFF3390EC)
@@ -1028,22 +1044,27 @@ private fun MainDrawer(
     onAbout: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    Column(
-        modifier = modifier
-            .background(MaterialTheme.colorScheme.surface)
-            .statusBarsPadding(),
+    Surface(
+        modifier = modifier,
+        shape = RoundedCornerShape(topStart = 24.dp, bottomStart = 24.dp),
+        shadowElevation = 16.dp,
+        color = MaterialTheme.colorScheme.surface
     ) {
-        DrawerHeader(drawerState = drawerState, onClick = onHeaderClick)
-        Spacer(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(1.dp)
-                .padding(horizontal = HitaTheme.tokens.spacing.xl)
-                .background(MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.8f))
-        )
-        DrawerItem(R.drawable.ic_menu_settings, stringResource(R.string.menu_timeable_curriculum), onTimetableManager)
-        DrawerItem(R.drawable.ic_info, stringResource(R.string.name_ua_and_pp), onAgreement)
-        DrawerItem(R.drawable.logo, stringResource(R.string.main_drawer_menu_about), onAbout)
+        Column(
+            modifier = Modifier.statusBarsPadding(),
+        ) {
+            DrawerHeader(drawerState = drawerState, onClick = onHeaderClick)
+            Spacer(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(1.dp)
+                    .padding(horizontal = HitaTheme.tokens.spacing.xl)
+                    .background(MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.8f))
+            )
+            DrawerItem(R.drawable.ic_menu_settings, stringResource(R.string.menu_timeable_curriculum), onTimetableManager)
+            DrawerItem(R.drawable.ic_info, stringResource(R.string.name_ua_and_pp), onAgreement)
+            DrawerItem(R.drawable.logo, stringResource(R.string.main_drawer_menu_about), onAbout)
+        }
     }
 }
 

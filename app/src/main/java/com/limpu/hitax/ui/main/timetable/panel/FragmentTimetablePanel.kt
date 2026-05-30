@@ -62,6 +62,14 @@ class FragmentTimetablePanel : BottomSheetDialogFragment() {
         setStyle(STYLE_NORMAL, com.limpu.style.R.style.TransparentBottomSheetDialogTheme)
     }
 
+    override fun onStart() {
+        super.onStart()
+        dialog?.window?.apply {
+            addFlags(android.view.WindowManager.LayoutParams.FLAG_DIM_BEHIND)
+            setDimAmount(0.6f)
+        }
+    }
+
     override fun onCreateView(
         inflater: LayoutInflater,
         container: ViewGroup?,

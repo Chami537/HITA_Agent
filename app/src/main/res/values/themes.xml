@@ -95,10 +95,17 @@
         <item name="windowNoTitle">true</item>
     </style>
 
-    <!-- 启动页主题 -->
+    <!-- 启动页主题（旧 ActivitySplash，已废弃） -->
     <style name="Theme.HITA.Splash" parent="Theme.HITA">
         <item name="android:windowBackground">@drawable/splash</item>
         <item name="android:windowFullscreen">true</item>
+    </style>
+
+    <!-- SplashScreen API 主题：透明状态栏 + H logo 背景 -->
+    <style name="Theme.HITA.SplashScreen" parent="Theme.HITA">
+        <item name="android:windowBackground">@drawable/splash</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:windowLightStatusBar">false</item>
     </style>
 
     <!-- 聊天页面主题 - 不透明状态栏 -->
