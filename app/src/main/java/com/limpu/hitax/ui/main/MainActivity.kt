@@ -82,6 +82,7 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -213,7 +214,6 @@ class MainActivity : HiltBaseActivity<ComposeViewBinding>(),
                     onWallpaper = { pickWallpaperLauncher.launch("image/*") },
                     onWallpaperLongPress = { showWallpaperMenu() },
                     onTimetableSetting = { FragmentTimetablePanel().show(supportFragmentManager, "panel") },
-                    onAgentShortcut = { selectedTab = 2 },
                     onAddEvent = { PopupAddEvent().show(supportFragmentManager, "add_event") },
                     onDrawerHeader = { openDrawerHeader() },
                     onDrawerTimetableManager = { ActivityUtils.startTimetableManager(getThis()) },
@@ -521,7 +521,6 @@ private fun MainScreen(
     onWallpaper: () -> Unit,
     onWallpaperLongPress: () -> Unit,
     onTimetableSetting: () -> Unit,
-    onAgentShortcut: () -> Unit,
     onAddEvent: () -> Unit,
     onDrawerHeader: () -> Unit,
     onDrawerTimetableManager: () -> Unit,
@@ -611,7 +610,6 @@ private fun MainScreen(
                 onWallpaper = onWallpaper,
                 onWallpaperLongPress = onWallpaperLongPress,
                 onTimetableSetting = onTimetableSetting,
-                onAgentShortcut = onAgentShortcut,
                 onAddEvent = onAddEvent,
             )
             Spacer(Modifier.height(8.dp))
@@ -680,7 +678,6 @@ private fun MainTopBar(
     onWallpaper: () -> Unit,
     onWallpaperLongPress: () -> Unit,
     onTimetableSetting: () -> Unit,
-    onAgentShortcut: () -> Unit,
     onAddEvent: () -> Unit,
 ) {
     val isWallpaperTab = wallpaperAlpha > 0.5f
@@ -725,7 +722,6 @@ private fun MainTopBar(
                 onWallpaper = onWallpaper,
                 onWallpaperLongPress = onWallpaperLongPress,
                 onTimetableSetting = onTimetableSetting,
-                onAgentShortcut = onAgentShortcut,
                 onAddEvent = onAddEvent
             )
             2 -> ToolbarTitle(stringResource(R.string.title_agent), titleColor)
@@ -766,7 +762,6 @@ private fun TimetableToolbarTitle(
     onWallpaper: () -> Unit,
     onWallpaperLongPress: () -> Unit,
     onTimetableSetting: () -> Unit,
-    onAgentShortcut: () -> Unit,
     onAddEvent: () -> Unit,
 ) {
     Row(
@@ -803,8 +798,7 @@ private fun TimetableToolbarTitle(
         Spacer(modifier = Modifier.weight(1f))
         ToolbarIcon(R.drawable.ic_wallpaper, onClick = onWallpaper, onLongClick = onWallpaperLongPress)
         ToolbarIcon(R.drawable.ic_theme, onClick = onTimetableSetting)
-        ToolbarIcon(R.drawable.ic_baseline_toys_24, onClick = onAgentShortcut)
-        ToolbarIcon(R.drawable.ic_baseline_add_24, onClick = onAddEvent)
+        ToolbarIcon(R.drawable.ic_baseline_add_24, onClick = onAddEvent, iconSize = 28.dp)
     }
 }
 
@@ -827,6 +821,7 @@ private fun ToolbarIcon(
     iconRes: Int,
     onClick: () -> Unit,
     onLongClick: (() -> Unit)? = null,
+    iconSize: Dp = 24.dp,
 ) {
     val view = LocalView.current
     Box(
@@ -850,7 +845,7 @@ private fun ToolbarIcon(
             painter = painterResource(iconRes),
             contentDescription = null,
             tint = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.size(24.dp)
+            modifier = Modifier.size(iconSize)
         )
     }
 }
