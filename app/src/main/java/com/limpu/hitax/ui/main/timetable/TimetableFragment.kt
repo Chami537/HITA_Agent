@@ -378,7 +378,8 @@ private fun TimetableWeekContent(
 ) {
     val density = LocalDensity.current
     val scrollState = rememberScrollState()
-    val tableHeight = with(density) { timetableHeight(style).toDp() }
+    val effectiveStart = remember(events, style) { effectiveStartTime(style.getStartTimeObject(), events) }
+    val tableHeight = with(density) { timetableHeight(effectiveStart, style.cardHeight).toDp() }
     var tableWidthPx by remember { mutableStateOf(0) }
     var contentWidthPx by remember { mutableStateOf(0f) }
     val coroutineScope = rememberCoroutineScope()
@@ -448,6 +449,7 @@ private fun TimetableWeekContent(
                 .verticalScroll(scrollState)
         ) {
             TimetableLeftLabels(
+                effectiveStart = effectiveStart,
                 style = style,
                 color = labelColor,
                 modifier = Modifier
@@ -464,15 +466,16 @@ private fun TimetableWeekContent(
                             onTap = { offset ->
                                 val width = tableWidthPx.takeIf { it > 0 } ?: return@detectTapGestures
                                 val dow = ((offset.x / (width / 7f)).toInt() + 1).coerceIn(1, 7)
-                                val period = pickPeriodFromOffset(offset.y, style) ?: return@detectTapGestures
+                                val period = pickPeriodFromOffset(offset.y, effectiveStart, style) ?: return@detectTapGestures
                                 onAddClick(dow, period)
                             }
                         )
                     }
             ) {
-                TimetableGrid(startDate = startDate, style = style)
+                TimetableGrid(startDate = startDate, effectiveStart = effectiveStart, style = style)
                 TimetableEventLayer(
                     events = events,
+                    effectiveStart = effectiveStart,
                     style = style,
                     onEventClick = onEventClick,
                     onEventLongClick = onEventLongClick,
@@ -557,11 +560,11 @@ private fun TimetableDowHeader(startDate: Long, monthColor: Color) {
 
 @Composable
 private fun TimetableLeftLabels(
+    effectiveStart: TimeInDay,
     style: TimetableStyleSheet,
     color: Color,
     modifier: Modifier = Modifier,
 ) {
-    val start = style.getStartTimeObject()
     val labelColor = color.copy(alpha = 0.91f)
     Column(modifier = modifier) {
         if (style.usePeriodLabel) {
@@ -569,7 +572,7 @@ private fun TimetableLeftLabels(
             val periods = styleStructure()
             if (periods.isEmpty()) return@Column
             // Spacer if grid starts before first period
-            val firstGap = start.getDistanceInMinutes(periods.first().from).coerceAtLeast(0)
+            val firstGap = effectiveStart.getDistanceInMinutes(periods.first().from).coerceAtLeast(0)
             if (firstGap > 0) {
                 Spacer(Modifier.height(with(density) { (firstGap / 60f * style.cardHeight).toDp() }))
             }
@@ -590,9 +593,9 @@ private fun TimetableLeftLabels(
             }
         } else {
             val density = LocalDensity.current
-            val labelTimes = hourLabelTimes()
+            val labelTimes = hourLabelTimes(effectiveStart)
             // Spacer if grid starts before first label
-            val firstGap = start.getDistanceInMinutes(labelTimes.first()).coerceAtLeast(0)
+            val firstGap = effectiveStart.getDistanceInMinutes(labelTimes.first()).coerceAtLeast(0)
             if (firstGap > 0) {
                 Spacer(Modifier.height(with(density) { (firstGap / 60f * style.cardHeight).toDp() }))
             }
@@ -617,7 +620,7 @@ private fun TimetableLeftLabels(
 }
 
 @Composable
-private fun TimetableGrid(startDate: Long, style: TimetableStyleSheet) {
+private fun TimetableGrid(startDate: Long, effectiveStart: TimeInDay, style: TimetableStyleSheet) {
     val currentDow = TimeTools.currentDOW()
     val lineColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.35f)
     val isCurrentWeek = remember(startDate) {
@@ -634,11 +637,10 @@ private fun TimetableGrid(startDate: Long, style: TimetableStyleSheet) {
             )
         }
         if (style.drawBGLine) {
-            val start = style.getStartTimeObject()
             val effect = PathEffect.dashPathEffect(floatArrayOf(20f, 20f), 0f)
-            val labelTimes = hourLabelTimes()
+            val labelTimes = hourLabelTimes(effectiveStart)
             for (labelTime in labelTimes) {
-                val offsetMinutes = start.getDistanceInMinutes(labelTime).coerceAtLeast(0)
+                val offsetMinutes = effectiveStart.getDistanceInMinutes(labelTime).coerceAtLeast(0)
                 val y = (offsetMinutes / 60f * style.cardHeight)
                 drawLine(
                     color = lineColor,
@@ -655,6 +657,7 @@ private fun TimetableGrid(startDate: Long, style: TimetableStyleSheet) {
 @Composable
 private fun TimetableEventLayer(
     events: List<EventItem>,
+    effectiveStart: TimeInDay,
     style: TimetableStyleSheet,
     onEventClick: (EventItem) -> Unit,
     onEventLongClick: (EventItem) -> Unit,
@@ -664,7 +667,7 @@ private fun TimetableEventLayer(
         val sectionWidth = maxWidth / 7f
         arranged.forEach { positioned ->
             val event = positioned.event
-            val startMinutes = style.getStartTimeObject().getDistanceInMinutes(event.from.time)
+            val startMinutes = effectiveStart.getDistanceInMinutes(event.from.time)
             val duration = event.getDurationInMinutes().coerceAtLeast(15)
             val top = with(LocalDensity.current) {
                 (startMinutes / 60f * style.cardHeight).toDp()
@@ -760,7 +763,7 @@ private fun TimetableEventCard(
             },
         shape = cardShape,
         colors = CardDefaults.cardColors(containerColor = background),
-        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
     ) {
         Column(
             modifier = Modifier
@@ -835,20 +838,31 @@ private fun textAlignFromGravity(gravity: Int): TextAlign {
     }
 }
 
-private fun timetableHeight(style: TimetableStyleSheet): Int {
-    val start = style.getStartTimeObject()
+private fun timetableHeight(start: TimeInDay, cardHeight: Int): Int {
     val totalMinutes = (24 - start.hour) * 60 - start.minute
-    return (totalMinutes / 60f * style.cardHeight).roundToInt()
+    return (totalMinutes / 60f * cardHeight).roundToInt()
 }
 
-private fun pickPeriodFromOffset(y: Float, style: TimetableStyleSheet): TimePeriodInDay? {
-    val start = style.getStartTimeObject()
-    val time = start.getAdded((y / style.cardHeight * 60f).toInt())
+/** 从事件列表中找到最早的开始时间，如果都比 configuredStart 晚则返回 configuredStart */
+private fun effectiveStartTime(configuredStart: TimeInDay, events: List<EventItem>): TimeInDay {
+    var earliest = configuredStart
+    for (event in events) {
+        val h = TimeTools.getHour(event.from.time)
+        val m = TimeTools.getMinute(event.from.time)
+        if (h < earliest.hour || (h == earliest.hour && m < earliest.minute)) {
+            earliest = TimeInDay(h, m)
+        }
+    }
+    return earliest
+}
+
+private fun pickPeriodFromOffset(y: Float, effectiveStart: TimeInDay, style: TimetableStyleSheet): TimePeriodInDay? {
+    val time = effectiveStart.getAdded((y / style.cardHeight * 60f).toInt())
     val structure = styleStructure()
     for (i in structure.indices) {
         val period = structure[i]
         if (i == 0 && period.after(time)) {
-            return TimePeriodInDay(start, period.from)
+            return TimePeriodInDay(effectiveStart, period.from)
         }
         if (period.contains(time)) {
             return period.clone()
@@ -863,11 +877,27 @@ private fun pickPeriodFromOffset(y: Float, style: TimetableStyleSheet): TimePeri
     return null
 }
 
-/** 上午半小时间隔(8:30-12:30) + 下午整点(14:00-23:00) */
-private fun hourLabelTimes(): List<TimeInDay> {
+/** 上午半小时间隔(8:30-12:30) + 下午整点(14:00-23:00)，如有更早课程则从 effectiveStart 向上取整扩展 */
+private fun hourLabelTimes(effectiveStart: TimeInDay? = null): List<TimeInDay> {
     val times = mutableListOf<TimeInDay>()
     for (h in 8..12) times.add(TimeInDay(h, 30))
     for (h in 14..23) times.add(TimeInDay(h, 0))
+
+    if (effectiveStart != null) {
+        // 向下取整到最近的半小时
+        val roundMin = if (effectiveStart.minute <= 30) 0 else 30
+        val early = mutableListOf<TimeInDay>()
+        var h = effectiveStart.hour
+        var m = roundMin
+        while (h < 8 || (h == 8 && m < 30)) {
+            val t = TimeInDay(h, m)
+            if (t !in times) early.add(t)
+            if (m == 0) m = 30
+            else { m = 0; h++ }
+        }
+        times.addAll(0, early)
+    }
+
     return times
 }
 
