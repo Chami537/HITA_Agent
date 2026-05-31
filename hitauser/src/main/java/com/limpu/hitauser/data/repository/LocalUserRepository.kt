@@ -81,7 +81,26 @@ class LocalUserRepository @Inject constructor(
         return loggedInUser!!
     }
 
-
-
+    fun saveLocalAvatar(uri: android.net.Uri, ctx: android.content.Context, onResult: (Boolean) -> Unit) {
+        Thread {
+            try {
+                val destFile = java.io.File(ctx.filesDir, "avatar_local.jpg")
+                val futureTarget = com.bumptech.glide.Glide.with(ctx)
+                    .asFile()
+                    .load(uri)
+                    .override(512, 512)
+                    .centerCrop()
+                    .submit()
+                val tempFile = futureTarget.get()
+                tempFile.copyTo(destFile, overwrite = true)
+                tempFile.delete()
+                changeLocalAvatar("local://${destFile.absolutePath}")
+                com.bumptech.glide.Glide.get(ctx).clearMemory()
+                android.os.Handler(ctx.mainLooper).post { onResult(true) }
+            } catch (e: Exception) {
+                android.os.Handler(ctx.mainLooper).post { onResult(false) }
+            }
+        }.start()
+    }
 
 }

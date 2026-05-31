@@ -55,7 +55,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.fragment.app.viewModels
-import com.bumptech.glide.Glide
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.limpu.hitax.R
 import com.limpu.hitax.data.model.eas.EASToken
@@ -172,31 +171,14 @@ class NavigationFragment : androidx.fragment.app.Fragment() {
     }
 
     private fun saveAvatarLocally(uri: Uri) {
-        val ctx = requireContext().applicationContext
-        Thread {
-            try {
-                val destFile = java.io.File(ctx.filesDir, "avatar_local.jpg")
-                val futureTarget = Glide.with(ctx)
-                    .asFile()
-                    .load(uri)
-                    .override(512, 512)
-                    .centerCrop()
-                    .submit()
-                val tempFile = futureTarget.get()
-                tempFile.copyTo(destFile, overwrite = true)
-                tempFile.delete()
-                localUserRepository.changeLocalAvatar("local://${destFile.absolutePath}")
-                activity?.runOnUiThread {
-                    userStateVersion++
-                    Toast.makeText(ctx, "头像更换成功", Toast.LENGTH_SHORT).show()
-                    Glide.get(ctx).clearMemory()
-                }
-            } catch (e: Exception) {
-                activity?.runOnUiThread {
-                    Toast.makeText(ctx, "图片处理失败", Toast.LENGTH_SHORT).show()
-                }
+        localUserRepository.saveLocalAvatar(uri, requireContext().applicationContext) { success ->
+            if (success) {
+                userStateVersion++
+                Toast.makeText(requireContext(), "头像更换成功", Toast.LENGTH_SHORT).show()
+            } else {
+                Toast.makeText(requireContext(), "图片处理失败", Toast.LENGTH_SHORT).show()
             }
-        }.start()
+        }
     }
 
     private fun openUserCard() {
@@ -350,7 +332,8 @@ private fun NavigationScreen(
         modifier = Modifier
             .fillMaxSize()
             .verticalScroll(rememberScrollState())
-            .background(MaterialTheme.colorScheme.background),
+            .background(MaterialTheme.colorScheme.background)
+            .padding(bottom = 80.dp),
         verticalArrangement = Arrangement.spacedBy(tokens.spacing.sm)
     ) {
         UserCard(

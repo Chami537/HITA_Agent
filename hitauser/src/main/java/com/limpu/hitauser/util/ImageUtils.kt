@@ -25,6 +25,8 @@ object ImageUtils {
             }
             Glide.with(context).load(file)
                 .apply(RequestOptions.bitmapTransform(CircleCrop()))
+                .diskCacheStrategy(DiskCacheStrategy.NONE)
+                .skipMemoryCache(true)
                 .placeholder(R.drawable.place_holder_avatar)
                 .into(target)
         } else {

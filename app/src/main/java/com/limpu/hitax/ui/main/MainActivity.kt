@@ -166,6 +166,32 @@ class MainActivity : HiltBaseActivity<ComposeViewBinding>(),
         refreshDrawerState()
     }
 
+    private val pickAvatarLauncher = registerForActivityResult(
+        ActivityResultContracts.GetContent()
+    ) { uri: Uri? ->
+        uri?.let { saveAvatarLocally(it) }
+    }
+
+    private fun showAvatarPicker() {
+        MaterialAlertDialogBuilder(this)
+            .setTitle("更换头像")
+            .setItems(arrayOf("从相册选择", "取消")) { _, which ->
+                if (which == 0) pickAvatarLauncher.launch("image/*")
+            }
+            .show()
+    }
+
+    private fun saveAvatarLocally(uri: Uri) {
+        localUserRepository.saveLocalAvatar(uri, applicationContext) { success ->
+            if (success) {
+                refreshDrawerState()
+                Toast.makeText(this@MainActivity, "头像更换成功", Toast.LENGTH_SHORT).show()
+            } else {
+                Toast.makeText(this@MainActivity, "图片处理失败", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
     private var drawerState by mutableStateOf(DrawerUserState())
 
     override fun initViewBinding(): ComposeViewBinding {
@@ -223,6 +249,7 @@ class MainActivity : HiltBaseActivity<ComposeViewBinding>(),
                     onTimetableSetting = { FragmentTimetablePanel().show(supportFragmentManager, "panel") },
                     onAddEvent = { PopupAddEvent().show(supportFragmentManager, "add_event") },
                     onDrawerHeader = { openDrawerHeader() },
+                    onDrawerAvatarClick = { showAvatarPicker() },
                     onDrawerAgreement = { UserAgreementDialog().show(supportFragmentManager, "ua") },
                     onDrawerAbout = { ActivityUtils.startActivity(getThis(), ActivityAbout::class.java) },
                     fragmentFactory = { position ->
@@ -570,6 +597,7 @@ private fun MainScreen(
     onTimetableSetting: () -> Unit,
     onAddEvent: () -> Unit,
     onDrawerHeader: () -> Unit,
+    onDrawerAvatarClick: () -> Unit,
     onDrawerAgreement: () -> Unit,
     onDrawerAbout: () -> Unit,
     fragmentFactory: (Int) -> Fragment,
@@ -699,6 +727,7 @@ private fun MainScreen(
         MainDrawer(
             drawerState = drawerState,
             onHeaderClick = onDrawerHeader,
+            onAvatarClick = onDrawerAvatarClick,
             onAgreement = onDrawerAgreement,
             onAbout = onDrawerAbout,
             modifier = Modifier
@@ -1086,6 +1115,7 @@ private fun MainPillTabBar(
 private fun MainDrawer(
     drawerState: DrawerUserState,
     onHeaderClick: () -> Unit,
+    onAvatarClick: () -> Unit,
     onAgreement: () -> Unit,
     onAbout: () -> Unit,
     modifier: Modifier = Modifier,
@@ -1099,7 +1129,7 @@ private fun MainDrawer(
         Column(
             modifier = Modifier.statusBarsPadding(),
         ) {
-            DrawerHeader(drawerState = drawerState, onClick = onHeaderClick)
+            DrawerHeader(drawerState = drawerState, onClick = onHeaderClick, onAvatarClick = onAvatarClick)
             Spacer(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -1114,7 +1144,7 @@ private fun MainDrawer(
 }
 
 @Composable
-private fun DrawerHeader(drawerState: DrawerUserState, onClick: () -> Unit) {
+private fun DrawerHeader(drawerState: DrawerUserState, onClick: () -> Unit, onAvatarClick: () -> Unit) {
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -1126,7 +1156,9 @@ private fun DrawerHeader(drawerState: DrawerUserState, onClick: () -> Unit) {
             shape = CircleShape,
             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
             elevation = CardDefaults.cardElevation(defaultElevation = 12.dp),
-            modifier = Modifier.size(72.dp)
+            modifier = Modifier
+                .size(72.dp)
+                .clickable(onClick = onAvatarClick)
         ) {
             AndroidView(
                 modifier = Modifier.fillMaxSize(),
