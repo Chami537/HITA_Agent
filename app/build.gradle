@@ -5,8 +5,8 @@ plugins {
     id 'dagger.hilt.android.plugin'
 }
 
-def appVersionCodeValue = 2026052701
-def appVersionNameValue = "2.2.2"
+def appVersionCodeValue = 2026053101
+def appVersionNameValue = "2.3.0"
 
 def keystorePropertiesFile = rootProject.file("keystore.properties")
 def keystoreProperties = new Properties()
