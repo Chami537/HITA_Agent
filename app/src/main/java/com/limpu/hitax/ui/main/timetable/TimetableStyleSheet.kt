@@ -31,12 +31,10 @@ class TimetableStyleSheet {
 
     private var startTimeInDay: TimeInDay? = null
     fun getStartTimeObject(): TimeInDay {
-        startTimeInDay?.let {
-            return it
-        } ?: kotlin.run {
-            startTimeInDay = TimeInDay(startTime / 100, startTime % 100)
-            return startTimeInDay!!
-        }
+        startTimeInDay?.let { return it }
+        val time = TimeInDay(startTime / 100, startTime % 100)
+        startTimeInDay = time
+        return time
     }
 
     override fun equals(other: Any?): Boolean {

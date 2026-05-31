@@ -24,8 +24,10 @@ class MyProfileViewModel @Inject constructor(
 
     var userProfileLiveData: LiveData<DataState<UserProfile>> = profileController.switchMap {
         val userLocal = localUserRepository.getLoggedInUser()
-        if (userLocal.isValid()) {
-            return@switchMap profileRepository.getUserProfile(userLocal.id!!, userLocal.token!!)
+        val id = userLocal.id
+        val token = userLocal.token
+        if (id != null && !token.isNullOrEmpty()) {
+            return@switchMap profileRepository.getUserProfile(id, token)
         } else {
             return@switchMap LiveDataUtils.getMutableLiveData(DataState<UserProfile>(DataState.STATE.NOT_LOGGED_IN))
         }
@@ -36,12 +38,9 @@ class MyProfileViewModel @Inject constructor(
             if (field == null) {
                 changeNicknameResult = changeNicknameController.switchMap { input: StringTrigger ->
                     if (input.isActioning) {
-                        val userLocal = localUserRepository.getLoggedInUser()
-                        if (userLocal.isValid()) {
-                            return@switchMap profileRepository.changeNickname(
-                                userLocal.token!!,
-                                input.data
-                            )
+                        val token = localUserRepository.getLoggedInUser().token
+                        if (!token.isNullOrEmpty()) {
+                            return@switchMap profileRepository.changeNickname(token, input.data)
                         } else {
                             return@switchMap LiveDataUtils.getMutableLiveData(
                                 DataState(DataState.STATE.NOT_LOGGED_IN)
@@ -59,12 +58,9 @@ class MyProfileViewModel @Inject constructor(
 
     var changeGenderResult: LiveData<DataState<String>> = changeGenderController.switchMap { input: StringTrigger ->
         if (input.isActioning) {
-            val userLocal = localUserRepository.getLoggedInUser()
-            if (userLocal.isValid()) {
-                return@switchMap profileRepository.changeGender(
-                    userLocal.token!!,
-                    input.data
-                )
+            val token = localUserRepository.getLoggedInUser().token
+            if (!token.isNullOrEmpty()) {
+                return@switchMap profileRepository.changeGender(token, input.data)
             } else {
                 return@switchMap LiveDataUtils.getMutableLiveData(
                     DataState<String>(DataState.STATE.NOT_LOGGED_IN)
@@ -79,12 +75,9 @@ class MyProfileViewModel @Inject constructor(
             if (field == null) {
                 changeSignatureResult = changeSignatureController.switchMap { input: StringTrigger ->
                     if (input.isActioning) {
-                        val userLocal = localUserRepository.getLoggedInUser()
-                        if (userLocal.isValid()) {
-                            return@switchMap profileRepository.changeSignature(
-                                userLocal.token!!,
-                                input.data
-                            )
+                        val token = localUserRepository.getLoggedInUser().token
+                        if (!token.isNullOrEmpty()) {
+                            return@switchMap profileRepository.changeSignature(token, input.data)
                         } else {
                             return@switchMap LiveDataUtils.getMutableLiveData(
                                 DataState(DataState.STATE.NOT_LOGGED_IN)

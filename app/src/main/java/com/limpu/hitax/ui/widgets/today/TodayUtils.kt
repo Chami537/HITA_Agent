@@ -18,16 +18,17 @@ import com.limpu.hitax.ui.widgets.today.slim.TodayWidgetSlim
 import com.limpu.hitax.utils.SpecialEventReminderUtils
 import com.limpu.hitax.utils.TimeTools
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.DelicateCoroutinesApi
-import kotlinx.coroutines.MainScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import java.util.*
 
 object TodayUtils {
 
-    @OptIn(DelicateCoroutinesApi::class)
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
+
     fun BroadcastReceiver.goAsync(
-        coroutineScope: CoroutineScope = MainScope(),
+        coroutineScope: CoroutineScope = scope,
         block: suspend () -> Unit
     ) {
         val result = goAsync()
