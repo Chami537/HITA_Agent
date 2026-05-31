@@ -36,7 +36,7 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.Divider
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -417,7 +417,7 @@ private fun ExamHeader(
                 onClick = onPickTerm
             )
             if (showTypeFilter) {
-                Divider(
+                HorizontalDivider(
                     modifier = Modifier
                         .height(40.dp)
                         .padding(horizontal = tokens.spacing.sm),
@@ -627,7 +627,7 @@ private fun ExamRow(
             )
         }
         if (showDivider) {
-            Divider(
+            HorizontalDivider(
                 modifier = Modifier.padding(horizontal = tokens.spacing.lg),
                 color = MaterialTheme.colorScheme.outlineVariant
             )

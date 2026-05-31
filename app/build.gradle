@@ -29,7 +29,7 @@ android {
     defaultConfig {
         applicationId "com.limpu.hitax"
         minSdkVersion 26
-        targetSdk 33
+        targetSdk 34
         compileSdk 35
         versionCode appVersionCodeValue
         versionName appVersionNameValue

@@ -29,7 +29,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.Divider
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -515,7 +515,7 @@ private fun ScoreSummaryCard(
                     modifier = Modifier.weight(1f)
                 )
             }
-            Divider(
+            HorizontalDivider(
                 modifier = Modifier.padding(vertical = tokens.spacing.md),
                 color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.2f)
             )
@@ -714,7 +714,7 @@ private fun ScoreRow(
             }
         }
         if (showDivider) {
-            Divider(
+            HorizontalDivider(
                 modifier = Modifier.padding(horizontal = tokens.spacing.lg),
                 color = MaterialTheme.colorScheme.outlineVariant
             )

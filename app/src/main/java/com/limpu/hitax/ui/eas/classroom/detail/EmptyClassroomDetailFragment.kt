@@ -19,7 +19,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.Divider
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -159,7 +159,7 @@ private fun EmptyClassroomDetailSheet(
                     )
                 }
             }
-            Divider(
+            HorizontalDivider(
                 modifier = Modifier.padding(top = tokens.spacing.lg),
                 color = MaterialTheme.colorScheme.outlineVariant
             )
