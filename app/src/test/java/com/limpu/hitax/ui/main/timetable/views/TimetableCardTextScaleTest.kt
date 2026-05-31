@@ -10,15 +10,15 @@ class TimetableCardTextScaleTest {
     }
 
     @Test
-    fun textScale_halvesTextForSideBySideCards() {
-        assertEquals(0.5f, TimetableCardTextScale.forColumnCount(2), 0f)
-        assertEquals(0.5f, TimetableCardTextScale.forColumnCount(3), 0f)
+    fun textScale_scalesDownForSideBySideCards() {
+        assertEquals(0.7f, TimetableCardTextScale.forColumnCount(2), 0f)
+        assertEquals(0.7f, TimetableCardTextScale.forColumnCount(3), 0f)
     }
 
     @Test
-    fun marginScale_halvesSpacingForSideBySideCards() {
+    fun marginScale_scalesDownForSideBySideCards() {
         assertEquals(1f, TimetableCardTextScale.marginScaleForColumnCount(1), 0f)
-        assertEquals(0.5f, TimetableCardTextScale.marginScaleForColumnCount(2), 0f)
-        assertEquals(0.5f, TimetableCardTextScale.marginScaleForColumnCount(3), 0f)
+        assertEquals(0.7f, TimetableCardTextScale.marginScaleForColumnCount(2), 0f)
+        assertEquals(0.7f, TimetableCardTextScale.marginScaleForColumnCount(3), 0f)
     }
 }
