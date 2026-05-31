@@ -1,6 +1,7 @@
 package com.limpu.hitax.ui.main
 
 import android.app.Activity
+import android.content.DialogInterface
 import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.Color as AndroidColor
@@ -16,7 +17,7 @@ import android.widget.Toast
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
-import androidx.appcompat.app.AlertDialog
+import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateFloatAsState
@@ -50,6 +51,8 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -112,6 +115,7 @@ import com.limpu.hitax.ui.event.add.PopupAddEvent
 import com.limpu.hitax.ui.main.agent.AgentChatFragment
 import com.limpu.hitax.ui.main.navigation.NavigationFragment
 import com.limpu.hitax.ui.main.timeline.FragmentTimeLine
+import com.limpu.hitax.data.model.timetable.Timetable
 import com.limpu.hitax.ui.main.timetable.TimetableFragment
 import com.limpu.hitax.ui.main.timetable.panel.FragmentTimetablePanel
 import com.limpu.hitax.ui.widgets.WidgetUtils
@@ -150,6 +154,7 @@ class MainActivity : HiltBaseActivity<ComposeViewBinding>(),
     private var timetableTitle by mutableStateOf("")
     private var timetableDisplayName by mutableStateOf("")
     private var showTimetableName by mutableStateOf(false)
+    private var timetableOptionList by mutableStateOf<List<Timetable>>(emptyList())
     private var themeIcon by mutableIntStateOf(R.drawable.ic_moon_auto)
     private var wallpaperBitmap by mutableStateOf<Bitmap?>(null)
     private var wallpaperVisible by mutableStateOf(false)
@@ -196,6 +201,8 @@ class MainActivity : HiltBaseActivity<ComposeViewBinding>(),
                     timetableTitle = timetableTitle,
                     timetableName = timetableDisplayName,
                     showTimetableName = showTimetableName,
+                    timetableOptions = timetableOptionList,
+                    onTimetableSelected = ::onSemesterSelected,
                     themeIcon = themeIcon,
                     wallpaperBitmap = wallpaperBitmap,
                     wallpaperVisible = wallpaperVisible,
@@ -204,7 +211,7 @@ class MainActivity : HiltBaseActivity<ComposeViewBinding>(),
                     wallpaperLabelColor = Color(wallpaperLabelColor),
                     drawerState = drawerState,
                     onSelectTab = { selectedTab = it },
-                    onOpenDrawer = { drawerOpen = true },
+                    onOpenDrawer = { refreshDrawerState(); drawerOpen = true },
                     onCloseDrawer = { drawerOpen = false },
                     onTheme = {
                         ThemeTools.switchTheme(getThis())
@@ -216,7 +223,6 @@ class MainActivity : HiltBaseActivity<ComposeViewBinding>(),
                     onTimetableSetting = { FragmentTimetablePanel().show(supportFragmentManager, "panel") },
                     onAddEvent = { PopupAddEvent().show(supportFragmentManager, "add_event") },
                     onDrawerHeader = { openDrawerHeader() },
-                    onDrawerTimetableManager = { ActivityUtils.startTimetableManager(getThis()) },
                     onDrawerAgreement = { UserAgreementDialog().show(supportFragmentManager, "ua") },
                     onDrawerAbout = { ActivityUtils.startActivity(getThis(), ActivityAbout::class.java) },
                     fragmentFactory = { position ->
@@ -344,7 +350,7 @@ class MainActivity : HiltBaseActivity<ComposeViewBinding>(),
                         append(secondary)
                     }
                 }.ifBlank { easToken.username.orEmpty() },
-                avatar = null,
+                avatar = localUser.avatar,
                 loggedInLocalUser = false
             )
         } else {
@@ -359,8 +365,29 @@ class MainActivity : HiltBaseActivity<ComposeViewBinding>(),
 
     private fun openDrawerHeader() {
         val localUser = localUserRepository.getLoggedInUser()
-        if (localUser.isValid()) {
-            ActivityUtils.startProfileActivity(getThis(), localUser.id, null)
+        val easToken = easRepository.getEasToken()
+        if (localUser.isValid() || easToken.isLogin()) {
+            val title = if (localUser.isValid()) localUser.nickname.orEmpty()
+                else easToken.name ?: easToken.username.orEmpty()
+            val items = if (localUser.isValid())
+                arrayOf("查看资料", "退出登录")
+            else
+                arrayOf("退出登录")
+            MaterialAlertDialogBuilder(this)
+                .setTitle(title)
+                .setItems(items) { _: DialogInterface, which: Int ->
+                    when {
+                        localUser.isValid() && which == 0 ->
+                            ActivityUtils.startProfileActivity(getThis(), localUser.id, null)
+                        else -> {
+                            if (localUser.isValid())
+                                localUserRepository.logout(this@MainActivity)
+                            easRepository.logout()
+                            viewModel.startRefreshUser()
+                        }
+                    }
+                }
+                .show()
         } else {
             ActivityUtils.showEasVerifyWindow<Activity>(
                 this,
@@ -377,7 +404,7 @@ class MainActivity : HiltBaseActivity<ComposeViewBinding>(),
     }
 
     private fun showWallpaperMenu() {
-        AlertDialog.Builder(this)
+        MaterialAlertDialogBuilder(this)
             .setTitle(R.string.timetable_wallpaper)
             .setItems(arrayOf(getString(R.string.wallpaper_remove))) { _, _ ->
                 Thread {
@@ -482,6 +509,24 @@ class MainActivity : HiltBaseActivity<ComposeViewBinding>(),
         showTimetableName = false
     }
 
+    override fun setTimetableOptions(options: List<Timetable>) {
+        timetableOptionList = options
+    }
+
+    private fun onSemesterSelected(index: Int) {
+        val tt = timetableOptionList.getOrNull(index) ?: return
+        val now = System.currentTimeMillis()
+        val weekMills = 7L * 24 * 3600 * 1000
+        val targetMonday = if (now in tt.startTime.time..tt.endTime.time) {
+            val weekOffset = ((now - tt.startTime.time) / weekMills).toInt()
+            tt.startTime.time + weekOffset * weekMills
+        } else {
+            tt.startTime.time
+        }
+        val fragment = supportFragmentManager.findFragmentByTag("main_tab_1") as? TimetableFragment
+        fragment?.navigateToWeek(targetMonday)
+    }
+
     override fun setTimelineTitleText(string: String) {
         todayTitle = string
     }
@@ -507,6 +552,8 @@ private fun MainScreen(
     timetableTitle: String,
     timetableName: String,
     showTimetableName: Boolean,
+    timetableOptions: List<Timetable>,
+    onTimetableSelected: (Int) -> Unit,
     themeIcon: Int,
     wallpaperBitmap: Bitmap?,
     wallpaperVisible: Boolean,
@@ -523,7 +570,6 @@ private fun MainScreen(
     onTimetableSetting: () -> Unit,
     onAddEvent: () -> Unit,
     onDrawerHeader: () -> Unit,
-    onDrawerTimetableManager: () -> Unit,
     onDrawerAgreement: () -> Unit,
     onDrawerAbout: () -> Unit,
     fragmentFactory: (Int) -> Fragment,
@@ -602,6 +648,8 @@ private fun MainScreen(
                 timetableTitle = timetableTitle,
                 timetableName = timetableName,
                 showTimetableName = showTimetableName,
+                timetableOptions = timetableOptions,
+                onTimetableSelected = onTimetableSelected,
                 themeIcon = themeIcon,
                 wallpaperAlpha = wallpaperAlpha,
                 wallpaperTitleColor = wallpaperTitleColor,
@@ -651,7 +699,6 @@ private fun MainScreen(
         MainDrawer(
             drawerState = drawerState,
             onHeaderClick = onDrawerHeader,
-            onTimetableManager = onDrawerTimetableManager,
             onAgreement = onDrawerAgreement,
             onAbout = onDrawerAbout,
             modifier = Modifier
@@ -670,6 +717,8 @@ private fun MainTopBar(
     timetableTitle: String,
     timetableName: String,
     showTimetableName: Boolean,
+    timetableOptions: List<Timetable>,
+    onTimetableSelected: (Int) -> Unit,
     themeIcon: Int,
     wallpaperAlpha: Float,
     wallpaperTitleColor: Color,
@@ -718,6 +767,8 @@ private fun MainTopBar(
                 title = timetableTitle,
                 name = timetableName,
                 showName = showTimetableName,
+                timetableOptions = timetableOptions,
+                onTimetableSelected = onTimetableSelected,
                 titleColor = titleColor,
                 onWallpaper = onWallpaper,
                 onWallpaperLongPress = onWallpaperLongPress,
@@ -758,12 +809,15 @@ private fun TimetableToolbarTitle(
     title: String,
     name: String,
     showName: Boolean,
+    timetableOptions: List<Timetable>,
+    onTimetableSelected: (Int) -> Unit,
     titleColor: Color = MaterialTheme.colorScheme.onSurface,
     onWallpaper: () -> Unit,
     onWallpaperLongPress: () -> Unit,
     onTimetableSetting: () -> Unit,
     onAddEvent: () -> Unit,
 ) {
+    var nameMenuExpanded by remember { mutableStateOf(false) }
     Row(
         modifier = Modifier.fillMaxWidth(),
         verticalAlignment = Alignment.CenterVertically
@@ -782,18 +836,35 @@ private fun TimetableToolbarTitle(
             )
         }
         AnimatedVisibility(visible = showName && name.isNotBlank()) {
-            Text(
-                text = name,
-                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.8f),
-                fontSize = 12.sp,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier
-                    .padding(start = HitaTheme.tokens.spacing.md)
-                    .clip(RoundedCornerShape(12.dp))
-                    .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.8f))
-                    .padding(horizontal = 6.dp, vertical = 3.dp)
-            )
+            Box {
+                Text(
+                    text = name,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.8f),
+                    fontSize = 12.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier
+                        .padding(start = HitaTheme.tokens.spacing.md)
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.8f))
+                        .clickable { nameMenuExpanded = true }
+                        .padding(horizontal = 6.dp, vertical = 3.dp)
+                )
+                DropdownMenu(
+                    expanded = nameMenuExpanded && timetableOptions.isNotEmpty(),
+                    onDismissRequest = { nameMenuExpanded = false }
+                ) {
+                    timetableOptions.forEachIndexed { i, tt ->
+                        DropdownMenuItem(
+                            text = { Text(tt.name.orEmpty()) },
+                            onClick = {
+                                nameMenuExpanded = false
+                                onTimetableSelected(i)
+                            }
+                        )
+                    }
+                }
+            }
         }
         Spacer(modifier = Modifier.weight(1f))
         ToolbarIcon(R.drawable.ic_wallpaper, onClick = onWallpaper, onLongClick = onWallpaperLongPress)
@@ -1015,7 +1086,6 @@ private fun MainPillTabBar(
 private fun MainDrawer(
     drawerState: DrawerUserState,
     onHeaderClick: () -> Unit,
-    onTimetableManager: () -> Unit,
     onAgreement: () -> Unit,
     onAbout: () -> Unit,
     modifier: Modifier = Modifier,
@@ -1037,7 +1107,6 @@ private fun MainDrawer(
                     .padding(horizontal = HitaTheme.tokens.spacing.xl)
                     .background(MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.8f))
             )
-            DrawerItem(R.drawable.ic_menu_settings, stringResource(R.string.menu_timeable_curriculum), onTimetableManager)
             DrawerItem(R.drawable.ic_info, stringResource(R.string.name_ua_and_pp), onAgreement)
             DrawerItem(R.drawable.logo, stringResource(R.string.main_drawer_menu_about), onAbout)
         }

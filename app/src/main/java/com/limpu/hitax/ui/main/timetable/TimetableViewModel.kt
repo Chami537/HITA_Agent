@@ -45,7 +45,7 @@ class TimetableViewModel @Inject constructor(
 
     private val timetableStyleLiveData: LiveData<TimetableStyleSheet> =
         timetableStyleRepository.getStyleSheetLiveData()
-    val windowEventsData: MutableList<MediatorLiveData<Pair<List<EventItem>, TimetableStyleSheet>>> =
+    val windowEventsData: MutableList<MediatorLiveData<EventStylePair>> =
         mutableListOf()
     val windowStartData: MutableList<MutableLiveData<Long>> = mutableListOf()
     val windowHashesData = mutableListOf<Int>()
@@ -70,7 +70,7 @@ class TimetableViewModel @Inject constructor(
                 )
             }
             val eventsData = MTransformations.switchMap(eventsRawData,timetableStyleLiveData){
-                return@switchMap MutableLiveData(it)
+                return@switchMap MutableLiveData(EventStylePair(it.first, it.second))
             }
             windowEventsData.add(eventsData)
         }
@@ -92,3 +92,9 @@ class TimetableViewModel @Inject constructor(
     }
 
 }
+
+/** Wrapper that uses reference equality so Compose always recomposes on new emissions. */
+class EventStylePair(
+    val events: List<EventItem>,
+    val style: TimetableStyleSheet
+)

@@ -15,9 +15,9 @@ class TimetableStyleSheet {
     var cardIconEnabled: Boolean = false
     var cardOpacity: Int = 95
         get() = field.coerceIn(20, 100)
-    var cardHeight: Int = 150
+    var cardHeight: Int = 160
     var usePeriodLabel: Boolean = false
-    var startTime: Int = 800
+    var startTime: Int = 830
         set(value) {
             startTimeInDay = TimeInDay(value / 100, value % 100)
             field = value

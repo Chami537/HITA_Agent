@@ -24,7 +24,7 @@ const val KEY_CARD_OPACITY = "card_opacity"
 
 class TimetableStyleRepository @Inject constructor(application: Application) {
     private val timetableStyleSP: SharedPreferences = application.getSharedPreferences(SP_NAME, Context.MODE_PRIVATE)
-    val startTimeLiveData = timetableStyleSP.intLiveData(KEY_START_DATE, 800)
+    val startTimeLiveData = timetableStyleSP.intLiveData(KEY_START_DATE, 830)
     val drawBGLinesLiveData = timetableStyleSP.booleanLiveData(KEY_DRAW_BG_LINE, true)
     val colorEnableLiveData = timetableStyleSP.booleanLiveData(KEY_COLOR_ENABLE, true)
     val fadeEnableLiveData = timetableStyleSP.booleanLiveData(KEY_FADE_ENABLE, true)

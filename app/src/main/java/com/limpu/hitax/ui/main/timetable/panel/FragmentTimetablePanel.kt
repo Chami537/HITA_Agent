@@ -107,7 +107,7 @@ private fun TimetablePanelScreen(
     viewModel: TimetablePanelViewModel,
     onPickStartTime: (Int) -> Unit,
 ) {
-    val startTime by viewModel.startDateLiveData.observeAsState(800)
+    val startTime by viewModel.startDateLiveData.observeAsState(830)
     val drawBgLines by viewModel.drawBGLinesLiveData.observeAsState(true)
     val colorEnable by viewModel.colorEnableLiveData.observeAsState(true)
     val fadeEnable by viewModel.fadeEnableLiveData.observeAsState(true)

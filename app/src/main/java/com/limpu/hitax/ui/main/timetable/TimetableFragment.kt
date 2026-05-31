@@ -111,6 +111,10 @@ class TimetableFragment : HiltBaseFragment<ComposeViewBinding>() {
         const val WEEK_MILLS: Long = 1000 * 60 * 60 * 24 * 7
     }
 
+    fun navigateToWeek(mondayMillis: Long) {
+        viewModel.currentPageStartDate.value = mondayMillis
+    }
+
     override fun initViewBinding(): ComposeViewBinding {
         return ComposeViewBinding(ComposeView(requireContext()))
     }
@@ -152,6 +156,7 @@ class TimetableFragment : HiltBaseFragment<ComposeViewBinding>() {
             is TimetableTitleState.Week -> {
                 mainPageController?.setTitleText(state.title)
                 mainPageController?.setTimetableName(state.name)
+                mainPageController?.setTimetableOptions(state.timetableOptions)
             }
         }
     }
@@ -246,12 +251,13 @@ class TimetableFragment : HiltBaseFragment<ComposeViewBinding>() {
         fun setTitleText(string: String)
         fun setTimetableName(String: String)
         fun setSingleTitle(string: String)
+        fun setTimetableOptions(options: List<Timetable>)
     }
 }
 
 private sealed interface TimetableTitleState {
     data class Single(val title: String) : TimetableTitleState
-    data class Week(val title: String, val name: String) : TimetableTitleState
+    data class Week(val title: String, val name: String, val timetableOptions: List<Timetable> = emptyList()) : TimetableTitleState
 }
 
 @Composable
@@ -267,7 +273,7 @@ private fun TimetableScreen(
         initial = viewModel.currentPageStartDate.value ?: mondayOf(System.currentTimeMillis())
     )
     val timetables by viewModel.timetableLiveData.observeAsState(emptyList())
-    val startTime by viewModel.startTimeLiveData.observeAsState(800)
+    val startTime by viewModel.startTimeLiveData.observeAsState(830)
     val periodLabel by viewModel.periodLabelLiveData.observeAsState(false)
     val wallpaperPath by viewModel.wallpaperPathLiveData.observeAsState("")
     val dateColorInt by viewModel.wallpaperDateColorLiveData.observeAsState(AndroidColor.WHITE)
@@ -282,12 +288,12 @@ private fun TimetableScreen(
     }
 
     val style = remember(windowEvents, startTime, periodLabel) {
-        (windowEvents?.second ?: TimetableStyleSheet()).also {
+        (windowEvents?.style ?: TimetableStyleSheet()).also {
             it.startTime = startTime
             it.usePeriodLabel = periodLabel
         }
     }
-    val events = windowEvents?.first.orEmpty()
+    val events = windowEvents?.events.orEmpty()
     val showTodayFab = currentPageStart > System.currentTimeMillis() ||
             System.currentTimeMillis() >= currentPageStart + TimetableFragment.WEEK_MILLS
 
@@ -350,8 +356,9 @@ private fun buildTitleState(
     }
     return minTT?.let {
         TimetableTitleState.Week(
-            context.getString(R.string.week_title, minWk),
-            it.name.orEmpty()
+            title = context.getString(R.string.week_title, minWk),
+            name = it.name.orEmpty(),
+            timetableOptions = timetables.filter { tt -> !tt.code.isNullOrEmpty() }
         )
     } ?: TimetableTitleState.Single(context.getString(R.string.holiday))
 }
@@ -498,33 +505,50 @@ private fun TimetableDowHeader(startDate: Long, monthColor: Color) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .height(36.dp)
             .padding(bottom = HitaTheme.tokens.spacing.xs),
-        verticalAlignment = Alignment.CenterVertically
+        verticalAlignment = Alignment.Bottom
     ) {
-        Text(
-            text = months[days.first()[Calendar.MONTH]],
-            color = monthColor.copy(alpha = 0.9f),
-            fontSize = 11.sp,
-            fontWeight = FontWeight.Bold,
-            textAlign = TextAlign.Center,
-            modifier = Modifier.width(HitaTheme.tokens.componentSize.timetableLabelWidth)
-        )
-        dows.forEach { dow ->
-            Box(
-                modifier = Modifier
-                    .weight(1f)
-                    .size(26.dp)
-                    .clip(CircleShape)
-                    .background(MaterialTheme.colorScheme.surface),
-                contentAlignment = Alignment.Center
+        // Month label
+        Column(
+            modifier = Modifier.width(HitaTheme.tokens.componentSize.timetableLabelWidth),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Text(
+                text = months[days.first()[Calendar.MONTH]],
+                color = monthColor.copy(alpha = 0.9f),
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Bold,
+                textAlign = TextAlign.Center,
+            )
+        }
+        // Day columns with dow circle + date
+        days.forEachIndexed { index, day ->
+            Column(
+                modifier = Modifier.weight(1f),
+                horizontalAlignment = Alignment.CenterHorizontally
             ) {
+                Box(
+                    modifier = Modifier
+                        .size(26.dp)
+                        .clip(CircleShape)
+                        .background(MaterialTheme.colorScheme.surface),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = dows[index],
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.94f),
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Bold,
+                        textAlign = TextAlign.Center,
+                    )
+                }
                 Text(
-                    text = dow,
-                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.94f),
+                    text = "${day[Calendar.DATE]}",
+                    color = monthColor,
                     fontSize = 10.sp,
-                    fontWeight = FontWeight.Bold,
-                    textAlign = TextAlign.Center,
+                    fontWeight = FontWeight.Medium,
+                    maxLines = 1,
+                    modifier = Modifier.padding(top = 2.dp)
                 )
             }
         }
@@ -541,24 +565,43 @@ private fun TimetableLeftLabels(
     val labelColor = color.copy(alpha = 0.91f)
     Column(modifier = modifier) {
         if (style.usePeriodLabel) {
-            styleStructure().forEachIndexed { index, period ->
-                val topMinutes = start.getDistanceInMinutes(period.from).coerceAtLeast(0)
-                val top = (topMinutes / 60f * style.cardHeight).roundToInt()
+            val density = LocalDensity.current
+            val periods = styleStructure()
+            if (periods.isEmpty()) return@Column
+            // Spacer if grid starts before first period
+            val firstGap = start.getDistanceInMinutes(periods.first().from).coerceAtLeast(0)
+            if (firstGap > 0) {
+                Spacer(Modifier.height(with(density) { (firstGap / 60f * style.cardHeight).toDp() }))
+            }
+            for (i in periods.indices) {
+                val period = periods[i]
+                val nextStart = periods.getOrElse(i + 1) { TimePeriodInDay(TimeInDay(24, 0), TimeInDay(24, 0)) }.from
+                val segmentMinutes = period.from.getDistanceInMinutes(nextStart)
                 Text(
-                    text = "第\n${index + 1}\n节",
+                    text = "第\n${i + 1}\n节",
                     color = labelColor,
                     fontSize = 12.sp,
                     lineHeight = 12.sp,
                     textAlign = TextAlign.Center,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .offset { IntOffset(0, top) }
+                        .height(with(density) { (segmentMinutes / 60f * style.cardHeight).toDp() })
                 )
             }
         } else {
-            for (hour in start.hour..23) {
+            val density = LocalDensity.current
+            val labelTimes = hourLabelTimes()
+            // Spacer if grid starts before first label
+            val firstGap = start.getDistanceInMinutes(labelTimes.first()).coerceAtLeast(0)
+            if (firstGap > 0) {
+                Spacer(Modifier.height(with(density) { (firstGap / 60f * style.cardHeight).toDp() }))
+            }
+            for (i in labelTimes.indices) {
+                val labelTime = labelTimes[i]
+                val nextTime = labelTimes.getOrElse(i + 1) { TimeInDay(24, 0) }
+                val segmentMinutes = labelTime.getDistanceInMinutes(nextTime)
                 Text(
-                    text = TimeInDay(hour, 0).toString(),
+                    text = labelTime.toString(),
                     color = labelColor,
                     fontSize = 10.sp,
                     maxLines = 1,
@@ -566,7 +609,7 @@ private fun TimetableLeftLabels(
                     textAlign = TextAlign.Center,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(with(LocalDensity.current) { style.cardHeight.toDp() })
+                        .height(with(density) { (segmentMinutes / 60f * style.cardHeight).toDp() })
                 )
             }
         }
@@ -593,8 +636,10 @@ private fun TimetableGrid(startDate: Long, style: TimetableStyleSheet) {
         if (style.drawBGLine) {
             val start = style.getStartTimeObject()
             val effect = PathEffect.dashPathEffect(floatArrayOf(20f, 20f), 0f)
-            for (hour in start.hour..23) {
-                val y = (hour - start.hour) * style.cardHeight.toFloat()
+            val labelTimes = hourLabelTimes()
+            for (labelTime in labelTimes) {
+                val offsetMinutes = start.getDistanceInMinutes(labelTime).coerceAtLeast(0)
+                val y = (offsetMinutes / 60f * style.cardHeight)
                 drawLine(
                     color = lineColor,
                     start = Offset(0f, y),
@@ -633,10 +678,9 @@ private fun TimetableEventLayer(
                 event = event,
                 style = style,
                 modifier = Modifier
-                    .offset(x = dayLeft + columnWidth * positioned.columnIndex, y = top)
-                    .width(columnWidth)
+                    .offset(x = dayLeft + columnWidth * positioned.columnIndex + 2.dp, y = top)
+                    .width((columnWidth - 4.dp).coerceAtLeast(0.dp))
                     .height(height),
-                cardWidth = columnWidth,
                 cardHeight = height,
                 columnCount = positioned.columnCount,
                 onClick = { onEventClick(event) },
@@ -646,7 +690,6 @@ private fun TimetableEventLayer(
     }
 }
 
-private val CardShape = RoundedCornerShape(16.dp)
 
 @Composable
 private fun BoxWithConstraintsCompat(content: @Composable androidx.compose.foundation.layout.BoxWithConstraintsScope.() -> Unit) {
@@ -658,7 +701,6 @@ private fun TimetableEventCard(
     event: EventItem,
     style: TimetableStyleSheet,
     modifier: Modifier = Modifier,
-    cardWidth: Dp,
     cardHeight: Dp,
     columnCount: Int,
     onClick: () -> Unit,
@@ -669,24 +711,36 @@ private fun TimetableEventCard(
         Color(event.color)
     } else {
         MaterialTheme.colorScheme.primary
-    }.copy(alpha = style.cardOpacity.coerceIn(20, 100) / 100f)
-    val borderColor = remember(background) { background.copy(alpha = 0.3f) }
+    }.copy(alpha = (120 - style.cardOpacity.coerceIn(20, 100)) / 100f)
+    val borderColor = background.copy(alpha = 0.3f)
+    val cardShape = RoundedCornerShape(HitaTheme.tokens.radius.md)
     val effectiveBg = background.toArgb()
     val titleColor = resolveCardTextColor(style.cardTitleColor, style.isColorEnabled, event.color, effectiveBg)
     val subtitleColor = resolveCardTextColor(style.subTitleColor, style.isColorEnabled, event.color, effectiveBg)
     val textScale = TimetableCardTextScale.forColumnCount(columnCount)
     val marginScale = TimetableCardTextScale.marginScaleForColumnCount(columnCount)
-    val density = LocalDensity.current
+    val nameLength = event.name.length
+    val lengthScale = when {
+        nameLength <= 4 -> 1.15f
+        nameLength <= 6 -> 0.92f
+        nameLength <= 8 -> 0.75f
+        else -> 0.62f
+    }
     val horizontalPadding = (5 * marginScale).dp
     val verticalPadding = (3 * marginScale).dp
-    val availableTextWidth = (cardWidth - horizontalPadding * 2).coerceAtLeast(1.dp)
-    val availableTextWidthSp = with(density) { availableTextWidth.toPx().toSp().value }
-    val minTitleSize = if (columnCount > 1) 7f else 9f
-    val titleFontSize = (12f * textScale)
-        .coerceAtMost(availableTextWidthSp / 4f)
+    val minTitleSize = if (columnCount > 1) 5f else 6f
+    val titleFontSize = (13f * textScale * lengthScale)
         .coerceAtLeast(minTitleSize)
         .sp
-    val subtitleFontSize = (titleFontSize.value - 1f).coerceAtLeast(6f).sp
+    val placeText = event.place
+    val subtitleLengthScale = if (!placeText.isNullOrBlank()) {
+        when {
+            placeText.length <= 4 -> 1.0f
+            placeText.length <= 6 -> 0.85f
+            else -> 0.7f
+        }
+    } else 1.0f
+    val subtitleFontSize = ((titleFontSize.value - 1f) * subtitleLengthScale).coerceAtLeast(5f).sp
     val maxTitleLines = when {
         cardHeight < 40.dp -> 1
         cardHeight < 60.dp -> 2
@@ -694,8 +748,7 @@ private fun TimetableEventCard(
     }
     Card(
         modifier = modifier
-            .padding(1.dp)
-            .border(0.5.dp, borderColor, CardShape)
+            .border(0.5.dp, borderColor, cardShape)
             .pointerInput(event.id) {
                 detectTapGestures(
                     onLongPress = {
@@ -705,7 +758,7 @@ private fun TimetableEventCard(
                     onTap = { onClick() }
                 )
             },
-        shape = CardShape,
+        shape = cardShape,
         colors = CardDefaults.cardColors(containerColor = background),
         elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
     ) {
@@ -746,7 +799,7 @@ private fun TimetableEventCard(
                     lineHeight = (subtitleFontSize.value * 1.2f).sp,
                     fontWeight = if (style.isBoldText) FontWeight.Bold else FontWeight.Normal,
                     textAlign = TextAlign.Center,
-                    maxLines = 1,
+                    maxLines = 3,
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier
                         .fillMaxWidth()
@@ -808,6 +861,14 @@ private fun pickPeriodFromOffset(y: Float, style: TimetableStyleSheet): TimePeri
         }
     }
     return null
+}
+
+/** 上午半小时间隔(8:30-12:30) + 下午整点(14:00-23:00) */
+private fun hourLabelTimes(): List<TimeInDay> {
+    val times = mutableListOf<TimeInDay>()
+    for (h in 8..12) times.add(TimeInDay(h, 30))
+    for (h in 14..23) times.add(TimeInDay(h, 0))
+    return times
 }
 
 private fun styleStructure(): List<TimePeriodInDay> {

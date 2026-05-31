@@ -2,6 +2,7 @@ package com.limpu.hitax.ui.main.navigation
 
 import android.annotation.SuppressLint
 import android.app.Activity
+import android.content.DialogInterface
 import android.content.Intent
 import android.net.Uri
 import android.os.Build
@@ -39,6 +40,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.livedata.observeAsState
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -87,6 +89,7 @@ class NavigationFragment : androidx.fragment.app.Fragment() {
 
     private val viewModel: NavigationViewModel by viewModels()
     private var reminderEnabledState by mutableStateOf(false)
+    private var userStateVersion by mutableStateOf(0)
 
     private val pickAvatarLauncher = registerForActivityResult(
         ActivityResultContracts.GetContent()
@@ -120,8 +123,8 @@ class NavigationFragment : androidx.fragment.app.Fragment() {
                 HitaComposeTheme() {
                     NavigationScreen(
                         viewModel = viewModel,
-                        localUser = localUserRepository.getLoggedInUser(),
-                        easToken = easRepository.getEasToken(),
+                        localUser = remember(userStateVersion) { localUserRepository.getLoggedInUser() },
+                        easToken = remember(userStateVersion) { easRepository.getEasToken() },
                         reminderEnabled = reminderEnabledState,
                         onAvatarClick = { showAvatarPicker() },
                         onUserClick = { openUserCard() },
@@ -184,6 +187,7 @@ class NavigationFragment : androidx.fragment.app.Fragment() {
                 tempFile.delete()
                 localUserRepository.changeLocalAvatar("local://${destFile.absolutePath}")
                 activity?.runOnUiThread {
+                    userStateVersion++
                     Toast.makeText(ctx, "头像更换成功", Toast.LENGTH_SHORT).show()
                     Glide.get(ctx).clearMemory()
                 }
@@ -197,8 +201,29 @@ class NavigationFragment : androidx.fragment.app.Fragment() {
 
     private fun openUserCard() {
         val localUser = localUserRepository.getLoggedInUser()
-        if (localUser.isValid()) {
-            ActivityUtils.startProfileActivity(requireContext(), localUser.id, null)
+        val easToken = easRepository.getEasToken()
+        if (localUser.isValid() || easToken.isLogin()) {
+            val title = if (localUser.isValid()) localUser.nickname.orEmpty()
+                else easToken.name ?: easToken.username.orEmpty()
+            val items = if (localUser.isValid())
+                arrayOf("查看资料", "退出登录")
+            else
+                arrayOf("退出登录")
+            MaterialAlertDialogBuilder(requireContext())
+                .setTitle(title)
+                .setItems(items) { _: DialogInterface, which: Int ->
+                    when {
+                        localUser.isValid() && which == 0 ->
+                            ActivityUtils.startProfileActivity(requireContext(), localUser.id, null)
+                        else -> {
+                            if (localUser.isValid())
+                                localUserRepository.logout(requireContext())
+                            easRepository.logout()
+                            userStateVersion++
+                        }
+                    }
+                }
+                .show()
         } else {
             ActivityUtils.showEasVerifyWindow<Activity>(
                 requireActivity(),
@@ -304,8 +329,8 @@ private fun NavigationScreen(
     reminderEnabled: Boolean,
     onAvatarClick: () -> Unit,
     onUserClick: () -> Unit,
-    onTimetableManager: () -> Unit,
     onRecentTimetable: () -> Unit,
+    onTimetableManager: () -> Unit,
     onImportTimetable: () -> Unit,
     onImportIcs: () -> Unit,
     onExam: () -> Unit,
@@ -319,6 +344,7 @@ private fun NavigationScreen(
     val tokens = HitaTheme.tokens
     val recentTimetable by viewModel.recentTimetableLiveData.observeAsState()
     val timetableCount by viewModel.timetableCountLiveData.observeAsState(0)
+
 
     Column(
         modifier = Modifier

@@ -104,18 +104,12 @@ class Timetable {
 
     fun getDefaultTimeStructure():List<TimePeriodInDay>{
         val res = mutableListOf<TimePeriodInDay>()
-        res.add(TimePeriodInDay(TimeInDay(8,30), TimeInDay(9,20)))
-        res.add(TimePeriodInDay(TimeInDay(9,25),TimeInDay(10,15)))
-        res.add(TimePeriodInDay(TimeInDay(10,30),TimeInDay(11,20)))
-        res.add(TimePeriodInDay(TimeInDay(11,25),TimeInDay(12,15)))
-        res.add(TimePeriodInDay(TimeInDay(14,0),TimeInDay(14,50)))
-        res.add(TimePeriodInDay(TimeInDay(14,55),TimeInDay(15,45)))
-        res.add(TimePeriodInDay(TimeInDay(16,0),TimeInDay(16,50)))
-        res.add(TimePeriodInDay(TimeInDay(16,55),TimeInDay(17,45)))
-        res.add(TimePeriodInDay(TimeInDay(18,45),TimeInDay(19,35)))
-        res.add(TimePeriodInDay(TimeInDay(19,40),TimeInDay(20,30)))
-        res.add(TimePeriodInDay(TimeInDay(20,45),TimeInDay(21,35)))
-        res.add(TimePeriodInDay(TimeInDay(21,40),TimeInDay(22,30)))
+        res.add(TimePeriodInDay(TimeInDay(8,30), TimeInDay(10,15)))
+        res.add(TimePeriodInDay(TimeInDay(10,30),TimeInDay(12,15)))
+        res.add(TimePeriodInDay(TimeInDay(14,0),TimeInDay(15,45)))
+        res.add(TimePeriodInDay(TimeInDay(16,0),TimeInDay(17,45)))
+        res.add(TimePeriodInDay(TimeInDay(18,45),TimeInDay(20,30)))
+        res.add(TimePeriodInDay(TimeInDay(20,45),TimeInDay(22,30)))
         return res
     }
 
