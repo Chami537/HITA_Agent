@@ -4,8 +4,10 @@ import android.annotation.SuppressLint
 import android.app.Activity
 import android.content.Intent
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
 import android.graphics.Color
+import android.view.View
 import android.view.ViewGroup
 import android.webkit.CookieManager
 import android.webkit.JavascriptInterface
@@ -209,11 +211,22 @@ class WebViewLoginActivity : AppCompatActivity() {
 
     private fun setupWebView() {
         webView.apply {
+            setBackgroundColor(Color.WHITE)
+            if (!silentMode && isAndroidEmulator()) {
+                setLayerType(View.LAYER_TYPE_SOFTWARE, null)
+                LogUtils.d("using software layer for emulator WebView rendering")
+            }
             settings.javaScriptEnabled = true
             settings.domStorageEnabled = true
             settings.loadWithOverviewMode = true
             settings.useWideViewPort = true
             settings.mixedContentMode = WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                settings.forceDark = WebSettings.FORCE_DARK_OFF
+            }
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                settings.isAlgorithmicDarkeningAllowed = false
+            }
 
             webChromeClient = object : WebChromeClient() {
                 override fun onProgressChanged(view: WebView?, newProgress: Int) {
@@ -362,6 +375,23 @@ class WebViewLoginActivity : AppCompatActivity() {
             }
             EASToken.Campus.SHENZHEN -> false
         }
+    }
+
+    private fun isAndroidEmulator(): Boolean {
+        val fingerprint = Build.FINGERPRINT.lowercase()
+        val model = Build.MODEL.lowercase()
+        val manufacturer = Build.MANUFACTURER.lowercase()
+        val brand = Build.BRAND.lowercase()
+        val device = Build.DEVICE.lowercase()
+        val product = Build.PRODUCT.lowercase()
+        return fingerprint.startsWith("generic") ||
+            fingerprint.contains("emulator") ||
+            model.contains("sdk") ||
+            model.contains("emulator") ||
+            manufacturer.contains("genymotion") ||
+            brand.startsWith("generic") && device.startsWith("generic") ||
+            product.contains("sdk_gphone") ||
+            product.contains("emulator")
     }
 
     private fun autoOpenJwts(webView: WebView) {
@@ -789,7 +819,7 @@ private fun WebViewLoginScreen(
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(if (silentMode) ComposeColor.Transparent else MaterialTheme.colorScheme.background)
+            .background(if (silentMode) ComposeColor.Transparent else ComposeColor.White)
     ) {
         if (!silentMode) {
             TopAppBar(
