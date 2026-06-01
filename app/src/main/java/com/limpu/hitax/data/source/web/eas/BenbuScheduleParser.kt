@@ -9,6 +9,7 @@ import org.jsoup.Jsoup
 object BenbuScheduleParser {
     private const val DEBUG_WEEK = 7
     private val DEBUG_DOW = setOf(5, 6)
+    private val WEEK_PATTERN = Regex("""\[([^\]]+)\](?:单|双)?周(?:\((?:单|双)\))?""")
 
     fun parseScheduleHtml(html: String): List<CourseItem> {
         val result = mutableListOf<CourseItem>()
@@ -58,7 +59,7 @@ object BenbuScheduleParser {
         while (i < parts.size) {
             val line = parts[i]
 
-            if (Regex("""\[([^\]]+)\](?:单|双)?周(?:\((?:单|双)\))?""").containsMatchIn(line)) {
+            if (WEEK_PATTERN.containsMatchIn(line)) {
                 i++
                 continue
             }
@@ -69,9 +70,16 @@ object BenbuScheduleParser {
             val teacherLocationLines = mutableListOf<String>()
             while (i < parts.size) {
                 val nextLine = parts[i]
-                if (Regex("""\[([^\]]+)\](?:单|双)?周(?:\((?:单|双)\))?""").containsMatchIn(nextLine)) {
+                if (WEEK_PATTERN.containsMatchIn(nextLine)) {
                     teacherLocationLines.add(nextLine)
                     i++
+                } else if (
+                    teacherLocationLines.isNotEmpty() &&
+                    !parts.getOrNull(i + 1).orEmpty().let { WEEK_PATTERN.containsMatchIn(it) }
+                ) {
+                    teacherLocationLines.add(nextLine)
+                    i++
+                    break
                 } else {
                     break
                 }
