@@ -3,6 +3,7 @@ package com.limpu.hitax.ui.eas.login
 import android.annotation.SuppressLint
 import android.app.Activity
 import android.content.Intent
+import android.graphics.Rect
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
@@ -11,6 +12,8 @@ import android.view.View
 import android.view.ViewGroup
 import android.webkit.CookieManager
 import android.webkit.JavascriptInterface
+import android.webkit.RenderProcessGoneDetail
+import android.webkit.WebResourceResponse
 import android.webkit.WebChromeClient
 import android.webkit.WebResourceError
 import android.webkit.WebResourceRequest
@@ -224,6 +227,7 @@ class WebViewLoginActivity : AppCompatActivity() {
                 override fun onProgressChanged(view: WebView?, newProgress: Int) {
                     if (newProgress == 100) {
                         progressVisible = false
+                        logWebViewRenderMarker("progress-100", view)
                     } else {
                         progressVisible = true
                         progressValue = newProgress
@@ -234,6 +238,12 @@ class WebViewLoginActivity : AppCompatActivity() {
             webViewClient = object : WebViewClient() {
                 override fun onPageStarted(view: WebView?, url: String?, favicon: android.graphics.Bitmap?) {
                     super.onPageStarted(view, url, favicon)
+                    logWebViewRenderMarker("page-started", view, url)
+                }
+
+                override fun onPageCommitVisible(view: WebView, url: String) {
+                    super.onPageCommitVisible(view, url)
+                    logWebViewRenderMarker("page-commit-visible", view, url)
                 }
 
                 override fun onPageFinished(view: WebView, url: String) {
@@ -259,6 +269,8 @@ class WebViewLoginActivity : AppCompatActivity() {
 
                     val uri = Uri.parse(url)
                     LogUtils.d("onPageFinished: host=${uri.host} path=${uri.path} autoOpeningJwts=$autoOpeningJwts")
+                    logWebViewRenderMarker("page-finished", view, url)
+                    schedulePageDiagnostics(view, url)
 
                     when {
                         isPortalHomePage(url) -> {
@@ -301,7 +313,175 @@ class WebViewLoginActivity : AppCompatActivity() {
                     super.onReceivedError(view, request, error)
                     LogUtils.w( "onReceivedError url=${request?.url} code=${error?.errorCode} desc=${error?.description} campus=${config.campus}")
                 }
+
+                override fun onReceivedHttpError(
+                    view: WebView?,
+                    request: WebResourceRequest?,
+                    errorResponse: WebResourceResponse?
+                ) {
+                    super.onReceivedHttpError(view, request, errorResponse)
+                    if (request?.isForMainFrame == true) {
+                        LogUtils.w(
+                            "main frame HTTP error status=${errorResponse?.statusCode} reason=${errorResponse?.reasonPhrase} url=${safeUrl(request.url?.toString())}"
+                        )
+                    }
+                }
+
+                override fun onScaleChanged(view: WebView?, oldScale: Float, newScale: Float) {
+                    super.onScaleChanged(view, oldScale, newScale)
+                    if (!silentMode) {
+                        LogUtils.d("webview scale changed old=$oldScale new=$newScale url=${safeUrl(view?.url)}")
+                    }
+                }
+
+                override fun onRenderProcessGone(view: WebView?, detail: RenderProcessGoneDetail?): Boolean {
+                    LogUtils.e(
+                        "webview render process gone didCrash=${detail?.didCrash()} priority=${detail?.rendererPriorityAtExit()} url=${safeUrl(view?.url)}"
+                    )
+                    return super.onRenderProcessGone(view, detail)
+                }
             }
+        }
+    }
+
+    private fun schedulePageDiagnostics(view: WebView, url: String) {
+        if (silentMode) return
+        val host = Uri.parse(url).host.orEmpty()
+        val path = Uri.parse(url).path.orEmpty()
+        val shouldProbe = host.contains("ivpn.hit.edu.cn") ||
+            host.contains("ids") ||
+            path.contains("authserver")
+        if (!shouldProbe) return
+
+        view.postDelayed({
+            logWebViewRenderMarker("diag-800ms", view, url)
+            evaluatePageDiagnostics(view, "diag-800ms")
+        }, 800)
+        view.postDelayed({
+            logWebViewRenderMarker("diag-2500ms", view, url)
+            evaluatePageDiagnostics(view, "diag-2500ms")
+        }, 2500)
+    }
+
+    private fun evaluatePageDiagnostics(view: WebView, marker: String) {
+        val script = """
+            (function() {
+              function visibleStyle(el) {
+                var r = el.getBoundingClientRect();
+                var s = window.getComputedStyle(el);
+                return {
+                  tag: el.tagName,
+                  type: el.getAttribute('type') || '',
+                  id: el.id || '',
+                  name: el.getAttribute('name') || '',
+                  cls: (el.className || '').toString().slice(0, 80),
+                  rect: {
+                    x: Math.round(r.x),
+                    y: Math.round(r.y),
+                    w: Math.round(r.width),
+                    h: Math.round(r.height)
+                  },
+                  display: s.display,
+                  visibility: s.visibility,
+                  opacity: s.opacity,
+                  zIndex: s.zIndex,
+                  disabled: !!el.disabled
+                };
+              }
+              var inputs = Array.prototype.slice.call(document.querySelectorAll('input, textarea, select'));
+              var forms = Array.prototype.slice.call(document.querySelectorAll('form'));
+              var buttons = Array.prototype.slice.call(document.querySelectorAll('button, input[type=button], input[type=submit], .login, [class*=login], [id*=login]'));
+              var centerEl = document.elementFromPoint(Math.floor(window.innerWidth / 2), Math.floor(window.innerHeight / 2));
+              var bodyStyle = document.body ? window.getComputedStyle(document.body) : null;
+              var htmlStyle = document.documentElement ? window.getComputedStyle(document.documentElement) : null;
+              return JSON.stringify({
+                marker: '$marker',
+                ready: document.readyState,
+                title: document.title || '',
+                urlHost: location.host,
+                path: location.pathname,
+                viewport: {
+                  innerWidth: window.innerWidth,
+                  innerHeight: window.innerHeight,
+                  devicePixelRatio: window.devicePixelRatio,
+                  scrollX: window.scrollX,
+                  scrollY: window.scrollY
+                },
+                document: {
+                  clientWidth: document.documentElement ? document.documentElement.clientWidth : 0,
+                  clientHeight: document.documentElement ? document.documentElement.clientHeight : 0,
+                  scrollWidth: document.documentElement ? document.documentElement.scrollWidth : 0,
+                  scrollHeight: document.documentElement ? document.documentElement.scrollHeight : 0
+                },
+                body: document.body ? {
+                  childCount: document.body.children.length,
+                  textLength: (document.body.innerText || '').length,
+                  background: bodyStyle ? bodyStyle.backgroundColor : '',
+                  color: bodyStyle ? bodyStyle.color : '',
+                  display: bodyStyle ? bodyStyle.display : '',
+                  visibility: bodyStyle ? bodyStyle.visibility : '',
+                  overflow: bodyStyle ? (bodyStyle.overflow + '/' + bodyStyle.overflowY) : ''
+                } : null,
+                html: htmlStyle ? {
+                  background: htmlStyle.backgroundColor,
+                  overflow: htmlStyle.overflow + '/' + htmlStyle.overflowY
+                } : null,
+                counts: {
+                  forms: forms.length,
+                  inputs: inputs.length,
+                  buttons: buttons.length
+                },
+                firstInputs: inputs.slice(0, 8).map(visibleStyle),
+                firstButtons: buttons.slice(0, 8).map(visibleStyle),
+                centerElement: centerEl ? visibleStyle(centerEl) : null,
+                bodyTextStart: ((document.body && document.body.innerText) || '').replace(/\s+/g, ' ').slice(0, 120)
+              });
+            })();
+        """.trimIndent()
+        view.evaluateJavascript(script) { result ->
+            LogUtils.d("WEBVIEW_DIAG page ${sanitizeJsResult(result)}")
+        }
+    }
+
+    private fun logWebViewRenderMarker(marker: String, view: WebView?, url: String? = view?.url) {
+        if (silentMode || view == null) return
+        val rect = Rect()
+        val hasGlobalRect = view.getGlobalVisibleRect(rect)
+        LogUtils.d(
+            "WEBVIEW_DIAG marker=$marker url=${safeUrl(url)} size=${view.width}x${view.height} " +
+                "measured=${view.measuredWidth}x${view.measuredHeight} global=$hasGlobalRect:$rect " +
+                "shown=${view.isShown} attached=${view.isAttachedToWindow} focused=${view.hasFocus()} " +
+                "alpha=${view.alpha} layer=${layerName(view.layerType)} scale=${view.scale} " +
+                "scroll=${view.scrollX},${view.scrollY} progress=${view.progress}"
+        )
+    }
+
+    private fun sanitizeJsResult(result: String?): String {
+        return result
+            ?.replace("\\u003C", "<")
+            ?.replace(Regex("(?i)(value|password|pwd|pass|token)[^,}]{0,80}"), "$1=***")
+            ?.take(3500)
+            ?: "null"
+    }
+
+    private fun safeUrl(url: String?): String {
+        if (url.isNullOrBlank()) return ""
+        val uri = Uri.parse(url)
+        return buildString {
+            append(uri.scheme.orEmpty())
+            append("://")
+            append(uri.host.orEmpty())
+            if (uri.port != -1) append(":").append(uri.port)
+            append(uri.path.orEmpty())
+        }
+    }
+
+    private fun layerName(layerType: Int): String {
+        return when (layerType) {
+            View.LAYER_TYPE_HARDWARE -> "hardware"
+            View.LAYER_TYPE_SOFTWARE -> "software"
+            View.LAYER_TYPE_NONE -> "none"
+            else -> layerType.toString()
         }
     }
 
