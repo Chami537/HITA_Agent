@@ -22,7 +22,6 @@ import androidx.activity.OnBackPressedCallback
 import androidx.activity.compose.setContent
 import androidx.activity.viewModels
 import androidx.appcompat.app.AppCompatActivity
-import androidx.appcompat.app.AppCompatDelegate
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
@@ -50,7 +49,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import com.limpu.hitax.R
 import com.limpu.hitax.ui.design.HitaComposeTheme
-import com.limpu.style.ThemeTools
 import com.limpu.hitax.utils.LogUtils
 import dagger.hilt.android.AndroidEntryPoint
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -134,12 +132,6 @@ class WebViewLoginActivity : AppCompatActivity() {
         config = configFor(campus)
         silentMode = intent?.getBooleanExtra(EXTRA_SILENT_MODE, false) == true
 
-        val nightMode = when (ThemeTools.getThemeMode(this)) {
-            ThemeTools.MODE.DARK -> AppCompatDelegate.MODE_NIGHT_YES
-            ThemeTools.MODE.LIGHT -> AppCompatDelegate.MODE_NIGHT_NO
-            else -> AppCompatDelegate.MODE_NIGHT_FOLLOW_SYSTEM
-        }
-        AppCompatDelegate.setDefaultNightMode(nightMode)
         setTheme(
             if (silentMode) {
                 R.style.WebViewLoginSilentTheme
