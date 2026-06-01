@@ -70,6 +70,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringArrayResource
+import androidx.compose.ui.res.dimensionResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -342,7 +343,12 @@ private fun TimetableScreen(
                 contentColor = Color.White,
                 modifier = Modifier
                     .align(Alignment.BottomEnd)
-                    .padding(HitaTheme.tokens.spacing.lg)
+                    .padding(
+                        bottom = dimensionResource(R.dimen.bottom_navigation_height) + HitaTheme.tokens.spacing.lg,
+                        start = HitaTheme.tokens.spacing.lg,
+                        top = HitaTheme.tokens.spacing.lg,
+                        end = HitaTheme.tokens.spacing.lg,
+                    )
             ) {
                 Icon(
                     painter = painterResource(R.drawable.ic_baseline_settings_backup_restore_24),

@@ -95,8 +95,10 @@ class LocalUserRepository @Inject constructor(
                 tempFile.copyTo(destFile, overwrite = true)
                 tempFile.delete()
                 changeLocalAvatar("local://${destFile.absolutePath}")
-                com.bumptech.glide.Glide.get(ctx).clearMemory()
-                android.os.Handler(ctx.mainLooper).post { onResult(true) }
+                android.os.Handler(ctx.mainLooper).post {
+                    com.bumptech.glide.Glide.get(ctx).clearMemory()
+                    onResult(true)
+                }
             } catch (e: Exception) {
                 android.os.Handler(ctx.mainLooper).post { onResult(false) }
             }
