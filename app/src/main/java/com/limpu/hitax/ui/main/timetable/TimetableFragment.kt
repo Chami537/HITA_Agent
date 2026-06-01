@@ -97,7 +97,6 @@ import com.limpu.hitax.utils.ActivityUtils
 import com.limpu.hitax.utils.EventsUtils
 import com.limpu.hitax.utils.TimeTools
 import dagger.hilt.android.AndroidEntryPoint
-import tyrantgit.explosionfield.ExplosionField
 import java.util.Calendar
 import kotlinx.coroutines.launch
 import kotlin.math.abs
@@ -241,7 +240,7 @@ class TimetableFragment : HiltBaseFragment<ComposeViewBinding>() {
             pm.setOnMenuItemClickListener { item ->
                 when (item.itemId) {
                     R.id.menu_edit_event -> showEditEventDialog(eventItem)
-                    R.id.menu_delete_event -> confirmDeleteEvents(listOf(eventItem), view ?: anchor)
+                    R.id.menu_delete_event -> confirmDeleteEvents(listOf(eventItem))
                 }
                 true
             }
@@ -252,14 +251,12 @@ class TimetableFragment : HiltBaseFragment<ComposeViewBinding>() {
         }
     }
 
-    private fun confirmDeleteEvents(eventItems: List<EventItem>, anchor: View) {
+    private fun confirmDeleteEvents(eventItems: List<EventItem>) {
         AlertDialog.Builder(requireContext())
             .setTitle(R.string.dialog_title_sure_delete)
             .setNegativeButton(R.string.button_cancel, null)
             .setPositiveButton(R.string.button_confirm) { _, _ ->
-                val ef = ExplosionField.attach2Window(requireActivity())
-                ef.explode(anchor)
-                anchor.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
+                view?.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
                 Thread {
                     activity?.application?.let {
                         TimetableRepository(it).actionDeleteEvents(eventItems)
