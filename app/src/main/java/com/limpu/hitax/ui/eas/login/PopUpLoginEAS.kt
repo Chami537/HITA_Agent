@@ -54,6 +54,7 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.lifecycle.Observer
 import androidx.fragment.app.viewModels
 import com.google.android.material.bottomsheet.BottomSheetDialogFragment
 import com.limpu.component.data.DataState
@@ -208,17 +209,8 @@ class PopUpLoginEAS : BottomSheetDialogFragment() {
                     cookiesMap[key] = cookiesJsonObj.getString(key)
                 }
 
-                val currentToken = viewModel.easRepo.getEasToken()
-                currentToken.cookies = cookiesMap
-                currentToken.campus = campus
-
-                val electronicExpToken = data?.getStringExtra("electronic_exp_token")
-                if (!electronicExpToken.isNullOrBlank()) {
-                    currentToken.electronicExpToken = electronicExpToken
-                }
-
-                viewModel.easRepo.saveEasTokenSync(currentToken)
-                viewModel.startLoginCheck()
+                val electronicExpToken = data.getStringExtra("electronic_exp_token")
+                startCookieLogin(campus, cookiesMap, electronicExpToken)
             } catch (e: Exception) {
                 LogUtils.e("Failed to parse cookies: ${e.message}")
                 onResponseListener?.onFailed(this)
@@ -226,6 +218,39 @@ class PopUpLoginEAS : BottomSheetDialogFragment() {
         } else {
             onResponseListener?.onFailed(this)
         }
+    }
+
+    private fun startCookieLogin(
+        campus: EASToken.Campus,
+        cookiesMap: HashMap<String, String>,
+        electronicExpToken: String?,
+    ) {
+        val cookiesJson = JSONObject(cookiesMap as Map<*, *>).toString()
+        val loginSource = viewModel.easRepo.login(cookiesJson, electronicExpToken.orEmpty(), campus)
+        val observer = object : Observer<DataState<Boolean>> {
+            override fun onChanged(value: DataState<Boolean>) {
+                val state = value
+                if (state.state == DataState.STATE.NOTHING) return
+                loginSource.removeObserver(this)
+                if (state.state == DataState.STATE.SUCCESS && state.data == true) {
+                    if (!electronicExpToken.isNullOrBlank()) {
+                        val token = viewModel.easRepo.getEasToken()
+                        token.electronicExpToken = electronicExpToken
+                        viewModel.easRepo.saveEasTokenSync(token)
+                    }
+                    onResponseListener?.onSuccess(this@PopUpLoginEAS)
+                } else {
+                    LogUtils.e("WebView cookie login failed: state=${state.state} message=${state.message}")
+                    Toast.makeText(
+                        requireContext(),
+                        state.message ?: "登录验证失败",
+                        Toast.LENGTH_SHORT
+                    ).show()
+                    onResponseListener?.onFailed(this@PopUpLoginEAS)
+                }
+            }
+        }
+        loginSource.observe(this, observer)
     }
 
     override fun onCancel(dialog: DialogInterface) {
@@ -274,7 +299,7 @@ private fun LoginEASScreen(
         lastHandledLoginResult = result
         isLoading = false
         view.performHapticFeedback(HapticFeedbackConstants.CONFIRM)
-        if (result.state == DataState.STATE.SUCCESS) {
+        if (result.state == DataState.STATE.SUCCESS && result.data == true) {
             onSuccess()
         } else {
             Toast.makeText(
@@ -292,7 +317,7 @@ private fun LoginEASScreen(
         lastHandledCheckResult = result
         isLoading = false
         view.performHapticFeedback(HapticFeedbackConstants.CONFIRM)
-        if (result.state == DataState.STATE.SUCCESS) {
+        if (result.state == DataState.STATE.SUCCESS && result.data == true) {
             onSuccess()
         } else {
             Toast.makeText(
