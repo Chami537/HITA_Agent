@@ -7,9 +7,11 @@ import android.graphics.Rect
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.os.Message
 import android.graphics.Color
 import android.view.View
 import android.view.ViewGroup
+import android.widget.FrameLayout
 import android.webkit.CookieManager
 import android.webkit.JavascriptInterface
 import android.webkit.RenderProcessGoneDetail
@@ -26,6 +28,7 @@ import androidx.activity.compose.setContent
 import androidx.activity.viewModels
 import androidx.appcompat.app.AppCompatActivity
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -123,6 +126,7 @@ class WebViewLoginActivity : AppCompatActivity() {
     private var eelabTokenFetching = false
     private var lastPageHadError = false
     private lateinit var webView: WebView
+    private var popupContainer: FrameLayout? = null
     private var progressVisible by mutableStateOf(false)
     private var progressValue by mutableIntStateOf(0)
 
@@ -161,6 +165,9 @@ class WebViewLoginActivity : AppCompatActivity() {
                     onWebViewReady = { createdWebView ->
                         webView = createdWebView
                         initViews()
+                    },
+                    onPopupContainerReady = { container ->
+                        popupContainer = container
                     }
                 )
             }
@@ -222,6 +229,8 @@ class WebViewLoginActivity : AppCompatActivity() {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                 settings.isAlgorithmicDarkeningAllowed = false
             }
+            settings.setSupportMultipleWindows(true)
+            settings.javaScriptCanOpenWindowsAutomatically = true
 
             webChromeClient = object : WebChromeClient() {
                 override fun onProgressChanged(view: WebView?, newProgress: Int) {
@@ -232,6 +241,50 @@ class WebViewLoginActivity : AppCompatActivity() {
                         progressVisible = true
                         progressValue = newProgress
                     }
+                }
+
+                override fun onCreateWindow(
+                    view: WebView?,
+                    isDialog: Boolean,
+                    isUserGesture: Boolean,
+                    resultMsg: Message?
+                ): Boolean {
+                    val container = popupContainer ?: run {
+                        LogUtils.w("onCreateWindow: popupContainer is null, cannot create popup")
+                        return false
+                    }
+                    LogUtils.d("onCreateWindow: creating popup WebView isDialog=$isDialog url=${safeUrl(view?.url)}")
+                    val popupWebView = WebView(view!!.context).apply {
+                        settings.javaScriptEnabled = true
+                        settings.domStorageEnabled = true
+                        webViewClient = object : WebViewClient() {
+                            override fun onPageFinished(view: WebView, url: String) {
+                                super.onPageFinished(view, url)
+                                LogUtils.d("popup onPageFinished: ${safeUrl(url)}")
+                                schedulePageDiagnostics(view, url)
+                                if (isSuccessPage(url)) {
+                                    LogUtils.success("login success detected from popup")
+                                    handleSuccessPage()
+                                }
+                            }
+                        }
+                        layoutParams = FrameLayout.LayoutParams(
+                            FrameLayout.LayoutParams.MATCH_PARENT,
+                            FrameLayout.LayoutParams.MATCH_PARENT
+                        )
+                        setBackgroundColor(Color.WHITE)
+                    }
+                    container.addView(popupWebView)
+                    val transport = resultMsg?.obj as? WebView.WebViewTransport
+                    transport?.webView = popupWebView
+                    resultMsg?.sendToTarget()
+                    LogUtils.d("onCreateWindow: popup created, container children=${container.childCount}")
+                    return true
+                }
+
+                override fun onCloseWindow(window: WebView?) {
+                    LogUtils.d("onCloseWindow: removing popup WebView ${window?.id}")
+                    window?.let { popupContainer?.removeView(it) }
                 }
             }
 
@@ -987,6 +1040,7 @@ private fun WebViewLoginScreen(
     progressValue: Int,
     onBack: () -> Unit,
     onWebViewReady: (WebView) -> Unit,
+    onPopupContainerReady: (FrameLayout) -> Unit,
 ) {
     Column(
         modifier = Modifier
@@ -1024,13 +1078,23 @@ private fun WebViewLoginScreen(
                     .height(3.dp)
             )
         }
-        AndroidView(
+        Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .weight(1f),
-            factory = { context ->
-                WebView(context).also(onWebViewReady)
-            }
-        )
+                .weight(1f)
+        ) {
+            AndroidView(
+                modifier = Modifier.fillMaxSize(),
+                factory = { context ->
+                    WebView(context).also(onWebViewReady)
+                }
+            )
+            AndroidView(
+                modifier = Modifier.fillMaxSize(),
+                factory = { context ->
+                    FrameLayout(context).also(onPopupContainerReady)
+                }
+            )
+        }
     }
 }
