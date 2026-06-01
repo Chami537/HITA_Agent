@@ -41,6 +41,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.rotate
+import androidx.compose.ui.graphics.Color as ComposeColor
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
@@ -137,6 +138,13 @@ class WebViewLoginActivity : AppCompatActivity() {
             else -> AppCompatDelegate.MODE_NIGHT_FOLLOW_SYSTEM
         }
         AppCompatDelegate.setDefaultNightMode(nightMode)
+        setTheme(
+            if (silentMode) {
+                R.style.WebViewLoginSilentTheme
+            } else {
+                R.style.Theme_HITA_WebViewLogin
+            }
+        )
         super.onCreate(savedInstanceState)
 
         if (silentMode) {
@@ -781,7 +789,7 @@ private fun WebViewLoginScreen(
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background)
+            .background(if (silentMode) ComposeColor.Transparent else MaterialTheme.colorScheme.background)
     ) {
         if (!silentMode) {
             TopAppBar(
