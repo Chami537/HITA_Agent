@@ -6,6 +6,8 @@ import android.os.Bundle
 import android.view.Gravity
 import android.view.HapticFeedbackConstants
 import android.view.View
+import android.view.ViewGroup
+import android.widget.FrameLayout
 import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.widget.PopupMenu
@@ -60,6 +62,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.LocalContext
@@ -143,7 +146,7 @@ class TimetableFragment : HiltBaseFragment<ComposeViewBinding>() {
                     viewModel = viewModel,
                     onTitleState = ::applyTitleState,
                     onEventClick = { EventsUtils.showEventItem(requireActivity(), it) },
-                    onEventLongClick = { event -> showEventMenu(event) },
+                    onEventLongClick = { event, position -> showEventMenu(event, position) },
                     onAddClick = { dow, period -> showAddEvent(dow, period) },
                 )
             }
@@ -213,20 +216,40 @@ class TimetableFragment : HiltBaseFragment<ComposeViewBinding>() {
             .show(childFragmentManager, "edit_event")
     }
 
-    private fun showEventMenu(eventItem: EventItem) {
-        val anchor = view ?: return
-        val pm = PopupMenu(requireContext(), anchor, Gravity.NO_GRAVITY)
-        pm.menu.add(0, R.id.menu_edit_event, 0, R.string.menu_edit)
-        pm.menu.add(0, R.id.menu_delete_event, 1, R.string.menu_delete)
-            .setIcon(R.drawable.ic_baseline_delete_24)
-        pm.setOnMenuItemClickListener { item ->
-            when (item.itemId) {
-                R.id.menu_edit_event -> showEditEventDialog(eventItem)
-                R.id.menu_delete_event -> confirmDeleteEvents(listOf(eventItem), anchor)
-            }
-            true
+    private fun showEventMenu(eventItem: EventItem, positionInWindow: IntOffset) {
+        val root = requireActivity().findViewById<FrameLayout>(android.R.id.content) ?: return
+        val rootLocation = IntArray(2)
+        root.getLocationInWindow(rootLocation)
+        val anchorX = (positionInWindow.x - rootLocation[0]).coerceIn(0, (root.width - 1).coerceAtLeast(0))
+        val anchorY = (positionInWindow.y - rootLocation[1]).coerceIn(0, (root.height - 1).coerceAtLeast(0))
+        val anchor = View(requireContext()).apply {
+            alpha = 0f
+            isHapticFeedbackEnabled = true
         }
-        pm.show()
+        root.addView(
+            anchor,
+            FrameLayout.LayoutParams(1, 1).apply {
+                leftMargin = anchorX
+                topMargin = anchorY
+            }
+        )
+        anchor.post {
+            val pm = PopupMenu(requireContext(), anchor, Gravity.NO_GRAVITY)
+            pm.menu.add(0, R.id.menu_edit_event, 0, R.string.menu_edit)
+            pm.menu.add(0, R.id.menu_delete_event, 1, R.string.menu_delete)
+                .setIcon(R.drawable.ic_baseline_delete_24)
+            pm.setOnMenuItemClickListener { item ->
+                when (item.itemId) {
+                    R.id.menu_edit_event -> showEditEventDialog(eventItem)
+                    R.id.menu_delete_event -> confirmDeleteEvents(listOf(eventItem), view ?: anchor)
+                }
+                true
+            }
+            pm.setOnDismissListener {
+                (anchor.parent as? ViewGroup)?.removeView(anchor)
+            }
+            pm.show()
+        }
     }
 
     private fun confirmDeleteEvents(eventItems: List<EventItem>, anchor: View) {
@@ -265,7 +288,7 @@ private fun TimetableScreen(
     viewModel: TimetableViewModel,
     onTitleState: (TimetableTitleState) -> Unit,
     onEventClick: (EventItem) -> Unit,
-    onEventLongClick: (EventItem) -> Unit,
+    onEventLongClick: (EventItem, IntOffset) -> Unit,
     onAddClick: (Int, TimePeriodInDay) -> Unit,
 ) {
     val context = LocalContext.current
@@ -373,7 +396,7 @@ private fun TimetableWeekContent(
     onPrevWeek: () -> Unit,
     onNextWeek: () -> Unit,
     onEventClick: (EventItem) -> Unit,
-    onEventLongClick: (EventItem) -> Unit,
+    onEventLongClick: (EventItem, IntOffset) -> Unit,
     onAddClick: (Int, TimePeriodInDay) -> Unit,
 ) {
     val density = LocalDensity.current
@@ -660,7 +683,7 @@ private fun TimetableEventLayer(
     effectiveStart: TimeInDay,
     style: TimetableStyleSheet,
     onEventClick: (EventItem) -> Unit,
-    onEventLongClick: (EventItem) -> Unit,
+    onEventLongClick: (EventItem, IntOffset) -> Unit,
 ) {
     val arranged = remember(events) { TimetableOverlapLayout.arrange(events) }
     BoxWithConstraintsCompat {
@@ -687,7 +710,7 @@ private fun TimetableEventLayer(
                 cardHeight = height,
                 columnCount = positioned.columnCount,
                 onClick = { onEventClick(event) },
-                onLongClick = { onEventLongClick(event) }
+                onLongClick = { position -> onEventLongClick(event, position) }
             )
         }
     }
@@ -707,9 +730,10 @@ private fun TimetableEventCard(
     cardHeight: Dp,
     columnCount: Int,
     onClick: () -> Unit,
-    onLongClick: () -> Unit,
+    onLongClick: (IntOffset) -> Unit,
 ) {
     val view = LocalView.current
+    var cardPositionInWindow by remember { mutableStateOf(IntOffset.Zero) }
     val background = if (style.isColorEnabled) {
         Color(event.color)
     } else {
@@ -751,12 +775,24 @@ private fun TimetableEventCard(
     }
     Card(
         modifier = modifier
+            .onGloballyPositioned { coordinates ->
+                val windowPosition = coordinates.localToWindow(Offset.Zero)
+                cardPositionInWindow = IntOffset(
+                    windowPosition.x.roundToInt(),
+                    windowPosition.y.roundToInt()
+                )
+            }
             .border(0.5.dp, borderColor, cardShape)
             .pointerInput(event.id) {
                 detectTapGestures(
-                    onLongPress = {
+                    onLongPress = { localOffset ->
                         view.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
-                        onLongClick()
+                        onLongClick(
+                            IntOffset(
+                                cardPositionInWindow.x + localOffset.x.roundToInt(),
+                                cardPositionInWindow.y + localOffset.y.roundToInt()
+                            )
+                        )
                     },
                     onTap = { onClick() }
                 )
