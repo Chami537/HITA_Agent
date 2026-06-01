@@ -404,8 +404,10 @@ class MainActivity : HiltBaseActivity<ComposeViewBinding>(),
                 .setTitle(title)
                 .setItems(items) { _: DialogInterface, which: Int ->
                     when {
-                        localUser.isValid() && which == 0 ->
-                            ActivityUtils.startProfileActivity(getThis(), localUser.id, null)
+                        localUser.isValid() && which == 0 -> {
+                            val userId = localUser.id ?: return@setItems
+                            ActivityUtils.startProfileActivity(getThis(), userId, null)
+                        }
                         else -> {
                             if (localUser.isValid())
                                 localUserRepository.logout(this@MainActivity)

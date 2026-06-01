@@ -28,14 +28,24 @@ import androidx.activity.compose.setContent
 import androidx.activity.viewModels
 import androidx.appcompat.app.AppCompatActivity
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
+import androidx.compose.material3.Button
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.Icon
@@ -53,6 +63,7 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
+import com.limpu.hitax.BuildConfig
 import com.limpu.hitax.R
 import com.limpu.hitax.ui.design.HitaComposeTheme
 import com.limpu.hitax.utils.LogUtils
@@ -61,6 +72,20 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
 import org.json.JSONObject
 import java.net.URL
+
+/** Plan D: native MFA overlay state shared between activity and composable. */
+internal data class MfaOverlayState(
+    val visible: Boolean = false,
+    val promptTitle: String = "",
+    val promptText: String = "",
+    val verifyMethod: String = "",
+    val hasVisibleInput: Boolean = false,
+    val inputId: String = "",
+    val inputType: String = "text",
+    val inputPlaceholder: String = "",
+    val submitButtonId: String = "",
+    val switchMethodJs: String = ""
+)
 
 @AndroidEntryPoint
 class WebViewLoginActivity : AppCompatActivity() {
@@ -130,6 +155,10 @@ class WebViewLoginActivity : AppCompatActivity() {
     private var progressVisible by mutableStateOf(false)
     private var progressValue by mutableIntStateOf(0)
 
+    private var mfaState by mutableStateOf(MfaOverlayState())
+    private var mfaError by mutableStateOf<String?>(null)
+    private var mfaInputValue by mutableStateOf("")
+
     override fun onCreate(savedInstanceState: Bundle?) {
         val campus = runCatching {
             EASToken.Campus.valueOf(
@@ -161,6 +190,14 @@ class WebViewLoginActivity : AppCompatActivity() {
                     silentMode = silentMode,
                     progressVisible = progressVisible,
                     progressValue = progressValue,
+                    mfaState = mfaState,
+                    mfaError = mfaError,
+                    mfaInputValue = mfaInputValue,
+                    onMfaInputChange = { mfaInputValue = it },
+                    onMfaSubmit = { submitNativeMfaInput(mfaInputValue) },
+                    onMfaSendCode = { triggerNativeMfaSendCode() },
+                    onMfaSwitchMethod = { switchNativeMfaMethod() },
+                    onMfaDismiss = { dismissNativeMfa() },
                     onBack = { onBackPressedDispatcher.onBackPressed() },
                     onWebViewReady = { createdWebView ->
                         webView = createdWebView
@@ -177,6 +214,9 @@ class WebViewLoginActivity : AppCompatActivity() {
 
     @SuppressLint("SetJavaScriptEnabled")
     private fun initViews() {
+        if (BuildConfig.DEBUG) {
+            WebView.setWebContentsDebuggingEnabled(true)
+        }
         CookieManager.getInstance().setAcceptCookie(true)
         CookieManager.getInstance().setAcceptThirdPartyCookies(webView, true)
         setupWebView()
@@ -258,6 +298,10 @@ class WebViewLoginActivity : AppCompatActivity() {
                         settings.javaScriptEnabled = true
                         settings.domStorageEnabled = true
                         webViewClient = object : WebViewClient() {
+                            override fun onPageCommitVisible(view: WebView, url: String) {
+                                super.onPageCommitVisible(view, url)
+                                detectMfaAndBridge(view, url)
+                            }
                             override fun onPageFinished(view: WebView, url: String) {
                                 super.onPageFinished(view, url)
                                 LogUtils.d("popup onPageFinished: ${safeUrl(url)}")
@@ -297,6 +341,7 @@ class WebViewLoginActivity : AppCompatActivity() {
                 override fun onPageCommitVisible(view: WebView, url: String) {
                     super.onPageCommitVisible(view, url)
                     logWebViewRenderMarker("page-commit-visible", view, url)
+                    detectMfaAndBridge(view, url)
                 }
 
                 override fun onPageFinished(view: WebView, url: String) {
@@ -395,6 +440,209 @@ class WebViewLoginActivity : AppCompatActivity() {
                 }
             }
         }
+    }
+
+    /**
+     * Plan D: Detect MFA page and extract DOM state for native UI bridge.
+     * Instead of trying to fix WebView's broken flexbox rendering,
+     * we read the page state, show native Compose UI, and inject user input back.
+     */
+    private fun detectMfaAndBridge(view: WebView, url: String) {
+        val host = Uri.parse(url).host.orEmpty()
+        val path = Uri.parse(url).path.orEmpty()
+        if (!host.contains("ids") && !path.contains("authserver")) return
+        val detectScript = """
+            (function() {
+              var methodBtn = document.getElementById('changeReAuthTypeButton');
+              if (!methodBtn) return JSON.stringify({mfa:false});
+              var promptEl = document.getElementById('reAuthDec');
+              var result = {
+                mfa: true,
+                method: methodBtn.textContent.trim(),
+                prompt: promptEl ? promptEl.textContent.trim() : '',
+                inputs: [],
+                submitId: ''
+              };
+              var visibleInputs = document.querySelectorAll('.cotent-box input:not([type=hidden])');
+              visibleInputs.forEach(function(inp) {
+                if (inp.offsetParent !== null) {
+                  result.inputs.push({
+                    id: inp.id,
+                    type: inp.type || 'text',
+                    placeholder: inp.placeholder || ''
+                  });
+                }
+              });
+              var submitCandidates = document.querySelectorAll('button[type=submit], a[onclick*=submit], a[onclick*=login], .common-mobile-btn, [id*=submit], [id*=loginBtn]');
+              submitCandidates.forEach(function(btn) {
+                if (btn.offsetParent !== null && !result.submitId) {
+                  result.submitId = btn.id || btn.className || 'auto-click';
+                }
+              });
+              if (!result.submitId) {
+                var anyBtn = document.querySelector('.cotent-box a[onclick], .cotent-box button');
+                if (anyBtn) result.submitId = 'auto-click';
+              }
+              return JSON.stringify(result);
+            })();
+        """.trimIndent()
+        view.postDelayed({
+            view.evaluateJavascript(detectScript) { raw ->
+                try {
+                    val json = JSONObject(raw.trim('"').replace("\\\"", "\""))
+                    if (!json.optBoolean("mfa", false)) return@evaluateJavascript
+                    val method = json.optString("method", "")
+                    val prompt = json.optString("prompt", "")
+                    val inputsArr = json.optJSONArray("inputs")
+                    val submitId = json.optString("submitId", "")
+                    var inputId = ""
+                    var inputType = "number"
+                    var inputPlaceholder = "验证码"
+                    var hasVisibleInput = false
+                    if (inputsArr != null && inputsArr.length() > 0) {
+                        val first = inputsArr.getJSONObject(0)
+                        inputId = first.optString("id", "")
+                        inputType = first.optString("type", "number")
+                        inputPlaceholder = first.optString("placeholder", "验证码")
+                        hasVisibleInput = true
+                    }
+                    mfaState = MfaOverlayState(
+                        visible = true,
+                        promptTitle = "多因子认证 — $method",
+                        promptText = prompt,
+                        verifyMethod = method,
+                        hasVisibleInput = hasVisibleInput,
+                        inputId = inputId,
+                        inputType = inputType,
+                        inputPlaceholder = inputPlaceholder,
+                        submitButtonId = submitId,
+                        switchMethodJs = "mobileChangeOtherType()"
+                    )
+                    mfaError = null
+                    LogUtils.success("MFA detected: method=$method hasInput=$hasVisibleInput inputId=$inputId submitId=$submitId")
+                } catch (e: Exception) {
+                    LogUtils.e("MFA detect parse error", e)
+                }
+            }
+        }, 800)
+    }
+
+    /** Called from native Compose UI: find and click "send code" button in WebView. */
+    fun triggerNativeMfaSendCode() {
+        LogUtils.d("triggerNativeMfaSendCode")
+        val sendScript = """
+            (function() {
+              try {
+                var targetIds = ['getDynamicCode', 'getImprovePhoneCodeId_otp', 'getImproveEmailCodeId_otp'];
+                var clicked = null;
+                for (var i = 0; i < targetIds.length; i++) {
+                  var btn = document.getElementById(targetIds[i]);
+                  if (btn) {
+                    btn.click();
+                    clicked = targetIds[i];
+                    break;
+                  }
+                }
+                if (clicked) return JSON.stringify({ok:true, id:clicked});
+                return JSON.stringify({ok:false, error:'NOT_FOUND'});
+              } catch(e) {
+                return JSON.stringify({ok:false, error: e.message});
+              }
+            })();
+        """.trimIndent()
+        webView.evaluateJavascript(sendScript) { raw ->
+            try {
+                val json = JSONObject(raw.trim('"').replace("\\\"", "\""))
+                if (json.optBoolean("ok", false)) {
+                    LogUtils.success("MFA send code triggered: ${json.optString("text", "")}")
+                } else {
+                    LogUtils.w("MFA send code button not found: ${json.optString("error", "")}")
+                    mfaError = "未找到发送按钮，请尝试切换验证方式"
+                }
+            } catch (e: Exception) {
+                LogUtils.e("MFA send code parse error", e)
+            }
+        }
+    }
+
+    /** Called from native Compose UI: inject user input into WebView and submit. */
+    fun submitNativeMfaInput(value: String) {
+        val state = mfaState
+        if (!state.visible) return
+        LogUtils.d("submitNativeMfaInput hasInput=${state.hasVisibleInput} inputId=${state.inputId} submitId=${state.submitButtonId}")
+        val codeValue = value.replace("'", "\\'")
+        val injectScript = """
+            (function() {
+              var result = {ok:false, error:''};
+              // Find the visible code input field
+              var input = null;
+              var codeIds = ['dynamicCode','captcha_code','smsCode','otpCode','verifyCode'];
+              for (var i=0;i<codeIds.length;i++) {
+                var el = document.getElementById(codeIds[i]);
+                if (el && el.offsetParent !== null) { input = el; break; }
+              }
+              if (!input) {
+                var inputs = document.querySelectorAll('input:not([type=hidden])');
+                for (var i=0;i<inputs.length;i++) {
+                  if (inputs[i].offsetParent !== null && inputs[i].type !== 'password') {
+                    input = inputs[i]; break;
+                  }
+                }
+              }
+              if (!input) {
+                var pwd = document.getElementById('password');
+                if (pwd) input = pwd;
+              }
+              if (!input) { result.error='input not found'; return JSON.stringify(result); }
+              input.value = '$codeValue';
+              input.dispatchEvent(new Event('input', {bubbles:true}));
+              input.dispatchEvent(new Event('change', {bubbles:true}));
+              result.inputId = input.id || 'unknown';
+              // Click submit button by exact ID
+              var submitBtn = document.getElementById('reAuthSubmitBtn');
+              if (submitBtn) {
+                submitBtn.click();
+                result.ok = true;
+              } else {
+                result.error = 'reAuthSubmitBtn not found';
+              }
+              return JSON.stringify(result);
+            })();
+        """.trimIndent()
+        webView.evaluateJavascript(injectScript) { raw ->
+            try {
+                val json = JSONObject(raw.trim('"').replace("\\\"", "\""))
+                if (!json.optBoolean("ok", false)) {
+                    val err = json.optString("error", "unknown")
+                    LogUtils.w("MFA inject failed: $err")
+                    mfaError = "提交失败，请重试"
+                } else {
+                    LogUtils.success("MFA inject OK, waiting for page transition")
+                    mfaError = null
+                    mfaState = mfaState.copy(visible = false)
+                }
+            } catch (e: Exception) {
+                LogUtils.e("MFA inject parse error", e)
+                mfaState = mfaState.copy(visible = false)
+            }
+        }
+    }
+
+    /** Called from native Compose UI: switch to next verification method. */
+    fun switchNativeMfaMethod() {
+        val script = "mobileChangeOtherType()"
+        webView.evaluateJavascript(script, null)
+        LogUtils.d("MFA method switch triggered")
+        mfaState = mfaState.copy(visible = false)
+        webView.postDelayed({
+            detectMfaAndBridge(webView, webView.url ?: "")
+        }, 1000)
+    }
+
+    /** Called from native Compose UI: dismiss MFA overlay. */
+    fun dismissNativeMfa() {
+        mfaState = MfaOverlayState()
+        mfaError = null
     }
 
     private fun schedulePageDiagnostics(view: WebView, url: String) {
@@ -1038,6 +1286,14 @@ private fun WebViewLoginScreen(
     silentMode: Boolean,
     progressVisible: Boolean,
     progressValue: Int,
+    mfaState: MfaOverlayState,
+    mfaError: String?,
+    mfaInputValue: String,
+    onMfaInputChange: (String) -> Unit,
+    onMfaSubmit: () -> Unit,
+    onMfaSendCode: () -> Unit,
+    onMfaSwitchMethod: () -> Unit,
+    onMfaDismiss: () -> Unit,
     onBack: () -> Unit,
     onWebViewReady: (WebView) -> Unit,
     onPopupContainerReady: (FrameLayout) -> Unit,
@@ -1095,6 +1351,84 @@ private fun WebViewLoginScreen(
                     FrameLayout(context).also(onPopupContainerReady)
                 }
             )
+            // Plan D: Native MFA overlay
+            if (mfaState.visible) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(ComposeColor.Black.copy(alpha = 0.5f)),
+                    contentAlignment = androidx.compose.ui.Alignment.BottomCenter
+                ) {
+                    Card(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(16.dp),
+                        colors = CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.surface
+                        ),
+                        shape = MaterialTheme.shapes.large
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(20.dp),
+                            verticalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            Text(
+                                text = "多因子认证",
+                                style = MaterialTheme.typography.titleMedium,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                            if (mfaState.promptText.isNotBlank()) {
+                                Text(
+                                    text = mfaState.promptText,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                            if (mfaState.hasVisibleInput) {
+                                OutlinedTextField(
+                                    value = mfaInputValue,
+                                    onValueChange = onMfaInputChange,
+                                    label = { Text(mfaState.inputPlaceholder) },
+                                    singleLine = true,
+                                    modifier = Modifier.fillMaxWidth()
+                                )
+                                Button(
+                                    onClick = onMfaSendCode,
+                                    modifier = Modifier.fillMaxWidth(),
+                                    colors = androidx.compose.material3.ButtonDefaults.buttonColors(
+                                        containerColor = MaterialTheme.colorScheme.secondaryContainer,
+                                        contentColor = MaterialTheme.colorScheme.onSecondaryContainer
+                                    )
+                                ) {
+                                    Text("获取验证码")
+                                }
+                                mfaError?.let { err ->
+                                    Text(
+                                        text = err,
+                                        color = MaterialTheme.colorScheme.error,
+                                        style = MaterialTheme.typography.bodySmall
+                                    )
+                                }
+                            }
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                TextButton(onClick = onMfaSwitchMethod) {
+                                    Text("切换验证方式")
+                                }
+                                Spacer(Modifier.weight(1f))
+                                TextButton(onClick = onMfaDismiss) {
+                                    Text("取消")
+                                }
+                                Button(onClick = onMfaSubmit) {
+                                    Text("确认登录")
+                                }
+                            }
+                        }
+                    }
+                }
+            }
         }
     }
 }

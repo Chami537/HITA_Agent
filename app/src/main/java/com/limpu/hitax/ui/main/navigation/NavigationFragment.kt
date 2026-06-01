@@ -195,8 +195,10 @@ class NavigationFragment : androidx.fragment.app.Fragment() {
                 .setTitle(title)
                 .setItems(items) { _: DialogInterface, which: Int ->
                     when {
-                        localUser.isValid() && which == 0 ->
-                            ActivityUtils.startProfileActivity(requireContext(), localUser.id, null)
+                        localUser.isValid() && which == 0 -> {
+                            val userId = localUser.id ?: return@setItems
+                            ActivityUtils.startProfileActivity(requireContext(), userId, null)
+                        }
                         else -> {
                             if (localUser.isValid())
                                 localUserRepository.logout(requireContext())
