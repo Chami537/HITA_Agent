@@ -5,6 +5,7 @@ import android.app.Activity
 import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
+import android.graphics.Color
 import android.view.ViewGroup
 import android.webkit.CookieManager
 import android.webkit.JavascriptInterface
@@ -139,7 +140,10 @@ class WebViewLoginActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
 
         if (silentMode) {
+            window?.setBackgroundDrawableResource(android.R.color.transparent)
             window?.setDimAmount(0f)
+        } else {
+            window?.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(Color.WHITE))
         }
 
         setContent {
