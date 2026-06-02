@@ -305,7 +305,7 @@ class NavigationFragment : androidx.fragment.app.Fragment() {
         val reminderStore = CourseReminderStore(requireContext())
         reminderStore.setEnabled(true)
         CourseReminderScheduler.autoSchedule(requireContext())
-        Toast.makeText(requireContext(), "课程提醒已开启（上课前10分钟提醒）", Toast.LENGTH_SHORT).show()
+        Toast.makeText(requireContext(), "课程提醒已开启（上课前15分钟提醒）", Toast.LENGTH_SHORT).show()
     }
 }
 
@@ -393,7 +393,7 @@ private fun NavigationScreen(
             NavigationRow(
                 icon = R.drawable.ic_baseline_access_alarm_24,
                 title = "课程提醒",
-                subtitle = "上课前10分钟提醒",
+                subtitle = "上课前15分钟提醒",
                 onClick = onToggleReminder,
                 trailing = {
                     Switch(
