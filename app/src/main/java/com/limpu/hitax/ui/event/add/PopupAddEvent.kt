@@ -12,6 +12,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -29,7 +30,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Button
 import androidx.compose.material3.FloatingActionButton
-import androidx.compose.material3.SmallFloatingActionButton
+import androidx.compose.material3.FloatingActionButtonDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Surface
 import androidx.compose.material3.IconButton
@@ -525,19 +526,21 @@ private fun PopupAddEventScreen(
                 .padding(end = 24.dp, bottom = 24.dp)
                 .imePadding()
         ) {
-            SmallFloatingActionButton(
+            FloatingActionButton(
                 onClick = {
                     viewModel.createEvent()
                     WidgetUtils.sendRefreshToAll(context)
                     onDismiss()
                 },
                 containerColor = MaterialTheme.colorScheme.primary,
-                contentColor = MaterialTheme.colorScheme.onPrimary
+                contentColor = MaterialTheme.colorScheme.onPrimary,
+                shape = CircleShape,
+                elevation = FloatingActionButtonDefaults.elevation(defaultElevation = 4.dp)
             ) {
                 Icon(
                     painter = painterResource(R.drawable.ic_done_white_48dp),
                     contentDescription = stringResource(R.string.confirm),
-                    modifier = Modifier.size(20.dp)
+                    modifier = Modifier.size(24.dp)
                 )
             }
         }
