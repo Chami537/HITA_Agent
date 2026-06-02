@@ -32,6 +32,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.livedata.observeAsState
 import androidx.compose.runtime.mutableStateOf
@@ -296,6 +297,14 @@ private fun PopupAddEventScreen(
     var nameText by remember { mutableStateOf(editEvent?.name.orEmpty()) }
     var locationText by remember { mutableStateOf(editEvent?.place.orEmpty()) }
     var teacherText by remember { mutableStateOf(editEvent?.teacher.orEmpty()) }
+
+    // Sync LiveData -> local state when "已有日程" mode selects an event
+    LaunchedEffect(locationState?.data) {
+        locationState?.data?.let { locationText = it }
+    }
+    LaunchedEffect(teacherState?.data) {
+        teacherState?.data?.let { teacherText = it }
+    }
 
     val scrollState = rememberScrollState()
     Column(
