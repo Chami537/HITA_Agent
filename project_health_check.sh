@@ -156,19 +156,19 @@ echo "🛠️ 工具类检查"
 echo "---------------"
 
 # 检查自定义工具类
-if [ -f "app/src/main/java/com/limpu/hitax/utils/NullSafetyExtensions.kt" ]; then
+if [ -f "app/src/main/java/cn/limpu/hita/utils/NullSafetyExtensions.kt" ]; then
     check_pass "空安全扩展工具类存在"
 else
     check_warn "空安全扩展工具类缺失"
 fi
 
-if [ -f "app/src/main/java/com/limpu/hitax/utils/ResourceCleaner.kt" ]; then
+if [ -f "app/src/main/java/cn/limpu/hita/utils/ResourceCleaner.kt" ]; then
     check_pass "资源清理工具类存在"
 else
     check_warn "资源清理工具类缺失"
 fi
 
-if [ -f "app/src/main/java/com/limpu/hitax/utils/PerformanceUtils.kt" ]; then
+if [ -f "app/src/main/java/cn/limpu/hita/utils/PerformanceUtils.kt" ]; then
     check_pass "性能优化工具类存在"
 else
     check_warn "性能优化工具类缺失"

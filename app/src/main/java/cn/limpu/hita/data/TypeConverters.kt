@@ -1,0 +1,73 @@
+package cn.limpu.hita.data
+
+import androidx.room.TypeConverter
+import com.google.gson.Gson
+import com.limpu.hitauser.data.model.UserLocal
+import cn.limpu.hita.data.model.timetable.EventItem
+import cn.limpu.hita.data.model.timetable.TermSubject
+import cn.limpu.hita.data.model.timetable.TimePeriodInDay
+import java.sql.Timestamp
+/**
+ * ROOM需要使用转换器将时间戳转换为Date
+ */
+object TypeConverters {
+    @JvmStatic
+    @TypeConverter
+    fun timestampToLong(value: Timestamp?): Long? {
+        return value?.time
+    }
+
+    @JvmStatic
+    @TypeConverter
+    fun longToTimestamp(date: Long?): Timestamp? {
+        return date?.let { Timestamp(it) }
+    }
+
+    @JvmStatic
+    @TypeConverter
+    fun eventTypeToString(eventType: EventItem.TYPE): String {
+        return eventType.name
+    }
+
+    @JvmStatic
+    @TypeConverter
+    fun stringToEventType(name: String): EventItem.TYPE {
+        return EventItem.TYPE.values().find { it.name == name } ?: EventItem.TYPE.OTHER
+    }
+
+    @JvmStatic
+    @TypeConverter
+    fun subjectTypeToString(subjectType: TermSubject.TYPE): String {
+        return subjectType.name
+    }
+
+    @JvmStatic
+    @TypeConverter
+    fun genderToString(date: UserLocal.GENDER): String {
+        return date.name
+    }
+
+    @JvmStatic
+    @TypeConverter
+    fun stringToGender(str:String): UserLocal.GENDER {
+        return UserLocal.GENDER.valueOf(str)
+    }
+
+
+    @JvmStatic
+    @TypeConverter
+    fun timePeriodListToString(l:List<TimePeriodInDay>):String{
+        return Gson().toJson(l)
+    }
+    @JvmStatic
+    @TypeConverter
+    fun stringToTimePeriodList(string: String): List<TimePeriodInDay> {
+        val g = Gson()
+        val type = object : com.google.gson.reflect.TypeToken<List<TimePeriodInDay>>() {}.type
+        return g.fromJson(string, type) ?: mutableListOf()
+    }
+
+
+
+
+}

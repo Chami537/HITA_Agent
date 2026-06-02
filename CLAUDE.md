@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-HITA Agent is an Android app for Harbin Institute of Technology (HIT) students across three campuses (深圳/本部/威海). It provides timetable management, grade queries, course resources, and an AI assistant based on ReAct framework. Package name: `com.limpu.hitax`.
+HITA Agent is an Android app for Harbin Institute of Technology (HIT) students across three campuses (深圳/本部/威海). It provides timetable management, grade queries, course resources, and an AI assistant based on ReAct framework. Package name: `cn.limpu.hita`.
 
 ## Build Commands
 
@@ -99,7 +99,7 @@ Defined in `app/build.gradle`:
 ## Coding Conventions
 
 - Kotlin style: `kotlin.code.style=official`
-- Package prefix: `com.limpu.hitax` (app), `com.limpu.component`, `com.limpu.hitauser`, `com.limpu.style`
+- Package prefix: `cn.limpu.hita` (app), `com.limpu.component`, `com.limpu.hitauser`, `com.limpu.style`
 - Commit messages follow conventional commits: `feat:`, `fix:`, `refactor:`, `docs:`, `perf:`, `test:`, `chore:`
 - Null safety: prefer `?.` and `?.let{}` over `!!`
 - Coroutines: use `viewModelScope.launch`, never `GlobalScope`

@@ -139,15 +139,15 @@ echo "🎯 一致性改进建议"
 echo "---------------"
 
 # 检查新创建的工具类
-if [ -f "app/src/main/java/com/limpu/hitax/utils/LogUtils.kt" ]; then
+if [ -f "app/src/main/java/cn/limpu/hita/utils/LogUtils.kt" ]; then
     echo -e "${GREEN}✓${NC} LogUtils.kt 已创建，建议在项目中统一使用"
 fi
 
-if [ -f "app/src/main/java/com/limpu/hitax/utils/AppConstants.kt" ]; then
+if [ -f "app/src/main/java/cn/limpu/hita/utils/AppConstants.kt" ]; then
     echo -e "${GREEN}✓${NC} AppConstants.kt 已创建，建议替换硬编码常量"
 fi
 
-if [ -f "app/src/main/java/com/limpu/hitax/utils/StringUtils.kt" ]; then
+if [ -f "app/src/main/java/cn/limpu/hita/utils/StringUtils.kt" ]; then
     echo -e "${GREEN}✓${NC} StringUtils.kt 已创建，建议统一字符串处理"
 fi
 

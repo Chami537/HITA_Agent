@@ -42,14 +42,14 @@ find app/src/main/java -name "*.kt" -not -path "*/utils/*" -exec grep -l "Log\.[
         echo "处理: $filename ($log_count 个日志调用)"
 
         # 检查是否已经有 LogUtils 导入
-        has_import=$(grep -c "import com.limpu.hitax.utils.LogUtils" "$file" 2>/dev/null || echo 0)
+        has_import=$(grep -c "import cn.limpu.hita.utils.LogUtils" "$file" 2>/dev/null || echo 0)
 
         if [ "$has_import" -eq 0 ]; then
             # 添加 LogUtils 导入
             last_import_line=$(grep -n "^import " "$file" | tail -1 | cut -d: -f1)
             if [ -n "$last_import_line" ]; then
                 sed -i '' "${last_import_line}a\\
-import com.limpu.hitax.utils.LogUtils
+import cn.limpu.hita.utils.LogUtils
 " "$file" 2>/dev/null || print_error "添加导入失败: $filename"
             fi
         fi

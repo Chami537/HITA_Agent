@@ -73,9 +73,9 @@
 }
 
 # Keep Room database classes in ALL modules
--keep class com.limpu.hitax.data.AppDatabase { *; }
--keep class com.limpu.hitax.data.AppDatabase$* { *; }
--keep class com.limpu.hitax.data.AppDatabase_Impl { *; }
+-keep class cn.limpu.hita.data.AppDatabase { *; }
+-keep class cn.limpu.hita.data.AppDatabase$* { *; }
+-keep class cn.limpu.hita.data.AppDatabase_Impl { *; }
 -keep class com.limpu.stupiduser.data.UserDatabase { *; }
 -keep class com.limpu.stupiduser.data.UserDatabase$* { *; }
 -keep class com.limpu.stupiduser.data.UserDatabase_Impl { *; }
@@ -84,10 +84,10 @@
 -keep class com.limpu.sync.HistoryDatabase_Impl { *; }
 
 # Keep all model classes used by Room/Gson in ALL modules
--keep class com.limpu.hitax.data.model.** { *; }
+-keep class cn.limpu.hita.data.model.** { *; }
 -keep class com.limpu.stupiduser.data.model.** { *; }
 -keep class com.limpu.sync.data.model.** { *; }
--keep class com.limpu.hitax.data.source.dao.** { *; }
+-keep class cn.limpu.hita.data.source.dao.** { *; }
 -keep class com.limpu.stupiduser.data.source.dao.** { *; }
 -keep class com.limpu.sync.data.source.dao.** { *; }
 
@@ -103,9 +103,9 @@
 }
 
 # Keep ALL data classes that may be serialized by Gson
--keep class com.limpu.hitax.data.model.** { <fields>; }
--keep class com.limpu.hitax.agent.**.** { <fields>; }
--keep class com.limpu.hitax.ui.main.agent.** { <fields>; }
+-keep class cn.limpu.hita.data.model.** { <fields>; }
+-keep class cn.limpu.hita.agent.**.** { <fields>; }
+-keep class cn.limpu.hita.ui.main.agent.** { <fields>; }
 
 # ====== Retrofit / OkHttp ======
 -keep class com.squareup.retrofit2.** { *; }
@@ -117,8 +117,8 @@
 }
 
 # Keep Retrofit service interfaces in ALL modules
--keep interface com.limpu.hitax.data.source.web.** { *; }
--keep interface com.limpu.hitax.agent.remote.** { *; }
+-keep interface cn.limpu.hita.data.source.web.** { *; }
+-keep interface cn.limpu.hita.agent.remote.** { *; }
 -keep interface com.limpu.component.**.** { *; }
 -keep interface com.limpu.sync.data.source.web.** { *; }
 -keep interface com.limpu.stupiduser.data.source.web.** { *; }
@@ -221,7 +221,7 @@
 -keep class androidx.lifecycle.Observer { *; }
 
 # ====== Keep ALL application classes (conservative fallback) ======
--keep class com.limpu.hitax.** { *; }
+-keep class cn.limpu.hita.** { *; }
 -keep class com.limpu.component.** { *; }
 -keep class com.limpu.sync.** { *; }
 -keep class com.limpu.stupiduser.** { *; }

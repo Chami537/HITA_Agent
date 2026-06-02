@@ -10,8 +10,8 @@ source for visual decisions, while keeping the current HITA style unchanged.
 ## Entry Points
 
 - XML resources: `app/src/main/res/values/design_system.xml`
-- Kotlin facade: `app/src/main/java/com/limpu/hitax/ui/design/HitaDesign.kt`
-- Compose theme: `app/src/main/java/com/limpu/hitax/ui/design/HitaComposeTheme.kt`
+- Kotlin facade: `app/src/main/java/cn/limpu/hita/ui/design/HitaDesign.kt`
+- Compose theme: `app/src/main/java/cn/limpu/hita/ui/design/HitaComposeTheme.kt`
 - Existing theme mapping: `app/src/main/res/values/themes.xml`
 - Existing component styles: `app/src/main/res/values/styles.xml`
 
@@ -74,9 +74,9 @@ new `#RRGGBB` values in layouts.
 For custom Views and dynamic UI:
 
 ```kotlin
-import com.limpu.hitax.ui.design.HitaDesign
-import com.limpu.hitax.ui.design.dsColor
-import com.limpu.hitax.ui.design.dsDimenPx
+import cn.limpu.hita.ui.design.HitaDesign
+import cn.limpu.hita.ui.design.dsColor
+import cn.limpu.hita.ui.design.dsDimenPx
 
 val color = context.dsColor(HitaDesign.Color.brand)
 val padding = context.dsDimenPx(HitaDesign.Space.lg)

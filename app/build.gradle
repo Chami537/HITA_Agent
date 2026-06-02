@@ -27,7 +27,7 @@ android {
     }
 
     defaultConfig {
-        applicationId "com.limpu.hitax"
+        applicationId "cn.limpu.hita"
         minSdkVersion 26
         targetSdk 34
         compileSdk 35
@@ -90,7 +90,7 @@ android {
     kotlinOptions {
         jvmTarget = '1.8'
     }
-    namespace 'com.limpu.hitax'
+    namespace 'cn.limpu.hita'
 }
 
 dependencies {

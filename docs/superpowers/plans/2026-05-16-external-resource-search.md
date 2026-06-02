@@ -16,30 +16,30 @@
 
 | Action | File | Responsibility |
 |--------|------|----------------|
-| Create | `app/src/main/java/com/limpu/hitax/data/model/resource/ExternalResourceItem.kt` | Data models: `ResourceSource`, `ExternalCourseItem`, `ExternalResourceEntry` |
-| Create | `app/src/main/java/com/limpu/hitax/data/source/web/HITCSWebSource.kt` | GitHub Tree API search + Contents API directory listing |
-| Create | `app/src/main/java/com/limpu/hitax/data/source/web/FireworksWebSource.kt` | AList API search + directory listing |
-| Create | `app/src/main/java/com/limpu/hitax/data/repository/ExternalResourceRepository.kt` | Merge results from both sources via MediatorLiveData |
-| Create | `app/src/main/java/com/limpu/hitax/ui/resource/ExternalResourceSearchViewModel.kt` | ViewModel with queryLiveData.switchMap |
-| Create | `app/src/main/java/com/limpu/hitax/ui/resource/ExternalResourceSearchActivity.kt` | Search UI + directory browsing mode |
+| Create | `app/src/main/java/cn/limpu/hita/data/model/resource/ExternalResourceItem.kt` | Data models: `ResourceSource`, `ExternalCourseItem`, `ExternalResourceEntry` |
+| Create | `app/src/main/java/cn/limpu/hita/data/source/web/HITCSWebSource.kt` | GitHub Tree API search + Contents API directory listing |
+| Create | `app/src/main/java/cn/limpu/hita/data/source/web/FireworksWebSource.kt` | AList API search + directory listing |
+| Create | `app/src/main/java/cn/limpu/hita/data/repository/ExternalResourceRepository.kt` | Merge results from both sources via MediatorLiveData |
+| Create | `app/src/main/java/cn/limpu/hita/ui/resource/ExternalResourceSearchViewModel.kt` | ViewModel with queryLiveData.switchMap |
+| Create | `app/src/main/java/cn/limpu/hita/ui/resource/ExternalResourceSearchActivity.kt` | Search UI + directory browsing mode |
 | Create | `app/src/main/res/layout/activity_external_resource_search.xml` | Main search layout |
 | Create | `app/src/main/res/layout/item_external_course.xml` | Search result item layout |
 | Create | `app/src/main/res/layout/item_external_resource_entry.xml` | Directory entry item layout |
 | Modify | `app/src/main/res/values/strings.xml` | Add string resources |
 | Modify | `app/src/main/AndroidManifest.xml` | Register new Activity |
-| Modify | `app/src/main/java/com/limpu/hitax/ui/resource/CourseResourceSearchActivity.kt` | Add "外部资料" toolbar button as entry point |
+| Modify | `app/src/main/java/cn/limpu/hita/ui/resource/CourseResourceSearchActivity.kt` | Add "外部资料" toolbar button as entry point |
 
 ---
 
 ### Task 1: Data Models
 
 **Files:**
-- Create: `app/src/main/java/com/limpu/hitax/data/model/resource/ExternalResourceItem.kt`
+- Create: `app/src/main/java/cn/limpu/hita/data/model/resource/ExternalResourceItem.kt`
 
 - [ ] **Step 1: Create data model file**
 
 ```kotlin
-package com.limpu.hitax.data.model.resource
+package cn.limpu.hita.data.model.resource
 
 enum class ResourceSource { HITCS, FIREWORKS }
 
@@ -71,21 +71,21 @@ Expected: BUILD SUCCESSFUL
 ### Task 2: HITCSWebSource
 
 **Files:**
-- Create: `app/src/main/java/com/limpu/hitax/data/source/web/HITCSWebSource.kt`
+- Create: `app/src/main/java/cn/limpu/hita/data/source/web/HITCSWebSource.kt`
 
 - [ ] **Step 1: Create HITCSWebSource with search and directory listing**
 
 ```kotlin
-package com.limpu.hitax.data.source.web
+package cn.limpu.hita.data.source.web
 
 import androidx.lifecycle.LiveData
 import androidx.lifecycle.MutableLiveData
 import com.limpu.component.data.DataState
-import com.limpu.hitax.BuildConfig
-import com.limpu.hitax.data.model.resource.ExternalCourseItem
-import com.limpu.hitax.data.model.resource.ExternalResourceEntry
-import com.limpu.hitax.data.model.resource.ResourceSource
-import com.limpu.hitax.utils.LogUtils
+import cn.limpu.hita.BuildConfig
+import cn.limpu.hita.data.model.resource.ExternalCourseItem
+import cn.limpu.hita.data.model.resource.ExternalResourceEntry
+import cn.limpu.hita.data.model.resource.ResourceSource
+import cn.limpu.hita.utils.LogUtils
 import org.json.JSONArray
 import org.json.JSONObject
 import org.jsoup.Connection
@@ -246,21 +246,21 @@ Expected: BUILD SUCCESSFUL
 ### Task 3: FireworksWebSource
 
 **Files:**
-- Create: `app/src/main/java/com/limpu/hitax/data/source/web/FireworksWebSource.kt`
+- Create: `app/src/main/java/cn/limpu/hita/data/source/web/FireworksWebSource.kt`
 
 - [ ] **Step 1: Create FireworksWebSource with search and directory listing**
 
 ```kotlin
-package com.limpu.hitax.data.source.web
+package cn.limpu.hita.data.source.web
 
 import androidx.lifecycle.LiveData
 import androidx.lifecycle.MutableLiveData
 import com.limpu.component.data.DataState
-import com.limpu.hitax.BuildConfig
-import com.limpu.hitax.data.model.resource.ExternalCourseItem
-import com.limpu.hitax.data.model.resource.ExternalResourceEntry
-import com.limpu.hitax.data.model.resource.ResourceSource
-import com.limpu.hitax.utils.LogUtils
+import cn.limpu.hita.BuildConfig
+import cn.limpu.hita.data.model.resource.ExternalCourseItem
+import cn.limpu.hita.data.model.resource.ExternalResourceEntry
+import cn.limpu.hita.data.model.resource.ResourceSource
+import cn.limpu.hita.utils.LogUtils
 import org.json.JSONArray
 import org.json.JSONObject
 import org.jsoup.Connection
@@ -437,21 +437,21 @@ Expected: BUILD SUCCESSFUL
 ### Task 4: ExternalResourceRepository
 
 **Files:**
-- Create: `app/src/main/java/com/limpu/hitax/data/repository/ExternalResourceRepository.kt`
+- Create: `app/src/main/java/cn/limpu/hita/data/repository/ExternalResourceRepository.kt`
 
 - [ ] **Step 1: Create repository with MediatorLiveData merge logic**
 
 ```kotlin
-package com.limpu.hitax.data.repository
+package cn.limpu.hita.data.repository
 
 import androidx.lifecycle.LiveData
 import androidx.lifecycle.MediatorLiveData
 import com.limpu.component.data.DataState
-import com.limpu.hitax.data.model.resource.ExternalCourseItem
-import com.limpu.hitax.data.model.resource.ExternalResourceEntry
-import com.limpu.hitax.data.model.resource.ResourceSource
-import com.limpu.hitax.data.source.web.FireworksWebSource
-import com.limpu.hitax.data.source.web.HITCSWebSource
+import cn.limpu.hita.data.model.resource.ExternalCourseItem
+import cn.limpu.hita.data.model.resource.ExternalResourceEntry
+import cn.limpu.hita.data.model.resource.ResourceSource
+import cn.limpu.hita.data.source.web.FireworksWebSource
+import cn.limpu.hita.data.source.web.HITCSWebSource
 import javax.inject.Inject
 
 class ExternalResourceRepository @Inject constructor() {
@@ -808,22 +808,22 @@ Expected: BUILD SUCCESSFUL
 ### Task 7: ViewModel
 
 **Files:**
-- Create: `app/src/main/java/com/limpu/hitax/ui/resource/ExternalResourceSearchViewModel.kt`
+- Create: `app/src/main/java/cn/limpu/hita/ui/resource/ExternalResourceSearchViewModel.kt`
 
 - [ ] **Step 1: Create ViewModel**
 
 ```kotlin
-package com.limpu.hitax.ui.resource
+package cn.limpu.hita.ui.resource
 
 import androidx.lifecycle.LiveData
 import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.switchMap
 import com.limpu.component.data.DataState
-import com.limpu.hitax.data.model.resource.ExternalCourseItem
-import com.limpu.hitax.data.model.resource.ExternalResourceEntry
-import com.limpu.hitax.data.model.resource.ResourceSource
-import com.limpu.hitax.data.repository.ExternalResourceRepository
+import cn.limpu.hita.data.model.resource.ExternalCourseItem
+import cn.limpu.hita.data.model.resource.ExternalResourceEntry
+import cn.limpu.hita.data.model.resource.ResourceSource
+import cn.limpu.hita.data.repository.ExternalResourceRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
 
@@ -864,12 +864,12 @@ Expected: BUILD SUCCESSFUL
 ### Task 8: Activity
 
 **Files:**
-- Create: `app/src/main/java/com/limpu/hitax/ui/resource/ExternalResourceSearchActivity.kt`
+- Create: `app/src/main/java/cn/limpu/hita/ui/resource/ExternalResourceSearchActivity.kt`
 
 - [ ] **Step 1: Create Activity with search + browse modes**
 
 ```kotlin
-package com.limpu.hitax.ui.resource
+package cn.limpu.hita.ui.resource
 
 import android.content.Intent
 import android.net.Uri
@@ -889,15 +889,15 @@ import androidx.recyclerview.widget.RecyclerView
 import androidx.viewbinding.ViewBinding
 import com.google.android.material.snackbar.Snackbar
 import com.limpu.component.data.DataState
-import com.limpu.hitax.R
-import com.limpu.hitax.data.model.resource.ExternalCourseItem
-import com.limpu.hitax.data.model.resource.ExternalResourceEntry
-import com.limpu.hitax.data.model.resource.ResourceSource
-import com.limpu.hitax.databinding.ActivityExternalResourceSearchBinding
-import com.limpu.hitax.databinding.ItemExternalCourseBinding
-import com.limpu.hitax.databinding.ItemExternalResourceEntryBinding
-import com.limpu.hitax.ui.base.HiltBaseActivity
-import com.limpu.hitax.utils.LogUtils
+import cn.limpu.hita.R
+import cn.limpu.hita.data.model.resource.ExternalCourseItem
+import cn.limpu.hita.data.model.resource.ExternalResourceEntry
+import cn.limpu.hita.data.model.resource.ResourceSource
+import cn.limpu.hita.databinding.ActivityExternalResourceSearchBinding
+import cn.limpu.hita.databinding.ItemExternalCourseBinding
+import cn.limpu.hita.databinding.ItemExternalResourceEntryBinding
+import cn.limpu.hita.ui.base.HiltBaseActivity
+import cn.limpu.hita.utils.LogUtils
 import com.limpu.style.base.BaseListAdapter
 import dagger.hilt.android.AndroidEntryPoint
 
@@ -1168,7 +1168,7 @@ Expected: BUILD SUCCESSFUL
 
 **Files:**
 - Modify: `app/src/main/AndroidManifest.xml` — register new Activity
-- Modify: `app/src/main/java/com/limpu/hitax/ui/resource/CourseResourceSearchActivity.kt` — add toolbar entry button
+- Modify: `app/src/main/java/cn/limpu/hita/ui/resource/CourseResourceSearchActivity.kt` — add toolbar entry button
 
 - [ ] **Step 1: Register Activity in AndroidManifest.xml**
 

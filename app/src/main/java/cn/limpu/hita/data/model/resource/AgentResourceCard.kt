@@ -1,0 +1,13 @@
+package cn.limpu.hita.data.model.resource
+
+data class AgentResourceCard(
+    val title: String = "",
+    val subtitle: String = "",
+    val sourceTag: String = "",
+    val source: String = "",
+    val path: String = "",
+    val query: String = "",
+    val repoName: String = "",
+    val courseCode: String = "",
+    val repoType: String = "normal",
+)

@@ -42,7 +42,7 @@ HITA Agent 是一个基于 Android 的智能助手应用，采用 Kotlin 编写�
 
 #### 包命名
 - 全小写，不包含下划线
-- 按功能分组: `com.limpu.hitax.feature`
+- 按功能分组: `cn.limpu.hita.feature`
 
 ### 2. 代码组织
 

@@ -25,8 +25,8 @@
             <intent-filter>
                 <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
                 <action android:name="android.intent.action.CONFIGURATION_CHANGED" />
-                <action android:name="com.limpu.hita.WIDGET_EVENT_CLICK" />
-                <action android:name="com.limpu.hita.WIDGET_EVENT_REFRESH" />
+                <action android:name="cn.limpu.hita.WIDGET_EVENT_CLICK" />
+                <action android:name="cn.limpu.hita.WIDGET_EVENT_REFRESH" />
             </intent-filter>
             <meta-data
                 android:name="android.appwidget.provider"
@@ -42,8 +42,8 @@
             <intent-filter>
                 <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
                 <action android:name="android.intent.action.CONFIGURATION_CHANGED" />
-                <action android:name="com.limpu.hita.WIDGET_EVENT_CLICK2" />
-                <action android:name="com.limpu.hita.WIDGET_EVENT_REFRESH" />
+                <action android:name="cn.limpu.hita.WIDGET_EVENT_CLICK2" />
+                <action android:name="cn.limpu.hita.WIDGET_EVENT_REFRESH" />
             </intent-filter>
             <meta-data
                 android:name="android.appwidget.provider"

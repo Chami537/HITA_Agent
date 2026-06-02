@@ -55,4 +55,4 @@ AI 助手基于 ReAct 框架，支持以下工具调用：
 
 ## License
 
-[MIT](LICENSE) © Stupid Tree, Jiao Ziang
+[MIT](LICENSE) © Stupid Tree, Jiao Ziang, Chami

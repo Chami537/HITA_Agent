@@ -145,4 +145,4 @@
 **审查人员**: Claude Code Assistant  
 **审查日期**: 2025年4月25日  
 **项目版本**: 2.0.2  
-**包名**: com.limpu.hitax
+**包名**: cn.limpu.hita
