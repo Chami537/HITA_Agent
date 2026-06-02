@@ -471,20 +471,24 @@ private fun PopupAddEventScreen(
                 onSelectSecond = { viewModel.setTimeMode(AddEventViewModel.TimeMode.PERIOD) }
             )
 
-            val timeLabel = remember(timeMode, customTimePeriod, timeRange) {
+            val timeLabel = remember(timeMode, customTimePeriod, timeRange, timetableState) {
                 when (timeMode) {
                     AddEventViewModel.TimeMode.CLOCK -> {
                         val state = customTimePeriod
                         if (state?.state == DataState.STATE.SUCCESS) {
                             val p = state.data
-                            if (p != null) "${p.from}-${p.to}" else null
+                            if (p != null) "${formatTime(p.from)} - ${formatTime(p.to)}" else null
                         } else null
                     }
                     AddEventViewModel.TimeMode.PERIOD -> {
                         val state = timeRange
                         if (state?.state == DataState.STATE.SUCCESS) {
                             val ct = state.data
-                            if (ct != null) "第${ct.period.from}-${ct.period.to}节" else null
+                            val tt = timetableState?.data
+                            if (ct != null && tt != null) {
+                                val (start, end) = tt.transformCourseNumber(ct.period)
+                                "第${start + 1}-${end + 1}节 (${formatTime(ct.period.from)} - ${formatTime(ct.period.to)})"
+                            } else null
                         } else null
                     }
                     else -> null
@@ -726,4 +730,8 @@ private fun formatWeeks(weeks: List<Int>): String {
         }
     }
     return frags.joinToString(", ")
+}
+
+private fun formatTime(t: TimeInDay): String {
+    return String.format("%02d:%02d", t.hour, t.minute)
 }
