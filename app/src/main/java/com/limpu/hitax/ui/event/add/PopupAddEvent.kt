@@ -22,7 +22,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.FloatingActionButton
+import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -291,13 +291,14 @@ private fun PopupAddEventScreen(
     val timetableState by viewModel.timetableLiveData.observeAsState()
 
     var nameText by remember { mutableStateOf(editEvent?.name.orEmpty()) }
+    var locationText by remember { mutableStateOf(editEvent?.place.orEmpty()) }
+    var teacherText by remember { mutableStateOf(editEvent?.teacher.orEmpty()) }
 
-    Box(modifier = Modifier.fillMaxWidth()) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(bottom = tokens.spacing.lg)
-        ) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(bottom = tokens.spacing.lg)
+    ) {
             // Title
             val titleText = when {
                 editEvent != null -> stringResource(R.string.ade_title_edit, editEvent.name.orEmpty())
@@ -446,8 +447,9 @@ private fun PopupAddEventScreen(
 
             // ── Location ──
             OutlinedTextField(
-                value = locationState?.data.orEmpty(),
+                value = locationText,
                 onValueChange = {
+                    locationText = it
                     viewModel.locationLiveData.value = DataState(it)
                 },
                 modifier = Modifier
@@ -464,8 +466,9 @@ private fun PopupAddEventScreen(
 
             // ── Teacher ──
             OutlinedTextField(
-                value = teacherState?.data.orEmpty(),
+                value = teacherText,
                 onValueChange = {
+                    teacherText = it
                     viewModel.teacherLiveData.value = DataState(it)
                 },
                 modifier = Modifier
@@ -481,30 +484,27 @@ private fun PopupAddEventScreen(
             )
         }
 
-        // Done FAB
-        if (doneLiveData == true) {
-            val context = LocalContext.current
-            FloatingActionButton(
-                onClick = {
-                    viewModel.createEvent()
-                    WidgetUtils.sendRefreshToAll(context)
-                    onDismiss()
-                },
-                modifier = Modifier
-                    .align(Alignment.TopEnd)
-                    .padding(tokens.spacing.lg),
-                containerColor = MaterialTheme.colorScheme.primary
-            ) {
-                Icon(
-                    painter = painterResource(R.drawable.ic_done_white_48dp),
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.onPrimary,
-                    modifier = Modifier.size(24.dp)
-                )
-            }
+        // Done button
+        val context = LocalContext.current
+        val canSubmit = doneLiveData == true
+        Button(
+            onClick = {
+                viewModel.createEvent()
+                WidgetUtils.sendRefreshToAll(context)
+                onDismiss()
+            },
+            enabled = canSubmit,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = tokens.spacing.xl, vertical = tokens.spacing.lg),
+            shape = RoundedCornerShape(tokens.radius.md)
+        ) {
+            Text(
+                text = stringResource(R.string.confirm),
+                modifier = Modifier.padding(vertical = 4.dp)
+            )
         }
     }
-}
 
 // ── New reusable composables ──
 

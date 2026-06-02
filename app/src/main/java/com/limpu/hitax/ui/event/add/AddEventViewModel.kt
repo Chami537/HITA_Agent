@@ -2,6 +2,7 @@ package com.limpu.hitax.ui.event.add
 
 import androidx.lifecycle.MediatorLiveData
 import androidx.lifecycle.MutableLiveData
+import androidx.lifecycle.Observer
 import androidx.lifecycle.ViewModel
 import com.limpu.component.data.DataState
 import com.limpu.hitax.data.model.timetable.EventItem
@@ -210,7 +211,18 @@ class AddEventViewModel @Inject constructor(
         this.addSubject = addSubject
 
         if (timetable == null) {
-            timetableLiveData.value = DataState(DataState.STATE.NOTHING)
+            val observer = object : Observer<List<Timetable>> {
+                override fun onChanged(t: List<Timetable>) {
+                    val first = t.firstOrNull()
+                    if (first != null) {
+                        timetableLiveData.postValue(DataState(first))
+                    } else {
+                        timetableLiveData.postValue(DataState(DataState.STATE.NOTHING))
+                    }
+                    eventRepo.getTimetables().removeObserver(this)
+                }
+            }
+            eventRepo.getTimetables().observeForever(observer)
         } else {
             timetableLiveData.value = DataState(timetable)
             courseTime?.let {

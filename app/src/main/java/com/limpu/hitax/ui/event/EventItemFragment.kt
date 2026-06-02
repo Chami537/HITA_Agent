@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
@@ -23,6 +24,9 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.livedata.observeAsState
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.ComposeView
@@ -47,7 +51,6 @@ import com.limpu.hitax.utils.ActivityUtils
 import com.limpu.hitax.utils.CourseResourceLinker
 import com.limpu.hitax.utils.TimeTools
 import com.limpu.style.widgets.PopUpColorPicker
-import com.limpu.style.widgets.PopUpText
 import dagger.hilt.android.AndroidEntryPoint
 import java.util.Calendar
 
@@ -105,13 +108,8 @@ class EventItemFragment : Fragment() {
                                 .show(childFragmentManager, "pickColor")
                         },
                         onDelete = {
-                            PopUpText().setTitle(R.string.dialog_title_sure_delete)
-                                .setOnConfirmListener(object : PopUpText.OnConfirmListener {
-                                    override fun OnConfirm() {
-                                        viewModel.delete()
-                                        eventParent?.callDismiss()
-                                    }
-                                }).show(childFragmentManager, "sure")
+                            viewModel.delete()
+                            eventParent?.callDismiss()
                         },
                         onTeacherClick = { name ->
                             ActivityUtils.startCourseResourceSearchActivity(
@@ -168,6 +166,7 @@ private fun EventItemScreen(
     val event = eventItem ?: return
     val courseLike = event.type == EventItem.TYPE.CLASS || event.type == EventItem.TYPE.EXAM
     val teachers = splitTeachers(event.teacher)
+    var showDeleteDialog by remember { mutableStateOf(false) }
 
     Column(
         modifier = Modifier
@@ -356,7 +355,7 @@ private fun EventItemScreen(
                 Spacer(modifier = Modifier.width(tokens.spacing.sm))
             }
             IconButton(
-                onClick = onDelete,
+                onClick = { showDeleteDialog = true },
                 modifier = Modifier.size(36.dp)
             ) {
                 Icon(
@@ -367,6 +366,31 @@ private fun EventItemScreen(
                 )
             }
         }
+    }
+
+    if (showDeleteDialog) {
+        AlertDialog(
+            onDismissRequest = { showDeleteDialog = false },
+            title = { Text(stringResource(R.string.dialog_title_sure_delete)) },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        showDeleteDialog = false
+                        onDelete()
+                    },
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = MaterialTheme.colorScheme.error
+                    )
+                ) {
+                    Text(stringResource(R.string.confirm))
+                }
+            },
+            dismissButton = {
+                Button(onClick = { showDeleteDialog = false }) {
+                    Text(stringResource(R.string.cancel))
+                }
+            }
+        )
     }
 }
 
