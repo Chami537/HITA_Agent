@@ -17,6 +17,7 @@ import com.limpu.hitax.ui.main.MainActivity
 import com.limpu.hitax.utils.TimeTools
 import kotlinx.coroutines.runBlocking
 import java.util.Calendar
+import kotlin.math.max
 
 /**
  * 课程提醒 Worker
@@ -36,12 +37,12 @@ class CourseReminderWorker(appContext: Context, params: WorkerParameters) : Work
         val windowEnd = now + minutes * 60 * 1000
 
         // doWork() 已在后台线程执行，无需 Dispatchers.IO
-        val todayEvents = runBlocking {
-            timetableRepo.getTodayEventsSync()
+        val upcomingDayEvents = runBlocking {
+            timetableRepo.getUpcomingEventsSync(now, now + LOOKAHEAD_WINDOW_MS)
         }
-        val upcomingEvents = todayEvents.filter { event ->
-            // 找到在提醒窗口内且尚未开始的课程
-            event.from.time in (now + 1) until windowEnd
+        val upcomingEvents = upcomingDayEvents.filter { event ->
+            event.type == com.limpu.hitax.data.model.timetable.EventItem.TYPE.CLASS &&
+                event.from.time in (now + 1)..windowEnd
         }
 
         // 获取已发送提醒的课程 ID（使用 SharedPreferences 简单存储）
@@ -54,7 +55,29 @@ class CourseReminderWorker(appContext: Context, params: WorkerParameters) : Work
             saveSentReminders(sentReminders + newEvents.map { it.id })
         }
 
+        scheduleNextReminderCheck(upcomingDayEvents, now, minutes, sentReminders + newEvents.map { it.id })
         return Result.success()
+    }
+
+    private fun scheduleNextReminderCheck(
+        events: List<com.limpu.hitax.data.model.timetable.EventItem>,
+        now: Long,
+        reminderMinutes: Int,
+        sentReminders: Set<String>
+    ) {
+        val nextEvent = events
+            .asSequence()
+            .filter { it.type == com.limpu.hitax.data.model.timetable.EventItem.TYPE.CLASS }
+            .filter { it.id !in sentReminders }
+            .filter { it.from.time > now }
+            .minByOrNull { it.from.time }
+
+        val delayMs = if (nextEvent == null) {
+            DEFAULT_RECHECK_DELAY_MS
+        } else {
+            max(0L, nextEvent.from.time - reminderMinutes * 60_000L - now)
+        }
+        CourseReminderScheduler.scheduleNextCheck(applicationContext, delayMs)
     }
 
     private fun sendNotification(event: com.limpu.hitax.data.model.timetable.EventItem) {
@@ -71,16 +94,16 @@ class CourseReminderWorker(appContext: Context, params: WorkerParameters) : Work
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
-        val store = CourseReminderStore(applicationContext)
-        val minutes = store.getReminderMinutes()
+        val actualMinutes = ((event.from.time - System.currentTimeMillis()) / 60_000L)
+            .coerceAtLeast(1L)
 
-        val title = "⏰ 即将上课"
+        val title = "即将上课"
         val content = buildString {
             append("${event.name}")
             if (!event.place.isNullOrBlank()) {
                 append(" @ ${event.place}")
             }
-            append(" 将在 ${minutes}分钟后开始")
+            append(" 将在 ${actualMinutes}分钟后开始")
         }
 
         val notification = NotificationCompat.Builder(applicationContext, CHANNEL_ID)
@@ -138,5 +161,7 @@ class CourseReminderWorker(appContext: Context, params: WorkerParameters) : Work
         private const val SP_NAME = "course_reminder_sent"
         private const val KEY_SENT_IDS = "sent_ids"
         private const val KEY_DATE = "date"
+        private const val LOOKAHEAD_WINDOW_MS = 24L * 60L * 60L * 1000L
+        private const val DEFAULT_RECHECK_DELAY_MS = 6L * 60L * 60L * 1000L
     }
 }

@@ -9,7 +9,7 @@ import android.content.SharedPreferences
 private const val SP_NAME = "course_reminder"
 private const val KEY_ENABLED = "enabled"
 private const val KEY_MINUTES = "minutes"
-private const val DEFAULT_MINUTES = 10
+private const val DEFAULT_MINUTES = 15
 
 class CourseReminderStore(private val context: Context) {
     private val preference: SharedPreferences

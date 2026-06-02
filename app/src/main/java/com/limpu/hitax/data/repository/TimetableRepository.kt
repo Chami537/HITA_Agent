@@ -102,6 +102,12 @@ class TimetableRepository @Inject constructor(val application: Application) {
     }
 
     @WorkerThread
+    fun getUpcomingEventsSync(from: Long, to: Long): List<EventItem> {
+        return eventItemDao.getEventsDuringSync(from, to)
+            .sortedBy { it.from.time }
+    }
+
+    @WorkerThread
     fun getTodayEventsWithUpcomingExamSync(): List<EventItem> {
         return appendUpcomingExam(getTodayEventsSync(), System.currentTimeMillis())
     }
