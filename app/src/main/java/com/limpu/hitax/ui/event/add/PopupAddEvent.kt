@@ -11,6 +11,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -19,8 +20,10 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
@@ -294,10 +297,13 @@ private fun PopupAddEventScreen(
     var locationText by remember { mutableStateOf(editEvent?.place.orEmpty()) }
     var teacherText by remember { mutableStateOf(editEvent?.teacher.orEmpty()) }
 
+    val scrollState = rememberScrollState()
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(bottom = tokens.spacing.lg)
+            .verticalScroll(scrollState)
+            .imePadding()
+            .padding(bottom = 48.dp)
     ) {
             // Title
             val titleText = when {
@@ -484,16 +490,22 @@ private fun PopupAddEventScreen(
             )
         }
 
-        // Done button
+        // Done button — always visible at bottom
         val context = LocalContext.current
-        val canSubmit = doneLiveData == true
         Button(
             onClick = {
-                viewModel.createEvent()
-                WidgetUtils.sendRefreshToAll(context)
-                onDismiss()
+                if (doneLiveData == true) {
+                    viewModel.createEvent()
+                    WidgetUtils.sendRefreshToAll(context)
+                    onDismiss()
+                } else {
+                    android.widget.Toast.makeText(
+                        context,
+                        context.getString(R.string.ade_incomplete),
+                        android.widget.Toast.LENGTH_SHORT
+                    ).show()
+                }
             },
-            enabled = canSubmit,
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(horizontal = tokens.spacing.xl, vertical = tokens.spacing.lg),
