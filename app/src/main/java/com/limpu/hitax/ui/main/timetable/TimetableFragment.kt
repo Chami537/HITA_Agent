@@ -41,9 +41,11 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -95,6 +97,7 @@ import com.limpu.hitax.ui.design.HitaTheme
 import com.limpu.hitax.ui.event.add.PopupAddEvent
 import com.limpu.hitax.ui.main.timetable.views.TimetableCardTextScale
 import com.limpu.hitax.ui.main.timetable.views.TimetableOverlapLayout
+import com.limpu.hitax.ui.main.timetable.views.TimetableOverlapLayout.PositionedEvent
 import com.limpu.hitax.ui.widgets.WidgetUtils
 import com.limpu.hitax.utils.ActivityUtils
 import com.limpu.hitax.utils.EventsUtils
@@ -682,6 +685,7 @@ private fun TimetableGrid(startDate: Long, effectiveStart: TimeInDay, style: Tim
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun TimetableEventLayer(
     events: List<EventItem>,
@@ -690,15 +694,42 @@ private fun TimetableEventLayer(
     onEventClick: (EventItem) -> Unit,
     onEventLongClick: (EventItem, IntOffset) -> Unit,
 ) {
-    val arranged = remember(events) {
-        TimetableOverlapLayout.arrange(events)
-            .sortedWith(compareBy({ it.event.getDow() }, { it.columnIndex }))
+    val arranged = remember(events) { TimetableOverlapLayout.arrange(events) }
+
+    // Group cascade events into clusters; each cluster shares one click target
+    val renderList = remember(arranged) {
+        val result = mutableListOf<Pair<PositionedEvent, List<EventItem>?>>()
+        var i = 0
+        while (i < arranged.size) {
+            val pe = arranged[i]
+            if (pe.overlapCount > 1) {
+                val cluster = mutableListOf<PositionedEvent>()
+                var clusterEnd = Long.MIN_VALUE
+                while (i < arranged.size) {
+                    val next = arranged[i]
+                    if (next.overlapCount <= 1) break
+                    if (cluster.isNotEmpty() && next.event.from.time >= clusterEnd) break
+                    cluster.add(next)
+                    clusterEnd = maxOf(clusterEnd, next.event.to.time)
+                    i++
+                }
+                cluster.sortBy { it.columnIndex } // Z-order: higher index on top
+                val clusterEvents = cluster.map { it.event }
+                cluster.forEach { rp -> result.add(rp to clusterEvents) }
+            } else {
+                result.add(pe to null)
+                i++
+            }
+        }
+        result
     }
+
+    var conflictCluster by remember { mutableStateOf<List<EventItem>?>(null) }
     val density = LocalDensity.current
     BoxWithConstraintsCompat {
         val sectionWidth = maxWidth / 7f
         val cascadeOffset = 6.dp
-        arranged.forEach { positioned ->
+        renderList.forEach { (positioned, clusterEvents) ->
             val event = positioned.event
             val overlapCount = positioned.overlapCount
             val startMinutes = effectiveStart.getDistanceInMinutes(event.from.time)
@@ -707,8 +738,9 @@ private fun TimetableEventLayer(
                 (startMinutes / 60f * style.cardHeight).toDp()
             }
             val dayLeft = sectionWidth * (event.getDow() - 1)
+            val isCascade = clusterEvents != null
 
-            if (overlapCount > 1) {
+            if (isCascade) {
                 val rawHeight = with(density) {
                     (duration / 60f * style.cardHeight).toDp()
                 }
@@ -729,7 +761,8 @@ private fun TimetableEventLayer(
                     cardHeight = cardHeight,
                     columnCount = overlapCount,
                     cardElevation = elevation,
-                    onClick = { onEventClick(event) },
+                    isBottomCascadeCard = positioned.columnIndex < overlapCount - 1,
+                    onClick = { conflictCluster = clusterEvents },
                     onLongClick = { position -> onEventLongClick(event, position) }
                 )
             } else {
@@ -751,6 +784,77 @@ private fun TimetableEventLayer(
             }
         }
     }
+
+    conflictCluster?.let { cluster ->
+        ModalBottomSheet(onDismissRequest = { conflictCluster = null }) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 8.dp)
+            ) {
+                Text(
+                    text = stringResource(R.string.tt_conflict_title),
+                    style = MaterialTheme.typography.titleMedium,
+                    modifier = Modifier.padding(bottom = 12.dp)
+                )
+                cluster.forEach { event ->
+                    ConflictEventRow(
+                        event = event,
+                        style = style,
+                        onClick = {
+                            conflictCluster = null
+                            onEventClick(event)
+                        }
+                    )
+                }
+                Spacer(modifier = Modifier.height(24.dp))
+            }
+        }
+    }
+}
+
+@Composable
+private fun ConflictEventRow(
+    event: EventItem,
+    style: TimetableStyleSheet,
+    onClick: () -> Unit,
+) {
+    val bg = if (style.isColorEnabled) {
+        Color(event.color).copy(alpha = 0.15f)
+    } else {
+        MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)
+    }
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 6.dp)
+            .clip(RoundedCornerShape(8.dp))
+            .background(bg)
+            .clickable { onClick() }
+            .padding(12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = event.name,
+                style = MaterialTheme.typography.bodyLarge,
+                fontWeight = FontWeight.Medium,
+            )
+            val place = event.place
+            if (!place.isNullOrBlank()) {
+                Text(
+                    text = place,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
+                )
+            }
+        }
+        Text(
+            text = ">",
+            style = MaterialTheme.typography.titleMedium,
+            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.3f),
+        )
+    }
 }
 
 
@@ -770,6 +874,7 @@ private fun TimetableEventCard(
     onClick: () -> Unit,
     onLongClick: (IntOffset) -> Unit,
     cardElevation: Dp = 0.dp,
+    isBottomCascadeCard: Boolean = false,
 ) {
     val view = LocalView.current
     var cardPositionInWindow by remember { mutableStateOf(IntOffset.Zero) }
@@ -777,7 +882,7 @@ private fun TimetableEventCard(
         Color(event.color)
     } else {
         MaterialTheme.colorScheme.primary
-    }.copy(alpha = (120 - style.cardOpacity.coerceIn(20, 100)) / 100f)
+    }.copy(alpha = (120 - style.cardOpacity.coerceIn(20, 100)) / 100f * if (isBottomCascadeCard) 0.5f else 1f)
     val borderColor = background.copy(alpha = 0.3f)
     val cardShape = RoundedCornerShape(HitaTheme.tokens.radius.md)
     val effectiveBg = background.toArgb()
@@ -843,7 +948,7 @@ private fun TimetableEventCard(
                 .fillMaxSize()
                 .padding(horizontal = horizontalPadding, vertical = verticalPadding)
         ) {
-            if (hasPlace) {
+            if (hasPlace && !isBottomCascadeCard) {
                 Text(
                     text = event.place ?: "",
                     color = subtitleColor,
@@ -860,7 +965,7 @@ private fun TimetableEventCard(
                         .alpha(style.subtitleAlpha / 100f)
                 )
             }
-            if (style.cardIconEnabled) {
+            if (style.cardIconEnabled && !isBottomCascadeCard) {
                 Box(
                     modifier = Modifier
                         .align(Alignment.TopCenter)
@@ -870,28 +975,30 @@ private fun TimetableEventCard(
                         .background(titleColor)
                 )
             }
-            val titleBottomPad = if (hasPlace) (14f * textScale).dp else 0.dp
-            val titleTopPad = if (style.cardIconEnabled) (10f * textScale).dp else 0.dp
-            Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(bottom = titleBottomPad, top = titleTopPad),
-                verticalArrangement = Arrangement.Center,
-                horizontalAlignment = Alignment.CenterHorizontally
-            ) {
-                Text(
-                    text = event.name,
-                    color = titleColor,
-                    fontSize = titleFontSize,
-                    lineHeight = (titleFontSize.value * 1.2f).sp,
-                    fontWeight = if (style.isBoldText) FontWeight.Bold else FontWeight.Normal,
-                    textAlign = textAlignFromGravity(style.titleGravity),
-                    maxLines = maxTitleLines,
-                    overflow = TextOverflow.Ellipsis,
+            if (!isBottomCascadeCard) {
+                val titleBottomPad = if (hasPlace) (14f * textScale).dp else 0.dp
+                val titleTopPad = if (style.cardIconEnabled) (10f * textScale).dp else 0.dp
+                Column(
                     modifier = Modifier
-                        .fillMaxWidth()
-                        .alpha(style.titleAlpha / 100f)
-                )
+                        .fillMaxSize()
+                        .padding(bottom = titleBottomPad, top = titleTopPad),
+                    verticalArrangement = Arrangement.Center,
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Text(
+                        text = event.name,
+                        color = titleColor,
+                        fontSize = titleFontSize,
+                        lineHeight = (titleFontSize.value * 1.2f).sp,
+                        fontWeight = if (style.isBoldText) FontWeight.Bold else FontWeight.Normal,
+                        textAlign = textAlignFromGravity(style.titleGravity),
+                        maxLines = maxTitleLines,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .alpha(style.titleAlpha / 100f)
+                    )
+                }
             }
         }
     }

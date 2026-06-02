@@ -262,6 +262,7 @@
     <string name="tt_saturday">六</string>
     <string name="tt_sunday">日</string>
     <string name="tt_wholeday">全天</string>
+    <string name="tt_conflict_title">时间冲突</string>
     <plurals name="user_center_you_have_punched">
         <item quantity="other">累计%d天校园心情</item>
     </plurals>
