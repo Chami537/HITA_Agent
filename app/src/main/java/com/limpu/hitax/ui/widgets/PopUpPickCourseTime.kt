@@ -145,8 +145,8 @@ private fun PickCourseTimeScreen(
     }
 
     val initDow = initCourseTime?.dow ?: 1
-    val initFromPeriod = initCourseTime?.let { timetable.transformCourseNumber(it.period).first } ?: 1
-    val initToPeriod = initCourseTime?.let { timetable.transformCourseNumber(it.period).second } ?: 1
+    val initFromPeriod = initCourseTime?.let { timetable.transformCourseNumber(it.period).first + 1 } ?: 1
+    val initToPeriod = initCourseTime?.let { timetable.transformCourseNumber(it.period).second + 1 } ?: 1
 
     var selectedDow by remember { mutableIntStateOf(initDow) }
     var selectedFromPeriod by remember { mutableIntStateOf(initFromPeriod) }
