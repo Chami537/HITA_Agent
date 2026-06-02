@@ -6,10 +6,14 @@ import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -17,7 +21,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
@@ -33,7 +36,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.ColorFilter
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
@@ -63,7 +66,7 @@ import com.limpu.hitax.ui.widgets.PopUpCalendarPicker
 import com.limpu.hitax.ui.widgets.PopUpPickCourseTime
 import com.limpu.hitax.ui.widgets.PopUpTimePeriodPicker
 import com.limpu.hitax.ui.widgets.WidgetUtils
-import com.limpu.style.widgets.DialogAutoEditText
+
 import com.limpu.style.widgets.DialogSelectableLiveList
 import dagger.hilt.android.AndroidEntryPoint
 import java.util.Calendar
@@ -131,8 +134,6 @@ class PopupAddEvent(private val addSubjectMode: Boolean = false) :
                         onShowExistingEventPicker = { showExistingEventPicker() },
                         onShowDatePicker = { showDatePicker() },
                         onShowTimePicker = { showTimePicker() },
-                        onShowTeacherPicker = { showTeacherPicker() },
-                        onShowLocationPicker = { showLocationPicker() },
                         onShowCourseTimePicker = { mode -> showCourseTimePicker(mode) }
                     )
                 }
@@ -242,44 +243,6 @@ class PopupAddEvent(private val addSubjectMode: Boolean = false) :
         }
     }
 
-    private fun showTeacherPicker() {
-        DialogAutoEditText().setTitle(getString(R.string.ade_optional_teacher_note))
-            .setOnConfirmListener(object : DialogAutoEditText.OnConfirmListener {
-                override fun OnConfirm(content: String) {
-                    viewModel.teacherLiveData.value = DataState(content)
-                }
-            }).setInitValue(viewModel.teacherLiveData.value?.data ?: "")
-            .setDataLoader(object : DialogAutoEditText.DataLoader {
-                override fun loadData(str: String): LiveData<List<String>> {
-                    return TeacherInfoRepository(requireActivity().application)
-                        .searchTeachers(str).switchMap {
-                            val r = mutableListOf<String>()
-                            it.data?.let { dt ->
-                                for (t in dt) {
-                                    r.add(t.name)
-                                }
-                            }
-                            MutableLiveData(r)
-                        }
-                }
-            }).show(childFragmentManager, "pick_teacher")
-    }
-
-    private fun showLocationPicker() {
-        DialogAutoEditText().setTitle(getString(R.string.ade_optional_location))
-            .setOnConfirmListener(object : DialogAutoEditText.OnConfirmListener {
-                override fun OnConfirm(content: String) {
-                    viewModel.locationLiveData.value = DataState(content)
-                }
-            }).setInitValue(viewModel.locationLiveData.value?.data ?: "")
-            .setDataLoader(object : DialogAutoEditText.DataLoader {
-                override fun loadData(str: String): LiveData<List<String>> {
-                    return TimetableRepository(requireActivity().application)
-                        .searchLocation(str)
-                }
-            }).show(childFragmentManager, "pick_location")
-    }
-
     private fun showCourseTimePicker(mode: PopUpPickCourseTime.Mode) {
         viewModel.timetableLiveData.value?.data?.let { tt ->
             PopUpPickCourseTime(tt)
@@ -311,8 +274,6 @@ private fun PopupAddEventScreen(
     onShowExistingEventPicker: () -> Unit,
     onShowDatePicker: () -> Unit,
     onShowTimePicker: () -> Unit,
-    onShowTeacherPicker: () -> Unit,
-    onShowLocationPicker: () -> Unit,
     onShowCourseTimePicker: (PopUpPickCourseTime.Mode) -> Unit
 ) {
     val tokens = HitaTheme.tokens
@@ -335,7 +296,7 @@ private fun PopupAddEventScreen(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(tokens.spacing.lg)
+                .padding(bottom = tokens.spacing.lg)
         ) {
             // Title
             val titleText = when {
@@ -343,52 +304,33 @@ private fun PopupAddEventScreen(
                 addSubjectMode -> stringResource(R.string.add_subject)
                 else -> stringResource(R.string.ade_title)
             }
-            Text(
-                text = titleText,
-                fontSize = 20.sp,
-                fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.onSurface,
-                modifier = Modifier.padding(bottom = tokens.spacing.xs)
-            )
+            SectionTitle(titleText)
 
             // Timetable picker
             val ttState = timetableState
             if (ttState?.state != DataState.STATE.FETCH_FAILED) {
                 val ttSelected = ttState?.state == DataState.STATE.SUCCESS
-                PickerCard(
+                PickerRow(
                     iconRes = R.drawable.ic_timetable,
-                    text = ttState?.data?.name ?: stringResource(R.string.ade_pick_timetable),
+                    label = stringResource(R.string.ade_pick_timetable),
+                    value = ttState?.data?.name,
                     isSelected = ttSelected,
                     onClick = onShowTimetablePicker
                 )
             }
 
-            // Content section
-            Text(
-                text = stringResource(R.string.ade_section_content),
-                fontSize = 12.sp,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(top = tokens.spacing.md)
-            )
+            // ── Content section ──
+            SectionTitle(stringResource(R.string.ade_section_content))
 
             if (addSubjectMode || editEvent == null) {
-                Row(modifier = Modifier.fillMaxWidth()) {
-                    val isCustom = contentMode == AddEventViewModel.ContentMode.CUSTOM
-                    PickerCard(
-                        iconRes = R.drawable.ic_baseline_timetable_24,
-                        text = selectedEvent?.data?.name ?: stringResource(R.string.ade_content_existing),
-                        isSelected = !isCustom,
-                        onClick = onShowExistingEventPicker,
-                        modifier = Modifier.weight(1f)
-                    )
-                    Spacer(modifier = Modifier.width(tokens.spacing.xs))
-                    PickerCard(
-                        text = stringResource(R.string.ade_content_custom),
-                        isSelected = isCustom,
-                        onClick = { viewModel.setContentMode(AddEventViewModel.ContentMode.CUSTOM) },
-                        modifier = Modifier.weight(1f)
-                    )
-                }
+                val isCustom = contentMode == AddEventViewModel.ContentMode.CUSTOM
+                SegmentedToggle(
+                    option1 = stringResource(R.string.ade_content_existing),
+                    option2 = stringResource(R.string.ade_content_custom),
+                    selectedFirst = !isCustom,
+                    onSelectFirst = onShowExistingEventPicker,
+                    onSelectSecond = { viewModel.setContentMode(AddEventViewModel.ContentMode.CUSTOM) }
+                )
             }
 
             val isCustomContent = contentMode == AddEventViewModel.ContentMode.CUSTOM || addSubjectMode || editEvent != null
@@ -401,41 +343,29 @@ private fun PopupAddEventScreen(
                     },
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(top = tokens.spacing.xs),
+                        .padding(horizontal = tokens.spacing.xl, vertical = tokens.spacing.xs),
                     label = { Text(stringResource(R.string.ade_namehint)) },
                     singleLine = true,
                     keyboardOptions = KeyboardOptions(
                         keyboardType = KeyboardType.Text,
                         imeAction = ImeAction.Next
-                    )
+                    ),
+                    shape = RoundedCornerShape(tokens.radius.md)
                 )
             }
 
-            // Date section
-            Text(
-                text = stringResource(R.string.ade_section_date),
-                fontSize = 12.sp,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(top = tokens.spacing.md)
-            )
+            // ── Date section ──
+            SectionTitle(stringResource(R.string.ade_section_date))
 
             if (editEvent == null) {
-                Row(modifier = Modifier.fillMaxWidth()) {
-                    val isSingle = dateMode == AddEventViewModel.DateMode.SINGLE
-                    PickerCard(
-                        text = stringResource(R.string.ade_date_single),
-                        isSelected = isSingle,
-                        onClick = { viewModel.setDateMode(AddEventViewModel.DateMode.SINGLE) },
-                        modifier = Modifier.weight(1f)
-                    )
-                    Spacer(modifier = Modifier.width(tokens.spacing.xs))
-                    PickerCard(
-                        text = stringResource(R.string.ade_date_weekly),
-                        isSelected = !isSingle,
-                        onClick = { viewModel.setDateMode(AddEventViewModel.DateMode.WEEKLY) },
-                        modifier = Modifier.weight(1f)
-                    )
-                }
+                val isSingle = dateMode == AddEventViewModel.DateMode.SINGLE
+                SegmentedToggle(
+                    option1 = stringResource(R.string.ade_date_single),
+                    option2 = stringResource(R.string.ade_date_weekly),
+                    selectedFirst = isSingle,
+                    onSelectFirst = { viewModel.setDateMode(AddEventViewModel.DateMode.SINGLE) },
+                    onSelectSecond = { viewModel.setDateMode(AddEventViewModel.DateMode.WEEKLY) }
+                )
             }
 
             val dateLabel = remember(dateMode, customDate, timeRange) {
@@ -457,41 +387,30 @@ private fun PopupAddEventScreen(
                     else -> null
                 }
             }
-            PickerCard(
+            PickerRow(
                 iconRes = R.drawable.ic_baseline_date_range_24,
-                text = dateLabel ?: if (dateMode == AddEventViewModel.DateMode.WEEKLY) {
+                label = stringResource(R.string.ade_section_date),
+                value = dateLabel,
+                isSelected = dateLabel != null,
+                onClick = onShowDatePicker,
+                placeholder = if (dateMode == AddEventViewModel.DateMode.WEEKLY) {
                     stringResource(R.string.ade_pick_weekly_date)
                 } else {
                     stringResource(R.string.ade_set_date)
-                },
-                isSelected = dateLabel != null,
-                onClick = onShowDatePicker
+                }
             )
 
-            // Time section
-            Text(
-                text = stringResource(R.string.ade_section_time),
-                fontSize = 12.sp,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(top = tokens.spacing.md)
-            )
+            // ── Time section ──
+            SectionTitle(stringResource(R.string.ade_section_time))
 
-            Row(modifier = Modifier.fillMaxWidth()) {
-                val isPeriod = timeMode == AddEventViewModel.TimeMode.PERIOD
-                PickerCard(
-                    text = stringResource(R.string.ade_time_clock),
-                    isSelected = !isPeriod,
-                    onClick = { viewModel.setTimeMode(AddEventViewModel.TimeMode.CLOCK) },
-                    modifier = Modifier.weight(1f)
-                )
-                Spacer(modifier = Modifier.width(tokens.spacing.xs))
-                PickerCard(
-                    text = stringResource(R.string.ade_time_period),
-                    isSelected = isPeriod,
-                    onClick = { viewModel.setTimeMode(AddEventViewModel.TimeMode.PERIOD) },
-                    modifier = Modifier.weight(1f)
-                )
-            }
+            val isPeriod = timeMode == AddEventViewModel.TimeMode.PERIOD
+            SegmentedToggle(
+                option1 = stringResource(R.string.ade_time_clock),
+                option2 = stringResource(R.string.ade_time_period),
+                selectedFirst = !isPeriod,
+                onSelectFirst = { viewModel.setTimeMode(AddEventViewModel.TimeMode.CLOCK) },
+                onSelectSecond = { viewModel.setTimeMode(AddEventViewModel.TimeMode.PERIOD) }
+            )
 
             val timeLabel = remember(timeMode, customTimePeriod, timeRange) {
                 when (timeMode) {
@@ -512,37 +431,53 @@ private fun PopupAddEventScreen(
                     else -> null
                 }
             }
-            PickerCard(
+            PickerRow(
                 iconRes = R.drawable.ic_baseline_access_time_24,
-                text = timeLabel ?: if (timeMode == AddEventViewModel.TimeMode.PERIOD) {
+                label = stringResource(R.string.ade_section_time),
+                value = timeLabel,
+                isSelected = timeLabel != null,
+                onClick = onShowTimePicker,
+                placeholder = if (timeMode == AddEventViewModel.TimeMode.PERIOD) {
                     stringResource(R.string.ade_pick_time)
                 } else {
                     stringResource(R.string.ade_pick_time_range)
+                }
+            )
+
+            // ── Location ──
+            OutlinedTextField(
+                value = locationState?.data.orEmpty(),
+                onValueChange = {
+                    viewModel.locationLiveData.value = DataState(it)
                 },
-                isSelected = timeLabel != null,
-                onClick = onShowTimePicker
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = tokens.spacing.xl, vertical = tokens.spacing.xs),
+                label = { Text(stringResource(R.string.ade_optional_location)) },
+                singleLine = true,
+                keyboardOptions = KeyboardOptions(
+                    keyboardType = KeyboardType.Text,
+                    imeAction = ImeAction.Next
+                ),
+                shape = RoundedCornerShape(tokens.radius.md)
             )
 
-            // Location picker
-            val locSelected = locationState?.state == DataState.STATE.SUCCESS
-            PickerCard(
-                iconRes = R.drawable.ic_baseline_location_24,
-                text = locationState?.data ?: stringResource(R.string.ade_optional_location),
-                isSelected = locSelected,
-                onClick = onShowLocationPicker,
-                showCancel = locSelected,
-                onCancel = { viewModel.locationLiveData.value = DataState(DataState.STATE.NOTHING) }
-            )
-
-            // Teacher picker
-            val teacherSelected = teacherState?.state == DataState.STATE.SUCCESS
-            PickerCard(
-                iconRes = R.drawable.ic_teacher,
-                text = teacherState?.data ?: stringResource(R.string.ade_optional_teacher_note),
-                isSelected = teacherSelected,
-                onClick = onShowTeacherPicker,
-                showCancel = teacherSelected,
-                onCancel = { viewModel.teacherLiveData.value = DataState(DataState.STATE.NOTHING) }
+            // ── Teacher ──
+            OutlinedTextField(
+                value = teacherState?.data.orEmpty(),
+                onValueChange = {
+                    viewModel.teacherLiveData.value = DataState(it)
+                },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = tokens.spacing.xl, vertical = tokens.spacing.xs),
+                label = { Text(stringResource(R.string.ade_optional_teacher_note)) },
+                singleLine = true,
+                keyboardOptions = KeyboardOptions(
+                    keyboardType = KeyboardType.Text,
+                    imeAction = ImeAction.Done
+                ),
+                shape = RoundedCornerShape(tokens.radius.md)
             )
         }
 
@@ -571,76 +506,153 @@ private fun PopupAddEventScreen(
     }
 }
 
+// ── New reusable composables ──
+
 @Composable
-private fun PickerCard(
+private fun SectionTitle(text: String) {
+    Text(
+        text = text,
+        color = MaterialTheme.colorScheme.onSurface,
+        fontSize = 14.sp,
+        fontWeight = FontWeight.Bold,
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(
+                start = HitaTheme.tokens.spacing.xl,
+                top = HitaTheme.tokens.spacing.xl,
+                end = HitaTheme.tokens.spacing.xl,
+                bottom = HitaTheme.tokens.spacing.sm
+            )
+    )
+}
+
+@Composable
+private fun SegmentedToggle(
+    option1: String,
+    option2: String,
+    selectedFirst: Boolean,
+    onSelectFirst: () -> Unit,
+    onSelectSecond: () -> Unit,
+) {
+    val shape = RoundedCornerShape(HitaTheme.tokens.radius.md)
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = HitaTheme.tokens.spacing.xl, vertical = HitaTheme.tokens.spacing.xs)
+            .height(40.dp)
+            .clip(shape)
+            .border(1.dp, MaterialTheme.colorScheme.outline, shape)
+    ) {
+        Box(
+            modifier = Modifier
+                .weight(1f)
+                .fillMaxHeight()
+                .background(
+                    if (selectedFirst) MaterialTheme.colorScheme.primary
+                    else MaterialTheme.colorScheme.surface
+                )
+                .clickable { onSelectFirst() },
+            contentAlignment = Alignment.Center
+        ) {
+            Text(
+                text = option1,
+                fontWeight = FontWeight.Bold,
+                fontSize = 14.sp,
+                color = if (selectedFirst) MaterialTheme.colorScheme.onPrimary
+                        else MaterialTheme.colorScheme.onSurface
+            )
+        }
+        Box(
+            modifier = Modifier
+                .weight(1f)
+                .fillMaxHeight()
+                .background(
+                    if (!selectedFirst) MaterialTheme.colorScheme.primary
+                    else MaterialTheme.colorScheme.surface
+                )
+                .clickable { onSelectSecond() },
+            contentAlignment = Alignment.Center
+        ) {
+            Text(
+                text = option2,
+                fontWeight = FontWeight.Bold,
+                fontSize = 14.sp,
+                color = if (!selectedFirst) MaterialTheme.colorScheme.onPrimary
+                        else MaterialTheme.colorScheme.onSurface
+            )
+        }
+    }
+}
+
+@Composable
+private fun PickerRow(
     iconRes: Int? = null,
-    text: String,
+    label: String,
+    value: String?,
     isSelected: Boolean,
     onClick: () -> Unit,
-    modifier: Modifier = Modifier,
     showCancel: Boolean = false,
-    onCancel: (() -> Unit)? = null
+    onCancel: (() -> Unit)? = null,
+    placeholder: String? = null,
 ) {
-    val tokens = HitaTheme.tokens
-
-    Card(
-        onClick = onClick,
-        modifier = modifier
-            .padding(vertical = tokens.spacing.xs)
-            .height(40.dp),
-        shape = RoundedCornerShape(tokens.radius.sm),
-        colors = CardDefaults.cardColors(
-            containerColor = if (isSelected) {
-                MaterialTheme.colorScheme.primary
-            } else {
-                MaterialTheme.colorScheme.surfaceVariant
-            }
-        ),
-        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
+    val bg = if (isSelected) {
+        MaterialTheme.colorScheme.primaryContainer
+    } else {
+        MaterialTheme.colorScheme.surfaceVariant
+    }
+    val fg = if (isSelected) {
+        MaterialTheme.colorScheme.onPrimaryContainer
+    } else {
+        MaterialTheme.colorScheme.onSurfaceVariant
+    }
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = HitaTheme.tokens.spacing.xl, vertical = HitaTheme.tokens.spacing.xs)
+            .height(48.dp)
+            .clip(RoundedCornerShape(HitaTheme.tokens.radius.md))
+            .background(bg)
+            .clickable { onClick() }
+            .padding(horizontal = HitaTheme.tokens.spacing.md),
+        verticalAlignment = Alignment.CenterVertically
     ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = tokens.spacing.md),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            if (iconRes != null) {
-                Icon(
-                    painter = painterResource(iconRes),
-                    contentDescription = null,
-                    modifier = Modifier.size(18.dp),
-                    tint = if (isSelected) {
-                        MaterialTheme.colorScheme.onPrimary
-                    } else {
-                        MaterialTheme.colorScheme.onSurfaceVariant
-                    }
-                )
-                Spacer(modifier = Modifier.width(tokens.spacing.xs))
-            }
-            Text(
-                text = text,
-                fontSize = 14.sp,
-                fontWeight = FontWeight.Bold,
-                color = if (isSelected) {
-                    MaterialTheme.colorScheme.onPrimary
-                } else {
-                    MaterialTheme.colorScheme.onSurfaceVariant
-                },
-                maxLines = 1,
-                modifier = Modifier.weight(1f)
+        if (iconRes != null) {
+            Icon(
+                painter = painterResource(iconRes),
+                contentDescription = null,
+                modifier = Modifier.size(20.dp),
+                tint = fg
             )
-            if (showCancel && onCancel != null) {
-                IconButton(
-                    onClick = onCancel,
-                    modifier = Modifier.size(24.dp)
-                ) {
-                    Icon(
-                        painter = painterResource(R.drawable.ic_baseline_cancel_24),
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.size(16.dp)
-                    )
-                }
+            Spacer(modifier = Modifier.width(HitaTheme.tokens.spacing.sm))
+        }
+        Text(
+            text = label,
+            fontSize = 14.sp,
+            fontWeight = if (isSelected) FontWeight.Medium else FontWeight.Normal,
+            color = fg,
+            modifier = Modifier.weight(1f)
+        )
+        val displayValue = if (!value.isNullOrBlank()) value else (placeholder ?: "")
+        Text(
+            text = displayValue,
+            fontSize = 14.sp,
+            fontWeight = if (isSelected) FontWeight.Medium else FontWeight.Normal,
+            color = if (isSelected) MaterialTheme.colorScheme.onPrimaryContainer
+                    else MaterialTheme.colorScheme.onSurface,
+            maxLines = 1,
+        )
+        if (showCancel && onCancel != null) {
+            Spacer(modifier = Modifier.width(HitaTheme.tokens.spacing.xs))
+            IconButton(
+                onClick = onCancel,
+                modifier = Modifier.size(24.dp)
+            ) {
+                Icon(
+                    painter = painterResource(R.drawable.ic_baseline_cancel_24),
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(16.dp)
+                )
             }
         }
     }
