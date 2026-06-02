@@ -27,6 +27,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateListOf
@@ -150,6 +151,18 @@ private fun PickCourseTimeScreen(
     var selectedDow by remember { mutableIntStateOf(initDow) }
     var selectedFromPeriod by remember { mutableIntStateOf(initFromPeriod) }
     var selectedToPeriod by remember { mutableIntStateOf(initToPeriod) }
+
+    // Auto-correct: start must never exceed end
+    LaunchedEffect(selectedFromPeriod) {
+        if (selectedFromPeriod > selectedToPeriod) {
+            selectedToPeriod = selectedFromPeriod
+        }
+    }
+    LaunchedEffect(selectedToPeriod) {
+        if (selectedToPeriod < selectedFromPeriod) {
+            selectedFromPeriod = selectedToPeriod
+        }
+    }
 
     val weekCount = remember {
         initTimetable?.getWeekNumber(initTimetable.endTime.time) ?: 20
@@ -452,9 +465,12 @@ private fun WheelPicker(
             }
         },
         update = { view ->
+            if (view.currentIndex != initialIndex) {
+                view.currentIndex = initialIndex
+            }
             view.setOnTouchListener { _, _ ->
                 view.parent?.requestDisallowInterceptTouchEvent(true)
-                false // don't consume — let MWheel3DView handle the touch
+                false
             }
         }
     )
