@@ -35,6 +35,10 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
+import androidx.compose.ui.input.nestedscroll.NestedScrollSource
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
@@ -225,10 +229,20 @@ private fun PickCourseTimeScreen(
             }
         }
 
-        // Wheel pickers
+        // Wheel pickers — consume remaining scroll to prevent BottomSheet intercept
+        val pickerNestedScrollConnection = remember {
+            object : NestedScrollConnection {
+                override fun onPostScroll(
+                    consumed: Offset,
+                    available: Offset,
+                    source: NestedScrollSource
+                ): Offset = available
+            }
+        }
         Row(
             modifier = Modifier
                 .fillMaxWidth()
+                .nestedScroll(pickerNestedScrollConnection)
                 .padding(top = tokens.spacing.lg),
             verticalAlignment = Alignment.CenterVertically
         ) {
