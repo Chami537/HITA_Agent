@@ -28,12 +28,18 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Button
+import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Surface
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -311,15 +317,15 @@ private fun PopupAddEventScreen(
     }
 
     val scrollState = rememberScrollState()
-    Column(
+    val context = LocalContext.current
+    Box(
         modifier = Modifier
             .fillMaxSize()
             .imePadding()
     ) {
         Column(
             modifier = Modifier
-                .fillMaxWidth()
-                .weight(1f)
+                .fillMaxSize()
                 .verticalScroll(scrollState)
         ) {
             // Title
@@ -508,38 +514,36 @@ private fun PopupAddEventScreen(
         }
         } // end of scrollable Column
 
-        // Sticky bottom button
-        val context = LocalContext.current
-        Surface(
-            shadowElevation = 8.dp,
-            color = MaterialTheme.colorScheme.surface
+        // Animated FAB — appears only when form is valid
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(tokens.spacing.lg),
+            contentAlignment = Alignment.TopEnd
         ) {
-            Button(
-                onClick = {
-                    if (doneLiveData == true) {
+            AnimatedVisibility(
+                visible = doneLiveData == true,
+                enter = scaleIn() + fadeIn(),
+                exit = scaleOut() + fadeOut()
+            ) {
+                FloatingActionButton(
+                    onClick = {
                         viewModel.createEvent()
                         WidgetUtils.sendRefreshToAll(context)
                         onDismiss()
-                    } else {
-                        android.widget.Toast.makeText(
-                            context,
-                            context.getString(R.string.ade_incomplete),
-                            android.widget.Toast.LENGTH_SHORT
-                        ).show()
-                    }
-                },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = tokens.spacing.xl, vertical = tokens.spacing.md),
-                shape = RoundedCornerShape(tokens.radius.md)
-            ) {
-                Text(
-                    text = stringResource(R.string.confirm),
-                    modifier = Modifier.padding(vertical = 4.dp)
-                )
+                    },
+                    containerColor = MaterialTheme.colorScheme.primary
+                ) {
+                    Icon(
+                        painter = painterResource(R.drawable.ic_done_white_48dp),
+                        contentDescription = stringResource(R.string.confirm),
+                        tint = MaterialTheme.colorScheme.onPrimary,
+                        modifier = Modifier.size(24.dp)
+                    )
+                }
             }
         }
-    } // end of outer Column
+    } // end of Box
 
 // ── New reusable composables ──
 
