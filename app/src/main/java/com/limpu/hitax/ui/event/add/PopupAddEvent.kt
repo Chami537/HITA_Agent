@@ -30,12 +30,14 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Button
 import androidx.compose.material3.FloatingActionButton
+import androidx.compose.material3.FabPosition
 import androidx.compose.material3.FloatingActionButtonDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Surface
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
@@ -320,16 +322,40 @@ private fun PopupAddEventScreen(
 
     val scrollState = rememberScrollState()
     val context = LocalContext.current
-    Box(
-        modifier = Modifier.fillMaxSize(),
-        contentAlignment = Alignment.BottomEnd
-    ) {
+    Scaffold(
+        containerColor = ComposeColor.Transparent,
+        floatingActionButton = {
+            AnimatedVisibility(
+                visible = doneLiveData == true,
+                enter = scaleIn(),
+                exit = scaleOut()
+            ) {
+                FloatingActionButton(
+                    onClick = {
+                        viewModel.createEvent()
+                        WidgetUtils.sendRefreshToAll(context)
+                        onDismiss()
+                    },
+                    shape = CircleShape,
+                    containerColor = MaterialTheme.colorScheme.primary,
+                    contentColor = MaterialTheme.colorScheme.onPrimary
+                ) {
+                    Icon(
+                        painter = painterResource(R.drawable.ic_done_white_48dp),
+                        contentDescription = stringResource(R.string.confirm),
+                        modifier = Modifier.size(24.dp)
+                    )
+                }
+            }
+        },
+        floatingActionButtonPosition = FabPosition.End
+    ) { innerPadding ->
         Column(
             modifier = Modifier
                 .fillMaxSize()
+                .padding(innerPadding)
                 .verticalScroll(scrollState)
                 .imePadding()
-                .padding(bottom = 80.dp)
         ) {
             // Title
             val titleText = when {
@@ -516,35 +542,7 @@ private fun PopupAddEventScreen(
             )
         }
         } // end of scrollable Column
-
-        // Animated FAB — second layer above scrollable content
-        AnimatedVisibility(
-            visible = doneLiveData == true,
-            enter = scaleIn() + fadeIn(),
-            exit = scaleOut() + fadeOut(),
-            modifier = Modifier
-                .padding(end = 24.dp, bottom = 24.dp)
-                .imePadding()
-        ) {
-            FloatingActionButton(
-                onClick = {
-                    viewModel.createEvent()
-                    WidgetUtils.sendRefreshToAll(context)
-                    onDismiss()
-                },
-                containerColor = MaterialTheme.colorScheme.primary,
-                contentColor = MaterialTheme.colorScheme.onPrimary,
-                shape = CircleShape,
-                elevation = FloatingActionButtonDefaults.elevation(defaultElevation = 4.dp)
-            ) {
-                Icon(
-                    painter = painterResource(R.drawable.ic_done_white_48dp),
-                    contentDescription = stringResource(R.string.confirm),
-                    modifier = Modifier.size(24.dp)
-                )
-            }
-        }
-    } // end of Box
+    } // end of Scaffold
 
 // ── New reusable composables ──
 
