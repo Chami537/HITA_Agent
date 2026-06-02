@@ -531,7 +531,7 @@ private fun SectionTitle(text: String) {
             .fillMaxWidth()
             .padding(
                 start = HitaTheme.tokens.spacing.xl,
-                top = HitaTheme.tokens.spacing.xl,
+                top = 28.dp,
                 end = HitaTheme.tokens.spacing.xl,
                 bottom = HitaTheme.tokens.spacing.sm
             )
@@ -560,7 +560,7 @@ private fun SegmentedToggle(
                 .weight(1f)
                 .fillMaxHeight()
                 .background(
-                    if (selectedFirst) MaterialTheme.colorScheme.primary
+                    if (selectedFirst) MaterialTheme.colorScheme.primaryContainer
                     else MaterialTheme.colorScheme.surface
                 )
                 .clickable { onSelectFirst() },
@@ -568,10 +568,10 @@ private fun SegmentedToggle(
         ) {
             Text(
                 text = option1,
-                fontWeight = FontWeight.Bold,
+                fontWeight = FontWeight.Medium,
                 fontSize = 14.sp,
-                color = if (selectedFirst) MaterialTheme.colorScheme.onPrimary
-                        else MaterialTheme.colorScheme.onSurface
+                color = if (selectedFirst) MaterialTheme.colorScheme.onPrimaryContainer
+                        else MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
         Box(
@@ -579,7 +579,7 @@ private fun SegmentedToggle(
                 .weight(1f)
                 .fillMaxHeight()
                 .background(
-                    if (!selectedFirst) MaterialTheme.colorScheme.primary
+                    if (!selectedFirst) MaterialTheme.colorScheme.primaryContainer
                     else MaterialTheme.colorScheme.surface
                 )
                 .clickable { onSelectSecond() },
@@ -587,10 +587,10 @@ private fun SegmentedToggle(
         ) {
             Text(
                 text = option2,
-                fontWeight = FontWeight.Bold,
+                fontWeight = FontWeight.Medium,
                 fontSize = 14.sp,
-                color = if (!selectedFirst) MaterialTheme.colorScheme.onPrimary
-                        else MaterialTheme.colorScheme.onSurface
+                color = if (!selectedFirst) MaterialTheme.colorScheme.onPrimaryContainer
+                        else MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
     }
@@ -607,22 +607,18 @@ private fun PickerRow(
     onCancel: (() -> Unit)? = null,
     placeholder: String? = null,
 ) {
-    val bg = if (isSelected) {
-        MaterialTheme.colorScheme.primaryContainer
-    } else {
-        MaterialTheme.colorScheme.surfaceVariant
-    }
-    val fg = if (isSelected) {
-        MaterialTheme.colorScheme.onPrimaryContainer
-    } else {
-        MaterialTheme.colorScheme.onSurfaceVariant
-    }
+    val borderColor = if (isSelected) MaterialTheme.colorScheme.primary
+        else MaterialTheme.colorScheme.outline
+    val fg = MaterialTheme.colorScheme.onSurface
+    val bg = if (isSelected) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f)
+        else MaterialTheme.colorScheme.surface
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = HitaTheme.tokens.spacing.xl, vertical = HitaTheme.tokens.spacing.xs)
             .height(48.dp)
             .clip(RoundedCornerShape(HitaTheme.tokens.radius.md))
+            .border(1.dp, borderColor, RoundedCornerShape(HitaTheme.tokens.radius.md))
             .background(bg)
             .clickable { onClick() }
             .padding(horizontal = HitaTheme.tokens.spacing.md),
@@ -633,14 +629,13 @@ private fun PickerRow(
                 painter = painterResource(iconRes),
                 contentDescription = null,
                 modifier = Modifier.size(20.dp),
-                tint = fg
+                tint = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
             )
             Spacer(modifier = Modifier.width(HitaTheme.tokens.spacing.sm))
         }
         Text(
             text = label,
             fontSize = 14.sp,
-            fontWeight = if (isSelected) FontWeight.Medium else FontWeight.Normal,
             color = fg,
             modifier = Modifier.weight(1f)
         )
@@ -648,9 +643,8 @@ private fun PickerRow(
         Text(
             text = displayValue,
             fontSize = 14.sp,
-            fontWeight = if (isSelected) FontWeight.Medium else FontWeight.Normal,
-            color = if (isSelected) MaterialTheme.colorScheme.onPrimaryContainer
-                    else MaterialTheme.colorScheme.onSurface,
+            color = if (isSelected) MaterialTheme.colorScheme.primary
+                    else MaterialTheme.colorScheme.onSurfaceVariant,
             maxLines = 1,
         )
         if (showCancel && onCancel != null) {
