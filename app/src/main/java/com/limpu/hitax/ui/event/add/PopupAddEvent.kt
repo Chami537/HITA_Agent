@@ -3,6 +3,7 @@ package com.limpu.hitax.ui.event.add
 import android.annotation.SuppressLint
 import android.graphics.Color
 import android.os.Bundle
+import androidx.compose.ui.graphics.Color as ComposeColor
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
@@ -15,6 +16,7 @@ import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -27,6 +29,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
+import androidx.compose.material3.Surface
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
@@ -41,6 +44,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
@@ -309,11 +313,15 @@ private fun PopupAddEventScreen(
     val scrollState = rememberScrollState()
     Column(
         modifier = Modifier
-            .fillMaxWidth()
-            .verticalScroll(scrollState)
+            .fillMaxSize()
             .imePadding()
-            .padding(bottom = 48.dp)
     ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .weight(1f)
+                .verticalScroll(scrollState)
+        ) {
             // Title
             val titleText = when {
                 editEvent != null -> stringResource(R.string.ade_title_edit, editEvent.name.orEmpty())
@@ -498,34 +506,40 @@ private fun PopupAddEventScreen(
                 shape = RoundedCornerShape(tokens.radius.md)
             )
         }
+        } // end of scrollable Column
 
-        // Done button — always visible at bottom
+        // Sticky bottom button
         val context = LocalContext.current
-        Button(
-            onClick = {
-                if (doneLiveData == true) {
-                    viewModel.createEvent()
-                    WidgetUtils.sendRefreshToAll(context)
-                    onDismiss()
-                } else {
-                    android.widget.Toast.makeText(
-                        context,
-                        context.getString(R.string.ade_incomplete),
-                        android.widget.Toast.LENGTH_SHORT
-                    ).show()
-                }
-            },
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = tokens.spacing.xl, vertical = tokens.spacing.lg),
-            shape = RoundedCornerShape(tokens.radius.md)
+        Surface(
+            shadowElevation = 8.dp,
+            color = MaterialTheme.colorScheme.surface
         ) {
-            Text(
-                text = stringResource(R.string.confirm),
-                modifier = Modifier.padding(vertical = 4.dp)
-            )
+            Button(
+                onClick = {
+                    if (doneLiveData == true) {
+                        viewModel.createEvent()
+                        WidgetUtils.sendRefreshToAll(context)
+                        onDismiss()
+                    } else {
+                        android.widget.Toast.makeText(
+                            context,
+                            context.getString(R.string.ade_incomplete),
+                            android.widget.Toast.LENGTH_SHORT
+                        ).show()
+                    }
+                },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = tokens.spacing.xl, vertical = tokens.spacing.md),
+                shape = RoundedCornerShape(tokens.radius.md)
+            ) {
+                Text(
+                    text = stringResource(R.string.confirm),
+                    modifier = Modifier.padding(vertical = 4.dp)
+                )
+            }
         }
-    }
+    } // end of outer Column
 
 // ── New reusable composables ──
 
@@ -562,15 +576,19 @@ private fun SegmentedToggle(
             .padding(horizontal = HitaTheme.tokens.spacing.xl, vertical = HitaTheme.tokens.spacing.xs)
             .height(40.dp)
             .clip(shape)
-            .border(1.dp, MaterialTheme.colorScheme.outline, shape)
+            .background(MaterialTheme.colorScheme.surfaceVariant, shape)
+            .padding(4.dp)
     ) {
         Box(
             modifier = Modifier
                 .weight(1f)
                 .fillMaxHeight()
-                .background(
-                    if (selectedFirst) MaterialTheme.colorScheme.primaryContainer
-                    else MaterialTheme.colorScheme.surface
+                .then(
+                    if (selectedFirst) Modifier
+                        .shadow(2.dp, shape)
+                        .background(MaterialTheme.colorScheme.surface, shape)
+                    else Modifier
+                        .background(ComposeColor.Transparent, shape)
                 )
                 .clickable { onSelectFirst() },
             contentAlignment = Alignment.Center
@@ -579,7 +597,7 @@ private fun SegmentedToggle(
                 text = option1,
                 fontWeight = FontWeight.Medium,
                 fontSize = 14.sp,
-                color = if (selectedFirst) MaterialTheme.colorScheme.onPrimaryContainer
+                color = if (selectedFirst) MaterialTheme.colorScheme.onSurface
                         else MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
@@ -587,9 +605,12 @@ private fun SegmentedToggle(
             modifier = Modifier
                 .weight(1f)
                 .fillMaxHeight()
-                .background(
-                    if (!selectedFirst) MaterialTheme.colorScheme.primaryContainer
-                    else MaterialTheme.colorScheme.surface
+                .then(
+                    if (!selectedFirst) Modifier
+                        .shadow(2.dp, shape)
+                        .background(MaterialTheme.colorScheme.surface, shape)
+                    else Modifier
+                        .background(ComposeColor.Transparent, shape)
                 )
                 .clickable { onSelectSecond() },
             contentAlignment = Alignment.Center
@@ -598,7 +619,7 @@ private fun SegmentedToggle(
                 text = option2,
                 fontWeight = FontWeight.Medium,
                 fontSize = 14.sp,
-                color = if (!selectedFirst) MaterialTheme.colorScheme.onPrimaryContainer
+                color = if (!selectedFirst) MaterialTheme.colorScheme.onSurface
                         else MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
