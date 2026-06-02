@@ -786,6 +786,7 @@ private fun TimetableEventLayer(
     }
 
     conflictCluster?.let { cluster ->
+        val title = "${TimeTools.printTime(cluster.minOf { it.from.time })} - ${TimeTools.printTime(cluster.maxOf { it.to.time })} 课程冲突"
         ModalBottomSheet(onDismissRequest = { conflictCluster = null }) {
             Column(
                 modifier = Modifier
@@ -793,7 +794,7 @@ private fun TimetableEventLayer(
                     .padding(horizontal = 16.dp, vertical = 8.dp)
             ) {
                 Text(
-                    text = stringResource(R.string.tt_conflict_title),
+                    text = title,
                     style = MaterialTheme.typography.titleMedium,
                     modifier = Modifier.padding(bottom = 12.dp)
                 )
