@@ -15,6 +15,8 @@ import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.basicMarquee
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -725,6 +727,7 @@ private fun BoxWithConstraintsCompat(content: @Composable androidx.compose.found
     androidx.compose.foundation.layout.BoxWithConstraints(modifier = Modifier.fillMaxSize(), content = content)
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun TimetableEventCard(
     event: EventItem,
@@ -753,8 +756,20 @@ private fun TimetableEventCard(
     val verticalPadding = (3 * marginScale).dp
     val minTitleSize = if (columnCount > 1) 5f else 6f
     val hasPlace = !event.place.isNullOrBlank()
-    val titleFontSize = (cardHeight.value * 0.45f * textScale)
-        .coerceIn(minTitleSize, 18f)
+    val nameLength = event.name.length
+    val lengthScale = when {
+        nameLength <= 4 -> 1.15f
+        nameLength <= 6 -> 0.92f
+        nameLength <= 8 -> 0.75f
+        else -> 0.62f
+    }
+    val titleAvailableDp = cardHeight.value
+        .minus(verticalPadding.value * 2f)
+        .minus(if (hasPlace) 14f * textScale else 0f)
+        .minus(if (style.cardIconEnabled) 10f * textScale else 0f)
+    val maxTitleFromSpace = (titleAvailableDp / 1.2f).coerceAtMost(16f)
+    val titleFontSize = (13f * textScale * lengthScale)
+        .coerceIn(minTitleSize, maxTitleFromSpace)
         .sp
     val subtitleFontSize = (10f * textScale).sp
     val maxTitleLines = when {
@@ -808,6 +823,7 @@ private fun TimetableEventCard(
                     modifier = Modifier
                         .align(Alignment.BottomCenter)
                         .fillMaxWidth()
+                        .basicMarquee(iterations = Int.MAX_VALUE)
                         .alpha(style.subtitleAlpha / 100f)
                 )
             }
