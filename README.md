@@ -1,6 +1,6 @@
 # HITA
 
-[App 下载（Releases）](https://github.com/HIT-A/HITA_Android/releases/latest) | 最新版本 v2.2.0
+[App 下载（Releases）](https://github.com/HIT-A/HITA_Android/releases/latest) | 最新版本 v2.4.1
 
 ## 项目背景
 项目最初来自哈尔滨工业大学（深圳）2018 级本科生大一年度立项，原名 HITSZ 助手，重构版改名为 HITA。
@@ -55,4 +55,4 @@ AI 助手基于 ReAct 框架，支持以下工具调用：
 
 ## License
 
-[MIT](LICENSE) © Stupid Tree
+[MIT](LICENSE) © Stupid Tree, Jiao Ziang
