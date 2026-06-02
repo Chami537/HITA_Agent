@@ -749,31 +749,14 @@ private fun TimetableEventCard(
     val subtitleColor = resolveCardTextColor(style.subTitleColor, style.isColorEnabled, event.color, effectiveBg)
     val textScale = TimetableCardTextScale.forColumnCount(columnCount)
     val marginScale = TimetableCardTextScale.marginScaleForColumnCount(columnCount)
-    val nameLength = event.name.length
-    val lengthScale = when {
-        nameLength <= 4 -> 1.15f
-        nameLength <= 6 -> 0.92f
-        nameLength <= 8 -> 0.75f
-        else -> 0.62f
-    }
     val horizontalPadding = (5 * marginScale).dp
     val verticalPadding = (3 * marginScale).dp
     val minTitleSize = if (columnCount > 1) 5f else 6f
-    val titleFontSize = (13f * textScale * lengthScale)
-        .coerceAtLeast(minTitleSize)
+    val hasPlace = !event.place.isNullOrBlank()
+    val titleFontSize = (cardHeight.value * 0.45f * textScale)
+        .coerceIn(minTitleSize, 18f)
         .sp
-    val placeText = event.place
-    val subtitleLengthScale = if (!placeText.isNullOrBlank()) {
-        when {
-            placeText.length <= 4 -> 1.0f
-            placeText.length <= 6 -> 0.85f
-            else -> 0.7f
-        }
-    } else 1.0f
-    val minSubtitleSize = if (columnCount > 1) 5f else 6f
-    val subtitleFontSize = (11f * textScale * subtitleLengthScale)
-        .coerceAtLeast(minSubtitleSize)
-        .sp
+    val subtitleFontSize = (10f * textScale).sp
     val maxTitleLines = when {
         cardHeight < 40.dp -> 1
         cardHeight < 60.dp -> 2
@@ -807,36 +790,12 @@ private fun TimetableEventCard(
         colors = CardDefaults.cardColors(containerColor = background),
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
     ) {
-        Column(
+        Box(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(horizontal = horizontalPadding, vertical = verticalPadding),
-            verticalArrangement = Arrangement.Center,
-            horizontalAlignment = Alignment.CenterHorizontally
+                .padding(horizontal = horizontalPadding, vertical = verticalPadding)
         ) {
-            if (style.cardIconEnabled) {
-                Box(
-                    modifier = Modifier
-                        .size((8 * textScale).dp)
-                        .clip(CircleShape)
-                        .background(titleColor)
-                )
-                Spacer(modifier = Modifier.height(2.dp))
-            }
-            Text(
-                text = event.name,
-                color = titleColor,
-                fontSize = titleFontSize,
-                lineHeight = (titleFontSize.value * 1.2f).sp,
-                fontWeight = if (style.isBoldText) FontWeight.Bold else FontWeight.Normal,
-                textAlign = textAlignFromGravity(style.titleGravity),
-                maxLines = maxTitleLines,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .alpha(style.titleAlpha / 100f)
-            )
-            if (!event.place.isNullOrBlank()) {
+            if (hasPlace) {
                 Text(
                     text = event.place ?: "",
                     color = subtitleColor,
@@ -844,11 +803,45 @@ private fun TimetableEventCard(
                     lineHeight = (subtitleFontSize.value * 1.2f).sp,
                     fontWeight = if (style.isBoldText) FontWeight.Bold else FontWeight.Normal,
                     textAlign = TextAlign.Center,
-                    maxLines = 3,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .fillMaxWidth()
+                        .alpha(style.subtitleAlpha / 100f)
+                )
+            }
+            if (style.cardIconEnabled) {
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.TopCenter)
+                        .padding(top = 2.dp)
+                        .size((8 * textScale).dp)
+                        .clip(CircleShape)
+                        .background(titleColor)
+                )
+            }
+            val titleBottomPad = if (hasPlace) (14f * textScale).dp else 0.dp
+            val titleTopPad = if (style.cardIconEnabled) (10f * textScale).dp else 0.dp
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(bottom = titleBottomPad, top = titleTopPad),
+                verticalArrangement = Arrangement.Center,
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Text(
+                    text = event.name,
+                    color = titleColor,
+                    fontSize = titleFontSize,
+                    lineHeight = (titleFontSize.value * 1.2f).sp,
+                    fontWeight = if (style.isBoldText) FontWeight.Bold else FontWeight.Normal,
+                    textAlign = textAlignFromGravity(style.titleGravity),
+                    maxLines = maxTitleLines,
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .alpha(style.subtitleAlpha / 100f)
+                        .alpha(style.titleAlpha / 100f)
                 )
             }
         }
