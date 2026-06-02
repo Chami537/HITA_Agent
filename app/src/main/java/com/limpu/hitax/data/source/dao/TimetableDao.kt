@@ -17,6 +17,46 @@ interface TimetableDao {
     @Query("SELECT * FROM timetable WHERE code is :easCode")
     fun getTimetableByEASCode(easCode: String): LiveData<Timetable?>
 
+    @Query(
+        """
+        SELECT * FROM timetable
+        WHERE code IN (:easCodes)
+        ORDER BY
+            CASE
+                WHEN code = :preferredCode THEN 0
+                WHEN code = :legacyCode THEN 1
+                ELSE 2
+            END,
+            createdAt DESC
+        LIMIT 1
+        """
+    )
+    fun getTimetableByEASCodeCandidates(
+        easCodes: List<String>,
+        preferredCode: String,
+        legacyCode: String
+    ): LiveData<Timetable?>
+
+    @Query(
+        """
+        SELECT * FROM timetable
+        WHERE code IN (:easCodes)
+        ORDER BY
+            CASE
+                WHEN code = :preferredCode THEN 0
+                WHEN code = :legacyCode THEN 1
+                ELSE 2
+            END,
+            createdAt DESC
+        LIMIT 1
+        """
+    )
+    fun getTimetableByEASCodeCandidatesSync(
+        easCodes: List<String>,
+        preferredCode: String,
+        legacyCode: String
+    ): Timetable?
+
     @Query("SELECT * FROM timetable WHERE code is null OR TRIM(code) = '' ORDER BY createdAt ASC LIMIT 1")
     fun getFirstCustomTimetableSync(): Timetable?
 

@@ -404,7 +404,7 @@ private fun TimetableWeekContent(
 ) {
     val density = LocalDensity.current
     val scrollState = rememberScrollState()
-    val effectiveStart = remember(events, style) { effectiveStartTime(style.getStartTimeObject(), events) }
+    val effectiveStart = style.getStartTimeObject()
     val tableHeight = with(density) { timetableHeight(effectiveStart, style.cardHeight).toDp() }
     var tableWidthPx by remember { mutableStateOf(0) }
     var contentWidthPx by remember { mutableStateOf(0f) }
@@ -770,7 +770,10 @@ private fun TimetableEventCard(
             else -> 0.7f
         }
     } else 1.0f
-    val subtitleFontSize = ((titleFontSize.value - 1f) * subtitleLengthScale).coerceAtLeast(5f).sp
+    val minSubtitleSize = if (columnCount > 1) 5f else 6f
+    val subtitleFontSize = (11f * textScale * subtitleLengthScale)
+        .coerceAtLeast(minSubtitleSize)
+        .sp
     val maxTitleLines = when {
         cardHeight < 40.dp -> 1
         cardHeight < 60.dp -> 2
@@ -880,19 +883,6 @@ private fun textAlignFromGravity(gravity: Int): TextAlign {
 private fun timetableHeight(start: TimeInDay, cardHeight: Int): Int {
     val totalMinutes = (24 - start.hour) * 60 - start.minute
     return (totalMinutes / 60f * cardHeight).roundToInt()
-}
-
-/** 从事件列表中找到最早的开始时间，如果都比 configuredStart 晚则返回 configuredStart */
-private fun effectiveStartTime(configuredStart: TimeInDay, events: List<EventItem>): TimeInDay {
-    var earliest = configuredStart
-    for (event in events) {
-        val h = TimeTools.getHour(event.from.time)
-        val m = TimeTools.getMinute(event.from.time)
-        if (h < earliest.hour || (h == earliest.hour && m < earliest.minute)) {
-            earliest = TimeInDay(h, m)
-        }
-    }
-    return earliest
 }
 
 private fun pickPeriodFromOffset(y: Float, effectiveStart: TimeInDay, style: TimetableStyleSheet): TimePeriodInDay? {

@@ -25,6 +25,7 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
@@ -427,11 +428,11 @@ private fun AgentChatScreen(
                     end = tokens.spacing.md,
                     bottom = inputBottomPadding
                 ),
-            verticalAlignment = Alignment.CenterVertically
+            verticalAlignment = Alignment.Bottom
         ) {
             IconButton(onClick = onAttach) {
                 Icon(
-                    painter = painterResource(R.drawable.ic_baseline_cloud_download_24),
+                    painter = painterResource(R.drawable.ic_baseline_add_24),
                     contentDescription = stringResource(R.string.agent_chat_attach),
                     tint = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -448,7 +449,8 @@ private fun AgentChatScreen(
                     )
                 },
                 shape = RoundedCornerShape(22.dp),
-                maxLines = 4,
+                minLines = 1,
+                maxLines = 8,
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
                 keyboardActions = KeyboardActions(onSend = {
                     val text = inputText
@@ -466,7 +468,7 @@ private fun AgentChatScreen(
                 ),
                 modifier = Modifier
                     .weight(1f)
-                    .height(52.dp)
+                    .heightIn(min = 52.dp, max = 156.dp)
             )
             IconButton(
                 onClick = {

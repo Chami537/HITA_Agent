@@ -6,15 +6,8 @@ import com.limpu.hitax.data.model.timetable.EventItem
 object HintUtils {
     const val HINT_PULL_DOWN = "pull_down"
 
-    fun getHints(context: Context): List<EventItem> {
-        val sp = context.getSharedPreferences("hint", Context.MODE_PRIVATE)
-        val res = mutableListOf<EventItem>()
-        if (!sp.getBoolean(HINT_PULL_DOWN, false)) {
-            val ei = EventItem.getTagInstance("下拉试试看？")
-            ei.id = HINT_PULL_DOWN
-            res.add(ei)
-        }
-        return res
+    fun getHints(@Suppress("UNUSED_PARAMETER") context: Context): List<EventItem> {
+        return emptyList()
     }
 
     fun clickHint(context: Context, hint: EventItem) {

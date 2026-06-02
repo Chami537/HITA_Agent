@@ -164,6 +164,10 @@ class MainActivity : HiltBaseActivity<ComposeViewBinding>(),
 
     private val easTokenObserver = Observer<com.limpu.hitax.data.model.eas.EASToken> {
         refreshDrawerState()
+        if (it.isLogin()) {
+            autoReimportAttempted = false
+            maybeAutoReimportTimetable()
+        }
     }
 
     private val pickAvatarLauncher = registerForActivityResult(
@@ -424,6 +428,7 @@ class MainActivity : HiltBaseActivity<ComposeViewBinding>(),
                 directTo = null,
                 onResponseListener = object : PopUpLoginEAS.OnResponseListener {
                     override fun onSuccess(window: PopUpLoginEAS) {
+                        refreshDrawerState()
                         window.dismiss()
                     }
                     override fun onFailed(window: PopUpLoginEAS) {}

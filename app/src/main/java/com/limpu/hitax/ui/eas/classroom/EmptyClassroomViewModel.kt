@@ -47,33 +47,36 @@ class EmptyClassroomViewModel @Inject constructor(
         return@switchMap easRepo.getScheduleStructure(it)
     }
     val classroomLiveData: MediatorLiveData<DataState<List<ClassroomItem>>> =
-        MTransformations.switchMap(timetableStructureLiveData) {
-            val res = MediatorLiveData<DataState<List<ClassroomItem>>>()
+        MediatorLiveData<DataState<List<ClassroomItem>>>().apply {
             var currentQuerySource: LiveData<DataState<List<ClassroomItem>>>? = null
+            var lastQueryKey: ClassroomQueryKey? = null
 
-            fun launchClassroomQuery(term: TermItem, building: BuildingItem, week: Int) {
-                currentQuerySource?.let { res.removeSource(it) }
+            fun launchClassroomQuery() {
+                val term = selectedTermLiveData.value ?: return
+                val building = selectedBuildingLiveData.value ?: return
+                val week = selectedWeekLiveData.value ?: return
+                val queryKey = ClassroomQueryKey(term.getCode(), building.id.ifBlank { building.name.orEmpty() }, week)
+                if (queryKey == lastQueryKey) return
+                lastQueryKey = queryKey
+
+                currentQuerySource?.let { removeSource(it) }
                 val source = easRepo.queryEmptyClassroom(term, building, week)
                 currentQuerySource = source
-                res.addSource(source) { state ->
-                    res.value = state
+                addSource(source) { state ->
+                    value = state
                 }
             }
 
-            res.addSource(selectedWeekLiveData) { week ->
-                selectedTermLiveData.value?.let { term ->
-                    selectedBuildingLiveData.value?.let { building ->
-                        launchClassroomQuery(term, building, week)
-                    }
-                }
+            addSource(selectedTermLiveData) {
+                lastQueryKey = null
+                launchClassroomQuery()
             }
-            res.addSource(selectedBuildingLiveData) { building ->
-                selectedTermLiveData.value?.let { term ->
-                    val week = selectedWeekLiveData.value ?: 1
-                    launchClassroomQuery(term, building, week)
-                }
+            addSource(selectedBuildingLiveData) {
+                launchClassroomQuery()
             }
-            return@switchMap res
+            addSource(selectedWeekLiveData) {
+                launchClassroomQuery()
+            }
         }
 
 
@@ -90,4 +93,10 @@ class EmptyClassroomViewModel @Inject constructor(
         selectedWeekLiveData.value = week
         return true
     }
+
+    private data class ClassroomQueryKey(
+        val termCode: String,
+        val buildingId: String,
+        val week: Int
+    )
 }

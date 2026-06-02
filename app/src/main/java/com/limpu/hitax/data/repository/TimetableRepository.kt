@@ -16,6 +16,7 @@ import com.limpu.hitax.data.model.timetable.EventItem
 import com.limpu.hitax.data.model.timetable.SubjectColor
 import com.limpu.hitax.data.model.timetable.TimePeriodInDay
 import com.limpu.hitax.data.model.timetable.Timetable
+import com.limpu.hitax.data.source.preference.EasPreferenceSource
 import com.limpu.hitax.ui.main.timetable.TimetableFragment.Companion.WEEK_MILLS
 import com.limpu.hitax.utils.TimeTools
 import java.lang.NumberFormatException
@@ -54,6 +55,9 @@ class TimetableRepository @Inject constructor(val application: Application) {
     private val eventItemDao = AppDatabase.getDatabase(application).eventItemDao()
     private val timetableDao = AppDatabase.getDatabase(application).timetableDao()
     private val subjectDao = AppDatabase.getDatabase(application).subjectDao()
+    private val easPreferenceSource by lazy {
+        EasPreferenceSource(application.applicationContext)
+    }
 
     /**
      * 获取[from,to)内的事件
@@ -196,7 +200,21 @@ class TimetableRepository @Inject constructor(val application: Application) {
      * 获得某学期（本地可能没有）的当前周数
      */
     fun getCurrentWeekOfTimetable(termItem: TermItem?): LiveData<Int> {
-        return MTransformations.map(timetableDao.getTimetableByEASCode(termItem?.getCode() ?: "")) {
+        if (termItem == null) {
+            return MTransformations.map(timetableDao.getTimetableByEASCode("")) {
+                1
+            }
+        }
+        val campus = easPreferenceSource.getEasToken().campus
+        val preferredCode = EASTimetableCode.of(campus, termItem)
+        val legacyCode = termItem.getCode()
+        return MTransformations.map(
+            timetableDao.getTimetableByEASCodeCandidates(
+                EASTimetableCode.candidates(termItem, campus),
+                preferredCode,
+                legacyCode
+            )
+        ) {
             it?.getWeekNumber(System.currentTimeMillis()) ?: 1
         }
     }

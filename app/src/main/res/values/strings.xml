@@ -464,7 +464,7 @@
     <string name="exam_memo_hint">暂无考试安排，下拉刷新试试</string>
     <string name="dialog_view_course_detail">查看课程详情内容</string>
     <string name="timetable_label_mode_period">左侧显示节次</string>
-    <string name="timetable_auto_reimport">登录后自动导入课表</string>
+    <string name="timetable_auto_reimport">登录后自动导入课表和考试</string>
     <string name="exam_location">地点</string>
     <string name="exam_term">学期</string>
     <string name="exam_campus">学校</string>

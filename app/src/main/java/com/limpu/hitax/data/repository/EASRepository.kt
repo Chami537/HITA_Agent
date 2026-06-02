@@ -4,6 +4,7 @@ import android.app.Application
 import android.os.Handler
 import javax.inject.Inject
 import android.os.Looper
+import androidx.annotation.WorkerThread
 import androidx.lifecycle.LiveData
 import androidx.lifecycle.MediatorLiveData
 import androidx.lifecycle.MutableLiveData
@@ -11,6 +12,7 @@ import androidx.lifecycle.Observer
 import androidx.lifecycle.map
 import androidx.lifecycle.switchMap
 import com.limpu.component.data.DataState
+import com.limpu.hitax.R
 import com.limpu.hitax.data.AppDatabase
 import com.limpu.hitax.data.model.classroom.ClassroomCacheEntity
 import com.limpu.hitax.data.model.eas.*
@@ -32,6 +34,7 @@ import com.limpu.hitax.utils.TermNameFormatter
 import com.limpu.hitax.utils.CourseCodeUtils
 import com.limpu.hitax.utils.CourseNameUtils
 import java.sql.Timestamp
+import java.text.SimpleDateFormat
 import java.util.*
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
@@ -61,6 +64,11 @@ class EASRepository @Inject constructor(
     private var subjectDao = AppDatabase.getDatabase(application).subjectDao()
     private var classroomCacheDao = AppDatabase.getDatabase(application).classroomCacheDao()
     private val easTokenLiveData = MutableLiveData(easPreferenceSource.getEasToken())
+
+    companion object {
+        private const val LOGIN_ENRICH_MAX_RETRIES = 3
+        private const val LOGIN_ENRICH_RETRY_DELAY_MS = 800L
+    }
 
     private fun getService(campus: EASToken.Campus): EASService {
         return when (campus) {
@@ -111,24 +119,59 @@ class EASRepository @Inject constructor(
                 return@addSource
             }
             token.campus = campus
-            val enrichSource = getService(campus).getSafePersonalInfo(token)
-            result.addSource(enrichSource) enrichObserver@{ enrichedState ->
-                if (enrichedState.state == DataState.STATE.NOTHING) {
-                    return@enrichObserver
-                }
-                val finalToken = if (enrichedState.state == DataState.STATE.SUCCESS) {
-                    enrichedState.data ?: token
-                } else {
-                    token
-                }
-                finalToken.campus = campus
-                saveEasToken(finalToken)
-                result.value = DataState(true, DataState.STATE.SUCCESS)
-                result.removeSource(enrichSource)
+            if ((campus == EASToken.Campus.BENBU || campus == EASToken.Campus.WEIHAI) &&
+                password.isNotBlank()
+            ) {
+                token.electronicExpToken = password
             }
+            enrichLoginToken(result, token, campus)
             result.removeSource(loginSource)
         }
         return result
+    }
+
+    private fun enrichLoginToken(
+        result: MediatorLiveData<DataState<Boolean>>,
+        token: EASToken,
+        campus: EASToken.Campus,
+        attempt: Int = 0
+    ) {
+        val enrichSource = getService(campus).getSafePersonalInfo(token)
+        result.addSource(enrichSource) enrichObserver@{ enrichedState ->
+            if (enrichedState.state == DataState.STATE.NOTHING) {
+                return@enrichObserver
+            }
+            result.removeSource(enrichSource)
+
+            val enrichedToken = enrichedState.data
+            val hasDisplayInfo = enrichedState.state == DataState.STATE.SUCCESS &&
+                enrichedToken != null &&
+                (!enrichedToken.name.isNullOrBlank() || !enrichedToken.stuId.isNullOrBlank())
+
+            if (!hasDisplayInfo && attempt < LOGIN_ENRICH_MAX_RETRIES) {
+                LogUtils.w(
+                    "login: personal info not ready, retry=${attempt + 1}, " +
+                        "state=${enrichedState.state}, message=${enrichedState.message}"
+                )
+                Handler(Looper.getMainLooper()).postDelayed(
+                    { enrichLoginToken(result, token, campus, attempt + 1) },
+                    LOGIN_ENRICH_RETRY_DELAY_MS
+                )
+                return@enrichObserver
+            }
+
+            val finalToken = enrichedToken ?: token
+            finalToken.campus = campus
+            if (finalToken.electronicExpToken.isNullOrBlank()) {
+                finalToken.electronicExpToken = token.electronicExpToken
+            }
+            LogUtils.d(
+                "login: saving token campus=$campus name=${finalToken.name} " +
+                    "stuId=${finalToken.stuId} electronic=${!finalToken.electronicExpToken.isNullOrBlank()}"
+            )
+            saveEasToken(finalToken)
+            result.value = DataState(true, DataState.STATE.SUCCESS)
+        }
     }
 
     /**
@@ -408,7 +451,9 @@ class EASRepository @Inject constructor(
         startDate.firstDayOfWeek = Calendar.MONDAY
         startDate.set(Calendar.DAY_OF_WEEK, Calendar.MONDAY)
         val easToken = easPreferenceSource.getEasToken()
-        LogUtils.d("startImport: term=${term.getCode()}, campus=${easToken.campus}, isLogin=${easToken.isLogin()}")
+        val timetableCode = EASTimetableCode.of(easToken.campus, term)
+        val legacyTimetableCode = term.getCode()
+        LogUtils.d("startImport: term=${term.getCode()}, campus=${easToken.campus}, code=$timetableCode, isLogin=${easToken.isLogin()}")
         if (easToken.isLogin()) {
             val finished = AtomicBoolean(false)
             val timeoutHandler = Handler(Looper.getMainLooper())
@@ -449,10 +494,14 @@ class EASRepository @Inject constructor(
                                 } ?: 0
                                 val safeSchedule = buildSafeSchedule(schedule, maxPeriod)
                                 LogUtils.d(
-                                    "import: processing term=${term.getCode()} courseCount=${courseItems.size} maxPeriod=$maxPeriod"
+                                    "import: processing term=${term.getCode()} campus=${easToken.campus} code=$timetableCode courseCount=${courseItems.size} maxPeriod=$maxPeriod schedule=${describeSchedule(safeSchedule)}"
                                 )
                                 //更新timetable信息
-                                var timetable = timetableDao.getTimetableByEASCodeSync(term.getCode())
+                                var timetable = timetableDao.getTimetableByEASCodeCandidatesSync(
+                                    EASTimetableCode.candidates(term, easToken.campus),
+                                    timetableCode,
+                                    legacyTimetableCode
+                                )
                                 if (timetable == null) {
                                     timetable = Timetable()
                                 } else {
@@ -622,10 +671,10 @@ class EASRepository @Inject constructor(
                                 eventItemDao.saveEvents(events)
 
                                 //更新timetable对象
-                                timetable.name = buildTimetableName(term)
+                                timetable.name = buildTimetableName(term, easToken.campus)
                                 timetable.startTime = Timestamp(startDate.timeInMillis)
                                 timetable.endTime = Timestamp(maxTs)
-                                timetable.code = term.getCode()
+                                timetable.code = timetableCode
                                 timetable.scheduleStructure = safeSchedule
                                 timetableDao.saveTimetableSync(timetable)
 
@@ -692,8 +741,18 @@ class EASRepository @Inject constructor(
         }
     }
 
-    private fun buildTimetableName(term: TermItem): String {
-        return TermNameFormatter.shortTermName(term.termName, term.name)
+    private fun describeSchedule(schedule: List<TimePeriodInDay>): String {
+        if (schedule.isEmpty()) return "empty"
+        return "size=${schedule.size}, first=${schedule.first()}, last=${schedule.last()}"
+    }
+
+    private fun buildTimetableName(term: TermItem, campus: EASToken.Campus): String {
+        val campusName = when (campus) {
+            EASToken.Campus.SHENZHEN -> appContext.getString(R.string.eas_campus_shenzhen)
+            EASToken.Campus.BENBU -> appContext.getString(R.string.eas_campus_benbu)
+            EASToken.Campus.WEIHAI -> appContext.getString(R.string.eas_campus_weihai)
+        }
+        return "$campusName ${TermNameFormatter.shortTermName(term.termName, term.name)}"
     }
 
     private data class SelectedSubjectMeta(
@@ -795,8 +854,95 @@ class EASRepository @Inject constructor(
             }
             latch.await(25, TimeUnit.SECONDS)
             mainHandler.post { importLive.removeObserver(observer) }
-            onResult?.invoke(success)
+
+            val examState = awaitLiveData(service.getExamItems(token, term), 8)
+            val timetableCode = EASTimetableCode.of(token.campus, term)
+            val timetable = timetableDao.getTimetableByEASCodeCandidatesSync(
+                EASTimetableCode.candidates(term, token.campus),
+                timetableCode,
+                term.getCode()
+            )
+            val importedExamCount = if (timetable == null) {
+                LogUtils.w("autoImport: skip exams, timetable not found code=$timetableCode")
+                0
+            } else {
+                importExamItemsSync(examState.data.orEmpty(), timetable)
+            }
+            LogUtils.d(
+                "autoImport: exam state=${examState.state} total=${examState.data?.size ?: -1} imported=$importedExamCount"
+            )
+            onResult?.invoke(success || importedExamCount > 0)
         }.start()
+    }
+
+    @WorkerThread
+    private fun importExamItemsSync(exams: List<ExamItem>, timetable: Timetable): Int {
+        if (exams.isEmpty()) return 0
+        val existingEvents = eventItemDao.getEventsOfTimetableSync(timetable.id)
+            .filter { it.type == EventItem.TYPE.EXAM }
+            .toMutableList()
+        var importedCount = 0
+
+        for (exam in exams) {
+            val examEvent = parseExamToEvent(exam, timetable.id) ?: continue
+            val exists = existingEvents.any { event ->
+                event.name == examEvent.name &&
+                    event.place == examEvent.place &&
+                    event.from.time == examEvent.from.time
+            }
+            if (exists) continue
+            eventItemDao.insertEventSync(examEvent)
+            existingEvents.add(examEvent)
+            importedCount++
+        }
+        return importedCount
+    }
+
+    private fun parseExamToEvent(exam: ExamItem, timetableId: String): EventItem? {
+        return try {
+            val date = exam.examDate ?: return null
+            val timeRange = exam.examTime ?: return null
+            val times = timeRange.split("-")
+            if (times.size != 2) return null
+
+            val dateFormat = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
+            val timeFormat = SimpleDateFormat("HH:mm", Locale.getDefault())
+            val parsedDate = dateFormat.parse(date) ?: return null
+            val parsedStart = timeFormat.parse(times[0].trim()) ?: return null
+            val parsedEnd = timeFormat.parse(times[1].trim()) ?: return null
+            val startClock = Calendar.getInstance().apply { time = parsedStart }
+            val endClock = Calendar.getInstance().apply { time = parsedEnd }
+            val calendarStart = Calendar.getInstance().apply {
+                time = parsedDate
+                set(Calendar.HOUR_OF_DAY, startClock.get(Calendar.HOUR_OF_DAY))
+                set(Calendar.MINUTE, startClock.get(Calendar.MINUTE))
+                set(Calendar.SECOND, 0)
+                set(Calendar.MILLISECOND, 0)
+            }
+            val calendarEnd = Calendar.getInstance().apply {
+                time = parsedDate
+                set(Calendar.HOUR_OF_DAY, endClock.get(Calendar.HOUR_OF_DAY))
+                set(Calendar.MINUTE, endClock.get(Calendar.MINUTE))
+                set(Calendar.SECOND, 0)
+                set(Calendar.MILLISECOND, 0)
+            }
+            EventItem().apply {
+                type = EventItem.TYPE.EXAM
+                source = EventItem.SOURCE_EAS_IMPORT
+                name = "[考试] " + (exam.courseName ?: "考试")
+                place = exam.examLocation.orEmpty()
+                teacher = ""
+                subjectId = ""
+                this.timetableId = timetableId
+                from = Timestamp(calendarStart.timeInMillis)
+                to = Timestamp(calendarEnd.timeInMillis)
+                fromNumber = 0
+                lastNumber = 0
+            }
+        } catch (e: Exception) {
+            LogUtils.e("autoImport: parse exam failed ${exam.courseName}", e)
+            null
+        }
     }
 
     private fun <T> awaitLiveData(
@@ -833,13 +979,48 @@ class EASRepository @Inject constructor(
     }
 
     private fun saveEasToken(token: EASToken) {
-        easPreferenceSource.saveEasToken(token)
-        easTokenLiveData.postValue(token)
+        val mergedToken = mergeWithStoredEasToken(token)
+        easPreferenceSource.saveEasToken(mergedToken)
+        easTokenLiveData.postValue(mergedToken)
     }
 
     fun saveEasTokenSync(token: EASToken) {
-        easPreferenceSource.saveEasToken(token)
-        easTokenLiveData.postValue(token)
+        val mergedToken = mergeWithStoredEasToken(token)
+        easPreferenceSource.saveEasToken(mergedToken)
+        easTokenLiveData.postValue(mergedToken)
+    }
+
+    private fun mergeWithStoredEasToken(token: EASToken): EASToken {
+        val stored = easPreferenceSource.getEasToken()
+        if (!stored.isLogin() || stored.campus != token.campus) {
+            return token
+        }
+
+        token.name = token.name?.takeIf { it.isNotBlank() } ?: stored.name
+        token.stuId = token.stuId?.takeIf { it.isNotBlank() } ?: stored.stuId
+        token.school = token.school?.takeIf { it.isNotBlank() } ?: stored.school
+        token.major = token.major?.takeIf { it.isNotBlank() } ?: stored.major
+        token.grade = token.grade?.takeIf { it.isNotBlank() } ?: stored.grade
+        token.className = token.className?.takeIf { it.isNotBlank() } ?: stored.className
+        token.picture = token.picture?.takeIf { it.isNotBlank() } ?: stored.picture
+        token.id = token.id?.takeIf { it.isNotBlank() } ?: stored.id
+        token.email = token.email?.takeIf { it.isNotBlank() } ?: stored.email
+        token.phone = token.phone?.takeIf { it.isNotBlank() } ?: stored.phone
+        token.sfxsx = token.sfxsx?.takeIf { it.isNotBlank() } ?: stored.sfxsx
+        token.accessToken = token.accessToken?.takeIf { it.isNotBlank() } ?: stored.accessToken
+        token.refreshToken = token.refreshToken?.takeIf { it.isNotBlank() } ?: stored.refreshToken
+        token.electronicExpToken = token.electronicExpToken?.takeIf { it.isNotBlank() } ?: stored.electronicExpToken
+        token.username = token.username?.takeIf { it.isNotBlank() }
+            ?: stored.username?.takeIf {
+                stored.campus == EASToken.Campus.SHENZHEN && it.isNotBlank() && it != "value"
+            }
+        token.password = token.password?.takeIf { it.isNotBlank() } ?: stored.password
+        if (stored.cookies.isNotEmpty()) {
+            val mergedCookies = HashMap(stored.cookies)
+            mergedCookies.putAll(token.cookies)
+            token.cookies = mergedCookies
+        }
+        return token
     }
 
     private fun clearEasToken() {

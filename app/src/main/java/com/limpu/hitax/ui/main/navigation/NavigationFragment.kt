@@ -120,10 +120,12 @@ class NavigationFragment : androidx.fragment.app.Fragment() {
         return ComposeView(requireContext()).apply {
             setContent {
                 HitaComposeTheme() {
+                    val easToken by easRepository.observeEasToken()
+                        .observeAsState(easRepository.getEasToken())
                     NavigationScreen(
                         viewModel = viewModel,
                         localUser = remember(userStateVersion) { localUserRepository.getLoggedInUser() },
-                        easToken = remember(userStateVersion) { easRepository.getEasToken() },
+                        easToken = easToken,
                         reminderEnabled = reminderEnabledState,
                         onAvatarClick = { showAvatarPicker() },
                         onUserClick = { openUserCard() },
@@ -215,6 +217,7 @@ class NavigationFragment : androidx.fragment.app.Fragment() {
                 directTo = null,
                 onResponseListener = object : PopUpLoginEAS.OnResponseListener {
                     override fun onSuccess(window: PopUpLoginEAS) {
+                        userStateVersion++
                         window.dismiss()
                     }
                     override fun onFailed(window: PopUpLoginEAS) {}
@@ -230,6 +233,7 @@ class NavigationFragment : androidx.fragment.app.Fragment() {
             directTo = ExamActivity::class.java,
             onResponseListener = object : PopUpLoginEAS.OnResponseListener {
                 override fun onSuccess(window: PopUpLoginEAS) {
+                    userStateVersion++
                     ActivityUtils.startActivity(requireActivity(), ExamActivity::class.java)
                     window.dismiss()
                 }

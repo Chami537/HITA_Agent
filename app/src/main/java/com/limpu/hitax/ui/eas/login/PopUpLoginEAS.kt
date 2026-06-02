@@ -233,11 +233,6 @@ class PopUpLoginEAS : BottomSheetDialogFragment() {
                 if (state.state == DataState.STATE.NOTHING) return
                 loginSource.removeObserver(this)
                 if (state.state == DataState.STATE.SUCCESS && state.data == true) {
-                    if (!electronicExpToken.isNullOrBlank()) {
-                        val token = viewModel.easRepo.getEasToken()
-                        token.electronicExpToken = electronicExpToken
-                        viewModel.easRepo.saveEasTokenSync(token)
-                    }
                     onResponseListener?.onSuccess(this@PopUpLoginEAS)
                 } else {
                     LogUtils.e("WebView cookie login failed: state=${state.state} message=${state.message}")
@@ -282,8 +277,12 @@ private fun LoginEASScreen(
     val token = viewModel.easRepo.getEasToken()
 
     var selectedCampus by remember { mutableStateOf(initialCampus) }
-    var username by remember { mutableStateOf(token.username ?: "") }
-    var password by remember { mutableStateOf(token.password ?: "") }
+    var username by remember {
+        mutableStateOf(token.username?.takeIf { token.campus == EASToken.Campus.SHENZHEN } ?: "")
+    }
+    var password by remember {
+        mutableStateOf(token.password?.takeIf { token.campus == EASToken.Campus.SHENZHEN } ?: "")
+    }
     var agreementChecked by remember { mutableStateOf(isAgreementAccepted) }
     var isLoading by remember { mutableStateOf(false) }
     var lastHandledLoginResult by remember { mutableStateOf<DataState<Boolean>?>(null) }

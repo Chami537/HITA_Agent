@@ -1192,13 +1192,7 @@ class WeihaiEASWebSource(
     }
 
     private fun extractLoginIdentity(cookies: Map<String, String>): String? {
-        return cookies.values
-            .asSequence()
-            .map { it.trim() }
-            .filter { it.isNotBlank() }
-            .firstOrNull { value ->
-                value.length in 5..20 && value.all { ch -> ch.isLetterOrDigit() || ch == '_' || ch == '-' }
-            }
+        return null
     }
 
     private fun requestWeihaiScores(
