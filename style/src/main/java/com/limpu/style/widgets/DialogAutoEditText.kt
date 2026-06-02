@@ -12,6 +12,7 @@ import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.viewbinding.ViewBinding
 import com.limpu.style.base.BaseListAdapter
 import com.limpu.style.base.BaseViewHolder
+import com.limpu.style.R
 import com.limpu.style.databinding.DialogAutoEditTextBinding
 import com.limpu.style.databinding.DialogBottomCheckableListItemBinding
 
@@ -83,6 +84,7 @@ class DialogAutoEditText : TransparentDialog<DialogAutoEditTextBinding>() {
         if (init_title != null) {
             binding.title.text = init_title
         }
+        binding.text.setBackgroundResource(R.drawable.element_rounded_bar_grey_light)
         listLiveData.observe(this) {
             listAdapter.notifyItemChangedSmooth(it)
         }
