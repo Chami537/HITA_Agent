@@ -450,6 +450,12 @@ private fun WheelPicker(
                     onItemSelected(newIndex)
                 }
             }
+        },
+        update = { view ->
+            view.setOnTouchListener { _, _ ->
+                view.parent?.requestDisallowInterceptTouchEvent(true)
+                false // don't consume — let MWheel3DView handle the touch
+            }
         }
     )
 }
