@@ -14,9 +14,9 @@ class TimetableOverlapLayoutTest {
 
         val arranged = TimetableOverlapLayout.arrange(listOf(first, second)).associateBy { it.event.id }
 
-        assertEquals(1, arranged.getValue(first.id).columnCount)
+        assertEquals(1, arranged.getValue(first.id).overlapCount)
         assertEquals(0, arranged.getValue(first.id).columnIndex)
-        assertEquals(1, arranged.getValue(second.id).columnCount)
+        assertEquals(1, arranged.getValue(second.id).overlapCount)
         assertEquals(0, arranged.getValue(second.id).columnIndex)
     }
 
@@ -27,8 +27,8 @@ class TimetableOverlapLayoutTest {
 
         val arranged = TimetableOverlapLayout.arrange(listOf(first, second)).associateBy { it.event.id }
 
-        assertEquals(2, arranged.getValue(first.id).columnCount)
-        assertEquals(2, arranged.getValue(second.id).columnCount)
+        assertEquals(2, arranged.getValue(first.id).overlapCount)
+        assertEquals(2, arranged.getValue(second.id).overlapCount)
         assertEquals(0, arranged.getValue(first.id).columnIndex)
         assertEquals(1, arranged.getValue(second.id).columnIndex)
     }
@@ -41,9 +41,9 @@ class TimetableOverlapLayoutTest {
 
         val arranged = TimetableOverlapLayout.arrange(listOf(first, second, third)).associateBy { it.event.id }
 
-        assertEquals(2, arranged.getValue(first.id).columnCount)
-        assertEquals(2, arranged.getValue(second.id).columnCount)
-        assertEquals(2, arranged.getValue(third.id).columnCount)
+        assertEquals(2, arranged.getValue(first.id).overlapCount)
+        assertEquals(2, arranged.getValue(second.id).overlapCount)
+        assertEquals(2, arranged.getValue(third.id).overlapCount)
         assertEquals(0, arranged.getValue(first.id).columnIndex)
         assertEquals(1, arranged.getValue(second.id).columnIndex)
         assertEquals(0, arranged.getValue(third.id).columnIndex)

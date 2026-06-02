@@ -2,10 +2,10 @@ package com.limpu.hitax.ui.main.timetable.views
 
 object TimetableCardTextScale {
     fun forColumnCount(columnCount: Int): Float {
-        return if (columnCount > 1) 0.7f else 1f
+        return if (columnCount > 1) 0.9f else 1f
     }
 
     fun marginScaleForColumnCount(columnCount: Int): Float {
-        return if (columnCount > 1) 0.7f else 1f
+        return if (columnCount > 1) 0.85f else 1f
     }
 }

@@ -690,33 +690,65 @@ private fun TimetableEventLayer(
     onEventClick: (EventItem) -> Unit,
     onEventLongClick: (EventItem, IntOffset) -> Unit,
 ) {
-    val arranged = remember(events) { TimetableOverlapLayout.arrange(events) }
+    val arranged = remember(events) {
+        TimetableOverlapLayout.arrange(events)
+            .sortedWith(compareBy({ it.event.getDow() }, { it.columnIndex }))
+    }
+    val density = LocalDensity.current
     BoxWithConstraintsCompat {
         val sectionWidth = maxWidth / 7f
+        val cascadeOffset = 6.dp
         arranged.forEach { positioned ->
             val event = positioned.event
+            val overlapCount = positioned.overlapCount
             val startMinutes = effectiveStart.getDistanceInMinutes(event.from.time)
             val duration = event.getDurationInMinutes().coerceAtLeast(15)
-            val top = with(LocalDensity.current) {
+            val top = with(density) {
                 (startMinutes / 60f * style.cardHeight).toDp()
             }
-            val height = with(LocalDensity.current) {
-                (duration / 60f * style.cardHeight).toDp()
-            }
             val dayLeft = sectionWidth * (event.getDow() - 1)
-            val columnWidth = sectionWidth / positioned.columnCount
-            TimetableEventCard(
-                event = event,
-                style = style,
-                modifier = Modifier
-                    .offset(x = dayLeft + columnWidth * positioned.columnIndex + 2.dp, y = top)
-                    .width((columnWidth - 4.dp).coerceAtLeast(0.dp))
-                    .height(height),
-                cardHeight = height,
-                columnCount = positioned.columnCount,
-                onClick = { onEventClick(event) },
-                onLongClick = { position -> onEventLongClick(event, position) }
-            )
+
+            if (overlapCount > 1) {
+                val rawHeight = with(density) {
+                    (duration / 60f * style.cardHeight).toDp()
+                }
+                val offsetTotal = overlapCount - 1
+                val cardWidth = (sectionWidth - cascadeOffset * offsetTotal).coerceAtLeast(0.dp)
+                val cardHeight = (rawHeight - cascadeOffset * offsetTotal).coerceAtLeast(0.dp)
+                val xOffset = dayLeft + cascadeOffset * positioned.columnIndex
+                val yOffset = top + cascadeOffset * positioned.columnIndex
+                val elevation = 2.dp + 2.dp * positioned.columnIndex
+
+                TimetableEventCard(
+                    event = event,
+                    style = style,
+                    modifier = Modifier
+                        .offset(x = xOffset, y = yOffset)
+                        .width(cardWidth)
+                        .height(cardHeight),
+                    cardHeight = cardHeight,
+                    columnCount = overlapCount,
+                    cardElevation = elevation,
+                    onClick = { onEventClick(event) },
+                    onLongClick = { position -> onEventLongClick(event, position) }
+                )
+            } else {
+                val height = with(density) {
+                    (duration / 60f * style.cardHeight).toDp()
+                }
+                TimetableEventCard(
+                    event = event,
+                    style = style,
+                    modifier = Modifier
+                        .offset(x = dayLeft + 2.dp, y = top)
+                        .width((sectionWidth - 4.dp).coerceAtLeast(0.dp))
+                        .height(height),
+                    cardHeight = height,
+                    columnCount = 1,
+                    onClick = { onEventClick(event) },
+                    onLongClick = { position -> onEventLongClick(event, position) }
+                )
+            }
         }
     }
 }
@@ -737,6 +769,7 @@ private fun TimetableEventCard(
     columnCount: Int,
     onClick: () -> Unit,
     onLongClick: (IntOffset) -> Unit,
+    cardElevation: Dp = 0.dp,
 ) {
     val view = LocalView.current
     var cardPositionInWindow by remember { mutableStateOf(IntOffset.Zero) }
@@ -803,7 +836,7 @@ private fun TimetableEventCard(
             },
         shape = cardShape,
         colors = CardDefaults.cardColors(containerColor = background),
-        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
+        elevation = CardDefaults.cardElevation(defaultElevation = cardElevation)
     ) {
         Box(
             modifier = Modifier

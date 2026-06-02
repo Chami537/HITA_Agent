@@ -7,7 +7,7 @@ object TimetableOverlapLayout {
     data class PositionedEvent(
         val event: EventItem,
         val columnIndex: Int,
-        val columnCount: Int
+        val overlapCount: Int
     )
 
     private data class Cluster(
@@ -74,6 +74,6 @@ object TimetableOverlapLayout {
             positioned.add(PositionedEvent(event, columnIndex, 1))
         }
 
-        return positioned.map { it.copy(columnCount = maxColumns) }
+        return positioned.map { it.copy(overlapCount = maxColumns) }
     }
 }
