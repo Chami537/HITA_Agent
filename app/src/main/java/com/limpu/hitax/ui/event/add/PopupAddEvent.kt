@@ -29,6 +29,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Button
 import androidx.compose.material3.FloatingActionButton
+import androidx.compose.material3.SmallFloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Surface
 import androidx.compose.material3.IconButton
@@ -319,14 +320,15 @@ private fun PopupAddEventScreen(
     val scrollState = rememberScrollState()
     val context = LocalContext.current
     Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .imePadding()
+        modifier = Modifier.fillMaxSize(),
+        contentAlignment = Alignment.BottomEnd
     ) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
                 .verticalScroll(scrollState)
+                .imePadding()
+                .padding(bottom = 80.dp)
         ) {
             // Title
             val titleText = when {
@@ -514,33 +516,29 @@ private fun PopupAddEventScreen(
         }
         } // end of scrollable Column
 
-        // Animated FAB — appears only when form is valid
-        Box(
+        // Animated FAB — second layer above scrollable content
+        AnimatedVisibility(
+            visible = doneLiveData == true,
+            enter = scaleIn() + fadeIn(),
+            exit = scaleOut() + fadeOut(),
             modifier = Modifier
-                .fillMaxWidth()
-                .padding(tokens.spacing.lg),
-            contentAlignment = Alignment.TopEnd
+                .padding(end = 24.dp, bottom = 24.dp)
+                .imePadding()
         ) {
-            AnimatedVisibility(
-                visible = doneLiveData == true,
-                enter = scaleIn() + fadeIn(),
-                exit = scaleOut() + fadeOut()
+            SmallFloatingActionButton(
+                onClick = {
+                    viewModel.createEvent()
+                    WidgetUtils.sendRefreshToAll(context)
+                    onDismiss()
+                },
+                containerColor = MaterialTheme.colorScheme.primary,
+                contentColor = MaterialTheme.colorScheme.onPrimary
             ) {
-                FloatingActionButton(
-                    onClick = {
-                        viewModel.createEvent()
-                        WidgetUtils.sendRefreshToAll(context)
-                        onDismiss()
-                    },
-                    containerColor = MaterialTheme.colorScheme.primary
-                ) {
-                    Icon(
-                        painter = painterResource(R.drawable.ic_done_white_48dp),
-                        contentDescription = stringResource(R.string.confirm),
-                        tint = MaterialTheme.colorScheme.onPrimary,
-                        modifier = Modifier.size(24.dp)
-                    )
-                }
+                Icon(
+                    painter = painterResource(R.drawable.ic_done_white_48dp),
+                    contentDescription = stringResource(R.string.confirm),
+                    modifier = Modifier.size(20.dp)
+                )
             }
         }
     } // end of Box
