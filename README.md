@@ -45,7 +45,7 @@ AI 助手基于 ReAct 框架，支持以下工具调用：
 ## 数据与版权说明
 - 课程与课表数据来自教务系统，本应用不额外采集或上传。
 - 课程资料来源 HOA（校内民间开源组织），欢迎同学参与贡献。官网：hoa.moe
-- 如有问题请联系：2720649216@qq.com
+- 如有问题请联系：2720649216@qq.com 或 2916118707@qq.com
 
 ## 用到第三方开源库
 - 加载效果按钮：[LoadingButtonAndroid](https://github.com/leandroBorgesFerreira/LoadingButtonAndroid)
