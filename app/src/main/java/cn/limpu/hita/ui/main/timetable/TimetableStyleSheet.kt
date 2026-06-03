@@ -22,6 +22,9 @@ class TimetableStyleSheet {
             startTimeInDay = TimeInDay(value / 100, value % 100)
             field = value
         }
+    var endHour: Int = 23
+    val startHour: Int get() = startTime / 100
+    val startMinute: Int get() = startTime % 100
     var todayBGColor: Int = Color.parseColor("#10000000")
     var titleGravity: Int = Gravity.CENTER
     var titleAlpha: Int = 100
@@ -55,6 +58,7 @@ class TimetableStyleSheet {
         if (cardHeight != other.cardHeight) return false
         if (usePeriodLabel != other.usePeriodLabel) return false
         if (startTime != other.startTime) return false
+        if (endHour != other.endHour) return false
         if (todayBGColor != other.todayBGColor) return false
         if (titleGravity != other.titleGravity) return false
         if (titleAlpha != other.titleAlpha) return false
@@ -77,6 +81,7 @@ class TimetableStyleSheet {
         result = 31 * result + cardHeight
         result = 31 * result + usePeriodLabel.hashCode()
         result = 31 * result + startTime
+        result = 31 * result + endHour
         result = 31 * result + todayBGColor
         result = 31 * result + titleGravity
         result = 31 * result + titleAlpha

@@ -80,9 +80,11 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.unit.times
 import androidx.fragment.app.viewModels
 import cn.limpu.hita.R
 import cn.limpu.hita.data.model.timetable.EventItem
@@ -320,6 +322,25 @@ private fun TimetableScreen(
         }
     }
     val events = windowEvents?.events.orEmpty()
+
+    val currentScheduleStructure = remember(timetables, currentPageStart) {
+        if (timetables.isEmpty()) {
+            Timetable().scheduleStructure
+        } else {
+            val cdCalendar = Calendar.getInstance().apply { timeInMillis = currentPageStart }
+            var minTT: Timetable? = null
+            var minWk = Int.MAX_VALUE
+            for (tt in timetables) {
+                if (tt.code.isNullOrEmpty()) continue
+                val wk = tt.getWeekNumber(cdCalendar.timeInMillis)
+                if (wk in 1 until minWk) {
+                    minWk = wk
+                    minTT = tt
+                }
+            }
+            minTT?.scheduleStructure ?: Timetable().scheduleStructure
+        }
+    }
     val showTodayFab = currentPageStart > System.currentTimeMillis() ||
             System.currentTimeMillis() >= currentPageStart + TimetableFragment.WEEK_MILLS
 
@@ -328,6 +349,7 @@ private fun TimetableScreen(
             startDate = currentPageStart,
             events = events,
             style = style,
+            scheduleStructure = currentScheduleStructure,
             dateColor = if (wallpaperPath.isBlank()) MaterialTheme.colorScheme.onSurface else Color(dateColorInt),
             labelColor = if (wallpaperPath.isBlank()) MaterialTheme.colorScheme.onSurfaceVariant else Color(labelColorInt),
             onPrevWeek = {
@@ -399,6 +421,7 @@ private fun TimetableWeekContent(
     startDate: Long,
     events: List<EventItem>,
     style: TimetableStyleSheet,
+    scheduleStructure: List<TimePeriodInDay>,
     dateColor: Color,
     labelColor: Color,
     onPrevWeek: () -> Unit,
@@ -409,8 +432,12 @@ private fun TimetableWeekContent(
 ) {
     val density = LocalDensity.current
     val scrollState = rememberScrollState()
-    val effectiveStart = style.getStartTimeObject()
-    val tableHeight = with(density) { timetableHeight(effectiveStart, style.cardHeight).toDp() }
+    val startHour = style.startHour
+    val endHour = style.endHour
+    val cardHeightDp = with(density) { style.cardHeight.toDp() }
+    val dpPerMinute = cardHeightDp / 60f
+    val totalMinutes = (endHour - startHour) * 60
+    val tableHeight = totalMinutes.toFloat() * dpPerMinute
     var tableWidthPx by remember { mutableStateOf(0) }
     var contentWidthPx by remember { mutableStateOf(0f) }
     val coroutineScope = rememberCoroutineScope()
@@ -478,13 +505,17 @@ private fun TimetableWeekContent(
             modifier = Modifier
                 .fillMaxSize()
                 .verticalScroll(scrollState)
+                .padding(top = 24.dp, bottom = 120.dp)
         ) {
             TimetableLeftLabels(
-                effectiveStart = effectiveStart,
+                startHour = startHour,
+                endHour = endHour,
+                scheduleStructure = scheduleStructure,
+                labelColor = labelColor,
                 style = style,
-                color = labelColor,
+                dpPerMinute = dpPerMinute,
                 modifier = Modifier
-                    .width(HitaTheme.tokens.componentSize.timetableLabelWidth)
+                    .width(48.dp)
                     .height(tableHeight)
             )
             Box(
@@ -492,22 +523,37 @@ private fun TimetableWeekContent(
                     .weight(1f)
                     .height(tableHeight)
                     .onSizeChanged { tableWidthPx = it.width }
-                    .pointerInput(startDate, style, tableWidthPx) {
+                    .pointerInput(startDate, style, tableWidthPx, startHour, endHour, scheduleStructure) {
                         detectTapGestures(
                             onTap = { offset ->
                                 val width = tableWidthPx.takeIf { it > 0 } ?: return@detectTapGestures
                                 val dow = ((offset.x / (width / 7f)).toInt() + 1).coerceIn(1, 7)
-                                val period = pickPeriodFromOffset(offset.y, effectiveStart, style) ?: return@detectTapGestures
+                                val period = pickPeriodFromOffsetDp(
+                                    y = offset.y,
+                                    startHour = startHour,
+                                    endHour = endHour,
+                                    style = style,
+                                    scheduleStructure = scheduleStructure,
+                                    density = density,
+                                    dpPerMinute = dpPerMinute,
+                                ) ?: return@detectTapGestures
                                 onAddClick(dow, period)
                             }
                         )
                     }
             ) {
-                TimetableGrid(startDate = startDate, effectiveStart = effectiveStart, style = style)
+                TimetableGrid(
+                    startDate = startDate,
+                    startHour = startHour,
+                    endHour = endHour,
+                    style = style,
+                    dpPerMinute = dpPerMinute,
+                )
                 TimetableEventLayer(
                     events = events,
-                    effectiveStart = effectiveStart,
+                    startHour = startHour,
                     style = style,
+                    dpPerMinute = dpPerMinute,
                     onEventClick = onEventClick,
                     onEventLongClick = onEventLongClick,
                 )
@@ -544,7 +590,7 @@ private fun TimetableDowHeader(startDate: Long, monthColor: Color) {
     ) {
         // Month label
         Column(
-            modifier = Modifier.width(HitaTheme.tokens.componentSize.timetableLabelWidth),
+            modifier = Modifier.width(48.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             Text(
@@ -591,59 +637,57 @@ private fun TimetableDowHeader(startDate: Long, monthColor: Color) {
 
 @Composable
 private fun TimetableLeftLabels(
-    effectiveStart: TimeInDay,
+    startHour: Int,
+    endHour: Int,
+    scheduleStructure: List<TimePeriodInDay>,
+    labelColor: Color,
     style: TimetableStyleSheet,
-    color: Color,
+    dpPerMinute: Dp,
     modifier: Modifier = Modifier,
 ) {
-    val labelColor = color.copy(alpha = 0.91f)
-    Column(modifier = modifier) {
+    val textColor = labelColor.copy(alpha = 0.91f)
+    val baseMinutes = startHour * 60
+
+    Box(modifier = modifier) {
         if (style.usePeriodLabel) {
-            val density = LocalDensity.current
-            val periods = styleStructure()
-            if (periods.isEmpty()) return@Column
-            // Spacer if grid starts before first period
-            val firstGap = effectiveStart.getDistanceInMinutes(periods.first().from).coerceAtLeast(0)
-            if (firstGap > 0) {
-                Spacer(Modifier.height(with(density) { (firstGap / 60f * style.cardHeight).toDp() }))
-            }
-            for (i in periods.indices) {
-                val period = periods[i]
-                val nextStart = periods.getOrElse(i + 1) { TimePeriodInDay(TimeInDay(24, 0), TimeInDay(24, 0)) }.from
-                val segmentMinutes = period.from.getDistanceInMinutes(nextStart)
-                Text(
-                    text = "第\n${i + 1}\n节",
-                    color = labelColor,
-                    fontSize = 12.sp,
-                    lineHeight = 12.sp,
-                    textAlign = TextAlign.Center,
+            scheduleStructure.forEachIndexed { index, period ->
+                val fromMinutes = period.from.hour * 60 + period.from.minute
+                val toMinutes = period.to.hour * 60 + period.to.minute
+                val periodStartMinutes = (fromMinutes - baseMinutes).coerceAtLeast(0)
+                val periodDuration = (toMinutes - fromMinutes).coerceAtLeast(15)
+
+                Box(
                     modifier = Modifier
+                        .offset(y = periodStartMinutes.toFloat() * dpPerMinute)
                         .fillMaxWidth()
-                        .height(with(density) { (segmentMinutes / 60f * style.cardHeight).toDp() })
-                )
+                        .height(periodDuration.toFloat() * dpPerMinute),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = "第${index + 1}节",
+                        color = textColor,
+                        fontSize = 12.sp,
+                        lineHeight = 12.sp,
+                        textAlign = TextAlign.Center,
+                        maxLines = 1,
+                        softWrap = false,
+                    )
+                }
             }
         } else {
-            val density = LocalDensity.current
-            val labelTimes = hourLabelTimes(effectiveStart)
-            // Spacer if grid starts before first label
-            val firstGap = effectiveStart.getDistanceInMinutes(labelTimes.first()).coerceAtLeast(0)
-            if (firstGap > 0) {
-                Spacer(Modifier.height(with(density) { (firstGap / 60f * style.cardHeight).toDp() }))
-            }
-            for (i in labelTimes.indices) {
-                val labelTime = labelTimes[i]
-                val nextTime = labelTimes.getOrElse(i + 1) { TimeInDay(24, 0) }
-                val segmentMinutes = labelTime.getDistanceInMinutes(nextTime)
+            val labelTimes = uniformLabelTimes(startHour, endHour)
+            labelTimes.forEach { labelTime ->
+                val labelMinutesFromBase = (labelTime.hour * 60 + labelTime.minute) - baseMinutes
                 Text(
                     text = labelTime.toString(),
-                    color = labelColor,
+                    color = textColor,
                     fontSize = 10.sp,
                     maxLines = 1,
                     softWrap = false,
                     textAlign = TextAlign.Center,
                     modifier = Modifier
+                        .offset(y = labelMinutesFromBase.toFloat() * dpPerMinute - 10.dp)
                         .fillMaxWidth()
-                        .height(with(density) { (segmentMinutes / 60f * style.cardHeight).toDp() })
                 )
             }
         }
@@ -651,9 +695,17 @@ private fun TimetableLeftLabels(
 }
 
 @Composable
-private fun TimetableGrid(startDate: Long, effectiveStart: TimeInDay, style: TimetableStyleSheet) {
+private fun TimetableGrid(
+    startDate: Long,
+    startHour: Int,
+    endHour: Int,
+    style: TimetableStyleSheet,
+    dpPerMinute: Dp,
+) {
+    val density = LocalDensity.current
     val currentDow = TimeTools.currentDOW()
     val lineColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.35f)
+    val halfLineColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.15f)
     val isCurrentWeek = remember(startDate) {
         val start = Calendar.getInstance().apply { timeInMillis = startDate }
         TimeTools.isSameWeekWithStartDate(start, System.currentTimeMillis())
@@ -668,17 +720,29 @@ private fun TimetableGrid(startDate: Long, effectiveStart: TimeInDay, style: Tim
             )
         }
         if (style.drawBGLine) {
-            val effect = PathEffect.dashPathEffect(floatArrayOf(20f, 20f), 0f)
-            val labelTimes = hourLabelTimes(effectiveStart)
-            for (labelTime in labelTimes) {
-                val offsetMinutes = effectiveStart.getDistanceInMinutes(labelTime).coerceAtLeast(0)
-                val y = (offsetMinutes / 60f * style.cardHeight)
+            val dpPerMinutePx = with(density) { dpPerMinute.toPx() }
+            val dashEffect = PathEffect.dashPathEffect(floatArrayOf(20f, 20f), 0f)
+
+            // Half-hour marks (faint solid lines)
+            for (h in startHour until endHour) {
+                val y = 30f * dpPerMinutePx + (h - startHour) * 60 * dpPerMinutePx
+                drawLine(
+                    color = halfLineColor,
+                    start = Offset(0f, y),
+                    end = Offset(size.width, y),
+                    strokeWidth = 1f,
+                )
+            }
+
+            // Hour marks (dashed lines)
+            for (h in startHour..endHour) {
+                val y = (h - startHour) * 60f * dpPerMinutePx
                 drawLine(
                     color = lineColor,
                     start = Offset(0f, y),
-                    end = Offset(size.width, y + 1f),
+                    end = Offset(size.width, y),
                     strokeWidth = 1f,
-                    pathEffect = effect
+                    pathEffect = dashEffect
                 )
             }
         }
@@ -689,14 +753,14 @@ private fun TimetableGrid(startDate: Long, effectiveStart: TimeInDay, style: Tim
 @Composable
 private fun TimetableEventLayer(
     events: List<EventItem>,
-    effectiveStart: TimeInDay,
+    startHour: Int,
     style: TimetableStyleSheet,
+    dpPerMinute: Dp,
     onEventClick: (EventItem) -> Unit,
     onEventLongClick: (EventItem, IntOffset) -> Unit,
 ) {
     val arranged = remember(events) { TimetableOverlapLayout.arrange(events) }
 
-    // Group cascade events into clusters; each cluster shares one click target
     val renderList = remember(arranged) {
         val result = mutableListOf<Pair<PositionedEvent, List<EventItem>?>>()
         var i = 0
@@ -713,7 +777,7 @@ private fun TimetableEventLayer(
                     clusterEnd = maxOf(clusterEnd, next.event.to.time)
                     i++
                 }
-                cluster.sortBy { it.columnIndex } // Z-order: higher index on top
+                cluster.sortBy { it.columnIndex }
                 val clusterEvents = cluster.map { it.event }
                 cluster.forEach { rp -> result.add(rp to clusterEvents) }
             } else {
@@ -725,25 +789,24 @@ private fun TimetableEventLayer(
     }
 
     var conflictCluster by remember { mutableStateOf<List<EventItem>?>(null) }
-    val density = LocalDensity.current
+    val baseMinutes = startHour * 60
+
     BoxWithConstraintsCompat {
         val sectionWidth = maxWidth / 7f
         val cascadeOffset = 6.dp
         renderList.forEach { (positioned, clusterEvents) ->
             val event = positioned.event
             val overlapCount = positioned.overlapCount
-            val startMinutes = effectiveStart.getDistanceInMinutes(event.from.time)
+            // Extract time-of-day minutes from absolute timestamp
+            val eventMinutesPastMidnight = eventMinutes(event.from.time)
+            val minutesFromBase = (eventMinutesPastMidnight - baseMinutes).coerceAtLeast(0)
             val duration = event.getDurationInMinutes().coerceAtLeast(15)
-            val top = with(density) {
-                (startMinutes / 60f * style.cardHeight).toDp()
-            }
+            val top = minutesFromBase.toFloat() * dpPerMinute
+            val rawHeight = duration.toFloat() * dpPerMinute
             val dayLeft = sectionWidth * (event.getDow() - 1)
             val isCascade = clusterEvents != null
 
             if (isCascade) {
-                val rawHeight = with(density) {
-                    (duration / 60f * style.cardHeight).toDp()
-                }
                 val offsetTotal = overlapCount - 1
                 val cardWidth = (sectionWidth - cascadeOffset * offsetTotal).coerceAtLeast(0.dp)
                 val cardHeight = (rawHeight - cascadeOffset * offsetTotal).coerceAtLeast(0.dp)
@@ -766,17 +829,14 @@ private fun TimetableEventLayer(
                     onLongClick = { position -> onEventLongClick(event, position) }
                 )
             } else {
-                val height = with(density) {
-                    (duration / 60f * style.cardHeight).toDp()
-                }
                 TimetableEventCard(
                     event = event,
                     style = style,
                     modifier = Modifier
                         .offset(x = dayLeft + 2.dp, y = top)
                         .width((sectionWidth - 4.dp).coerceAtLeast(0.dp))
-                        .height(height),
-                    cardHeight = height,
+                        .height(rawHeight),
+                    cardHeight = rawHeight,
                     columnCount = 1,
                     onClick = { onEventClick(event) },
                     onLongClick = { position -> onEventLongClick(event, position) }
@@ -812,6 +872,11 @@ private fun TimetableEventLayer(
             }
         }
     }
+}
+
+/** Extract minutes past midnight from an epoch-millis timestamp */
+private fun eventMinutes(epochMillis: Long): Int {
+    return TimeTools.getHour(epochMillis) * 60 + TimeTools.getMinute(epochMillis)
 }
 
 @Composable
@@ -1030,58 +1095,45 @@ private fun textAlignFromGravity(gravity: Int): TextAlign {
     }
 }
 
-private fun timetableHeight(start: TimeInDay, cardHeight: Int): Int {
-    val totalMinutes = (24 - start.hour) * 60 - start.minute
-    return (totalMinutes / 60f * cardHeight).roundToInt()
-}
-
-private fun pickPeriodFromOffset(y: Float, effectiveStart: TimeInDay, style: TimetableStyleSheet): TimePeriodInDay? {
-    val time = effectiveStart.getAdded((y / style.cardHeight * 60f).toInt())
-    val structure = styleStructure()
-    for (i in structure.indices) {
-        val period = structure[i]
-        if (i == 0 && period.after(time)) {
-            return TimePeriodInDay(effectiveStart, period.from)
-        }
-        if (period.contains(time)) {
-            return period.clone()
-        }
-        if (i + 1 < structure.size && structure[i + 1].after(time)) {
-            return TimePeriodInDay(period.to, structure[i + 1].from)
-        }
-        if (i == structure.size - 1 && period.before(time)) {
-            return TimePeriodInDay(period.to, TimeInDay(23, 59))
-        }
-    }
-    return null
-}
-
-/** 上午半小时间隔(8:30-12:30) + 下午整点(14:00-23:00)，如有更早课程则从 effectiveStart 向上取整扩展 */
-private fun hourLabelTimes(effectiveStart: TimeInDay? = null): List<TimeInDay> {
+/** 均匀每小时时间标签（仅整点） */
+private fun uniformLabelTimes(startHour: Int, endHour: Int): List<TimeInDay> {
     val times = mutableListOf<TimeInDay>()
-    for (h in 8..12) times.add(TimeInDay(h, 30))
-    for (h in 14..23) times.add(TimeInDay(h, 0))
-
-    if (effectiveStart != null) {
-        // 向下取整到最近的半小时
-        val roundMin = if (effectiveStart.minute <= 30) 0 else 30
-        val early = mutableListOf<TimeInDay>()
-        var h = effectiveStart.hour
-        var m = roundMin
-        while (h < 8 || (h == 8 && m < 30)) {
-            val t = TimeInDay(h, m)
-            if (t !in times) early.add(t)
-            if (m == 0) m = 30
-            else { m = 0; h++ }
-        }
-        times.addAll(0, early)
-    }
-
+    for (h in startHour..endHour) times.add(TimeInDay(h, 0))
     return times
 }
 
-private fun styleStructure(): List<TimePeriodInDay> {
-    return Timetable().scheduleStructure
+private fun pickPeriodFromOffsetDp(
+    y: Float,
+    startHour: Int,
+    endHour: Int,
+    style: TimetableStyleSheet,
+    scheduleStructure: List<TimePeriodInDay>,
+    density: Density,
+    dpPerMinute: Dp,
+): TimePeriodInDay? {
+    val dpPerMinutePx = with(density) { dpPerMinute.toPx() }
+    if (dpPerMinutePx <= 0f) return null
+    val minutesFromBase = (y / dpPerMinutePx).toInt()
+    val absoluteMinutes = startHour * 60 + minutesFromBase
+    val absoluteTime = TimeInDay(absoluteMinutes / 60, absoluteMinutes % 60)
+
+    val structure = scheduleStructure.ifEmpty { return null }
+    for (i in structure.indices) {
+        val period = structure[i]
+        if (i == 0 && period.after(absoluteTime)) {
+            return TimePeriodInDay(TimeInDay(startHour, 0), period.from)
+        }
+        if (period.contains(absoluteTime)) {
+            return period.clone()
+        }
+        if (i + 1 < structure.size && structure[i + 1].after(absoluteTime)) {
+            return TimePeriodInDay(period.to, structure[i + 1].from)
+        }
+        if (i == structure.size - 1 && period.before(absoluteTime)) {
+            return TimePeriodInDay(period.to, TimeInDay(endHour, 0))
+        }
+    }
+    return null
 }
 
 private fun mondayOf(ts: Long): Long {
