@@ -487,7 +487,7 @@ private fun PopupAddEventScreen(
                             val tt = timetableState?.data
                             if (ct != null && tt != null) {
                                 val (start, end) = tt.transformCourseNumber(ct.period)
-                                "第${start + 1}-${end + 1}节 (${formatTime(ct.period.from)} - ${formatTime(ct.period.to)})"
+                                "第${start}-${end}节 (${formatTime(ct.period.from)} - ${formatTime(ct.period.to)})"
                             } else null
                         } else null
                     }
