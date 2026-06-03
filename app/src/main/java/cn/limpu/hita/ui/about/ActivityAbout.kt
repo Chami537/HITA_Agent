@@ -1,7 +1,9 @@
 package cn.limpu.hita.ui.about
 
+import android.content.Intent
 import android.content.pm.PackageInfo
 import android.content.pm.PackageManager
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.text.Html
@@ -63,6 +65,7 @@ import androidx.compose.ui.res.colorResource
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -242,6 +245,49 @@ private fun AboutScreen(
                         state = releaseState,
                         modifier = Modifier.padding(top = tokens.spacing.md)
                     )
+                    Spacer(Modifier.height(40.dp))
+                    Spacer(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(1.dp)
+                            .padding(horizontal = tokens.spacing.xl)
+                            .background(MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
+                    )
+                    Spacer(Modifier.height(12.dp))
+                    Text(
+                        text = stringResource(R.string.main_drawer_co_authored),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.35f),
+                        fontSize = 11.sp,
+                        modifier = Modifier.fillMaxWidth(),
+                        textAlign = TextAlign.Center
+                    )
+                    Spacer(Modifier.height(6.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.Center
+                    ) {
+                        Text(
+                            text = stringResource(R.string.main_drawer_github_user),
+                            color = MaterialTheme.colorScheme.primary,
+                            fontSize = 13.sp,
+                            modifier = Modifier.clickable {
+                                context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/Chami537")))
+                            }
+                        )
+                        Text(
+                            text = " | ",
+                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.3f),
+                            fontSize = 13.sp
+                        )
+                        Text(
+                            text = stringResource(R.string.main_drawer_github_project),
+                            color = MaterialTheme.colorScheme.primary,
+                            fontSize = 13.sp,
+                            modifier = Modifier.clickable {
+                                context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/LiPu-jpg")))
+                            }
+                        )
+                    }
                 }
             }
         }

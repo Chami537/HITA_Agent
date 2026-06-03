@@ -70,6 +70,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
@@ -84,6 +85,7 @@ import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
@@ -256,6 +258,8 @@ class MainActivity : HiltBaseActivity<ComposeViewBinding>(),
                     onDrawerAvatarClick = { showAvatarPicker() },
                     onDrawerAgreement = { UserAgreementDialog().show(supportFragmentManager, "ua") },
                     onDrawerAbout = { ActivityUtils.startActivity(getThis(), ActivityAbout::class.java) },
+                    onGitHubUser = { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/Chami537"))) },
+                    onGitHubProject = { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/LiPu-jpg"))) },
                     fragmentFactory = { position ->
                         when (position) {
                             0 -> FragmentTimeLine()
@@ -607,6 +611,8 @@ private fun MainScreen(
     onDrawerAvatarClick: () -> Unit,
     onDrawerAgreement: () -> Unit,
     onDrawerAbout: () -> Unit,
+    onGitHubUser: () -> Unit,
+    onGitHubProject: () -> Unit,
     fragmentFactory: (Int) -> Fragment,
 ) {
     val density = LocalDensity.current
@@ -737,6 +743,8 @@ private fun MainScreen(
             onAvatarClick = onDrawerAvatarClick,
             onAgreement = onDrawerAgreement,
             onAbout = onDrawerAbout,
+            onGitHubUser = onGitHubUser,
+            onGitHubProject = onGitHubProject,
             modifier = Modifier
                 .align(Alignment.CenterEnd)
                 .width(drawerWidth)
@@ -1125,6 +1133,8 @@ private fun MainDrawer(
     onAvatarClick: () -> Unit,
     onAgreement: () -> Unit,
     onAbout: () -> Unit,
+    onGitHubUser: () -> Unit,
+    onGitHubProject: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Surface(
@@ -1134,7 +1144,9 @@ private fun MainDrawer(
         color = MaterialTheme.colorScheme.surface
     ) {
         Column(
-            modifier = Modifier.statusBarsPadding(),
+            modifier = Modifier
+                .statusBarsPadding()
+                .fillMaxHeight(),
         ) {
             DrawerHeader(drawerState = drawerState, onClick = onHeaderClick, onAvatarClick = onAvatarClick)
             Spacer(
@@ -1146,6 +1158,48 @@ private fun MainDrawer(
             )
             DrawerItem(R.drawable.ic_info, stringResource(R.string.name_ua_and_pp), onAgreement)
             DrawerItem(R.drawable.logo, stringResource(R.string.main_drawer_menu_about), onAbout)
+            Spacer(Modifier.weight(1f))
+            Spacer(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(1.dp)
+                    .padding(horizontal = HitaTheme.tokens.spacing.xl)
+                    .background(MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
+            )
+            Spacer(Modifier.height(12.dp))
+            Text(
+                text = stringResource(R.string.main_drawer_co_authored),
+                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.35f),
+                fontSize = 11.sp,
+                modifier = Modifier.fillMaxWidth(),
+                textAlign = TextAlign.Center
+            )
+            Spacer(Modifier.height(6.dp))
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 32.dp),
+                horizontalArrangement = Arrangement.Center
+            ) {
+                Text(
+                    text = stringResource(R.string.main_drawer_github_user),
+                    color = MaterialTheme.colorScheme.primary,
+                    fontSize = 13.sp,
+                    modifier = Modifier.clickable(onClick = onGitHubUser)
+                )
+                Text(
+                    text = " | ",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.3f),
+                    fontSize = 13.sp
+                )
+                Text(
+                    text = stringResource(R.string.main_drawer_github_project),
+                    color = MaterialTheme.colorScheme.primary,
+                    fontSize = 13.sp,
+                    modifier = Modifier.clickable(onClick = onGitHubProject)
+                )
+            }
+            Spacer(Modifier.height(24.dp))
         }
     }
 }
@@ -1159,13 +1213,14 @@ private fun DrawerHeader(drawerState: DrawerUserState, onClick: () -> Unit, onAv
             .padding(top = 78.dp, bottom = HitaTheme.tokens.spacing.lg),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        Card(
-            shape = CircleShape,
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-            elevation = CardDefaults.cardElevation(defaultElevation = 12.dp),
+        Box(
             modifier = Modifier
                 .size(72.dp)
-                .clickable(onClick = onAvatarClick)
+                .shadow(12.dp, CircleShape)
+                .clip(CircleShape)
+                .background(MaterialTheme.colorScheme.surface)
+                .clickable(onClick = onAvatarClick),
+            contentAlignment = Alignment.Center
         ) {
             AndroidView(
                 modifier = Modifier.fillMaxSize(),
