@@ -85,6 +85,8 @@ class DialogAutoEditText : TransparentDialog<DialogAutoEditTextBinding>() {
             binding.title.text = init_title
         }
         binding.text.setBackgroundResource(R.drawable.element_rounded_bar_grey_light)
+        val pad = (16 * resources.displayMetrics.density).toInt()
+        binding.text.setPadding(pad, pad, pad, pad)
         listLiveData.observe(this) {
             listAdapter.notifyItemChangedSmooth(it)
         }
