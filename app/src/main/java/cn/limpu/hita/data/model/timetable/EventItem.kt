@@ -10,6 +10,7 @@ import java.io.Serializable
 import java.sql.Timestamp
 import java.util.*
 import kotlin.math.abs
+import kotlin.math.roundToInt
 
 @Entity(
     tableName = "events",
@@ -58,7 +59,7 @@ class EventItem :Serializable,Comparable<EventItem>{
      * 获取fromTime和当前时间的距离（分钟）
      */
     fun getFromTimeDistance(): Int {
-        return (abs(from.time - System.currentTimeMillis()) / 60000).toInt()
+        return (abs(from.time - System.currentTimeMillis()) / 60000.0).roundToInt()
     }
 
     /**

@@ -42,10 +42,12 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.livedata.observeAsState
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import kotlinx.coroutines.delay
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
@@ -174,6 +176,14 @@ private fun TimelineScreen(
     val weekEventsRaw by viewModel.weekEventsLiveData.observeAsState(emptyList())
     val upcomingExamsRaw by viewModel.upcomingExamLiveData.observeAsState(emptyList())
     var expanded by remember { mutableStateOf(false) }
+    var ticker by remember { mutableLongStateOf(System.currentTimeMillis()) }
+
+    LaunchedEffect(Unit) {
+        while (true) {
+            delay(10_000L)
+            ticker = System.currentTimeMillis()
+        }
+    }
 
     val todayEvents = remember(todayEventsRaw) {
         todayEventsRaw.sortedBy { it.from.time }
@@ -188,7 +198,7 @@ private fun TimelineScreen(
     val displayEvents = remember(hintEvents, todayEvents) {
         hintEvents + todayEvents
     }
-    val headerState = remember(todayEvents, upcomingExams) {
+    val headerState = remember(todayEvents, upcomingExams, ticker) {
         buildHeaderState(context, todayEvents, upcomingExams)
     }
 
