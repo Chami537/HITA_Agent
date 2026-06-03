@@ -290,10 +290,18 @@ class ExamViewModel @Inject constructor(
         var skippedCount = 0
 
         for (exam in exams) {
-            // 检查是否已导入（名称可能已添加"[考试]"前缀）
+            val examEvent = parseExamToEvent(exam, timetable.id)
+            if (examEvent == null) {
+                skippedCount++
+                LogUtils.e("❌ 解析失败: ${exam.courseName}", null, "ExamViewModel")
+                continue
+            }
+
+            // 去重：名称 + 地点 + 开始时间完全一致则跳过
             val isDuplicate = existingEvents.any { event ->
-                (event.name == exam.courseName || event.name == "[考试] ${exam.courseName}") &&
-                event.place == exam.examLocation
+                event.name == examEvent.name &&
+                    event.place == examEvent.place &&
+                    event.from.time == examEvent.from.time
             }
 
             if (isDuplicate) {
@@ -302,16 +310,9 @@ class ExamViewModel @Inject constructor(
                 continue
             }
 
-            // 解析并导入考试
-            val examEvent = parseExamToEvent(exam, timetable.id)
-            if (examEvent != null) {
-                eventItemDao.insertEventSync(examEvent)
-                successCount++
-                LogUtils.d("✅ 导入成功: ${exam.courseName}", "ExamViewModel")
-            } else {
-                skippedCount++
-                LogUtils.e("❌ 解析失败: ${exam.courseName}", null, "ExamViewModel")
-            }
+            eventItemDao.insertEventSync(examEvent)
+            successCount++
+            LogUtils.d("✅ 导入成功: ${exam.courseName}", "ExamViewModel")
         }
 
         LogUtils.d("📊 批量导入完成: 总数=${exams.size}, 成功=$successCount, 跳过=$skippedCount", "ExamViewModel")
