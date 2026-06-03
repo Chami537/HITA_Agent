@@ -72,7 +72,10 @@ class AddEventViewModel @Inject constructor(
                 if (initCourseT != null) {
                     timeRangeLiveDate.value = DataState(initCourseT!!)
                     initCourseT = null
-                } else {
+                } else if (timeRangeLiveDate.value?.state != DataState.STATE.SUCCESS) {
+                    // Only reset to NOTHING if user hasn't made a manual selection yet.
+                    // Prevents async timetable load (Path B) from overwriting a time
+                    // selection already made via mergeCourseTimeSelection.
                     timeRangeLiveDate.value = DataState(DataState.STATE.NOTHING)
                 }
             } else {
@@ -213,9 +216,17 @@ class AddEventViewModel @Inject constructor(
         if (timetable == null) {
             val observer = object : Observer<List<Timetable>> {
                 override fun onChanged(t: List<Timetable>) {
-                    val first = t.firstOrNull()
-                    if (first != null) {
-                        timetableLiveData.postValue(DataState(first))
+                    // Prefer EAS timetable (with non-null code) covering the current date,
+                    // matching the logic used by TimetableFragment.getCurrentTimetableAndWeek().
+                    val now = System.currentTimeMillis()
+                    val easTimetables = t.filter { !it.code.isNullOrEmpty() }
+                    val best = if (easTimetables.isNotEmpty()) {
+                        easTimetables.minByOrNull { it.getWeekNumber(now).takeIf { w -> w > 0 } ?: Int.MAX_VALUE }
+                    } else {
+                        t.firstOrNull()
+                    }
+                    if (best != null) {
+                        timetableLiveData.postValue(DataState(best))
                     } else {
                         timetableLiveData.postValue(DataState(DataState.STATE.NOTHING))
                     }

@@ -28,6 +28,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateListOf
@@ -145,8 +146,8 @@ private fun PickCourseTimeScreen(
     }
 
     val initDow = initCourseTime?.dow ?: 1
-    val initFromPeriod = initCourseTime?.let { timetable.transformCourseNumber(it.period).first + 1 } ?: 1
-    val initToPeriod = initCourseTime?.let { timetable.transformCourseNumber(it.period).second + 1 } ?: 1
+    val initFromPeriod = initCourseTime?.let { timetable.transformCourseNumber(it.period).first } ?: 1
+    val initToPeriod = initCourseTime?.let { timetable.transformCourseNumber(it.period).second } ?: 1
 
     var selectedDow by remember { mutableIntStateOf(initDow) }
     var selectedFromPeriod by remember { mutableIntStateOf(initFromPeriod) }
@@ -177,11 +178,19 @@ private fun PickCourseTimeScreen(
     }
     var extraWeeks by remember { mutableIntStateOf(0) }
 
-    val fromTimeText = remember(selectedFromPeriod) {
-        timetable.scheduleStructure.getOrNull(selectedFromPeriod - 1)?.from?.toString() ?: ""
-    }
-    val toTimeText = remember(selectedToPeriod) {
-        timetable.scheduleStructure.getOrNull(selectedToPeriod - 1)?.to?.toString() ?: ""
+    val schedule = timetable.scheduleStructure
+    val bottomTimeText by remember {
+        derivedStateOf {
+            val startIdx = selectedFromPeriod - 1
+            val endIdx = selectedToPeriod - 1
+            if (startIdx in schedule.indices && endIdx in schedule.indices) {
+                val st = schedule[startIdx].from
+                val et = schedule[endIdx].to
+                "${String.format("%02d:%02d", st.hour, st.minute)} - ${String.format("%02d:%02d", et.hour, et.minute)}"
+            } else {
+                ""
+            }
+        }
     }
 
     Column(
@@ -301,31 +310,16 @@ private fun PickCourseTimeScreen(
 
         // Time preview
         if (mode != PopUpPickCourseTime.Mode.DATE_ONLY) {
-            Row(
+            Text(
+                text = bottomTimeText,
+                fontSize = 16.sp,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(top = tokens.spacing.sm),
-                horizontalArrangement = Arrangement.Center,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    text = fromTimeText,
-                    fontSize = 16.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-                Text(
-                    text = " - ",
-                    fontSize = 24.sp,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-                Text(
-                    text = toTimeText,
-                    fontSize = 16.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
+                textAlign = TextAlign.Center,
+            )
         }
 
         // Week picker

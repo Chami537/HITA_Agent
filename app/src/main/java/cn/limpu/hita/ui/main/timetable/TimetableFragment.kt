@@ -1007,7 +1007,12 @@ private fun TimetableEventCard(
             },
         shape = cardShape,
         colors = CardDefaults.cardColors(containerColor = background),
-        elevation = CardDefaults.cardElevation(defaultElevation = cardElevation)
+        elevation = CardDefaults.cardElevation(
+            defaultElevation = 0.dp,
+            pressedElevation = 0.dp,
+            focusedElevation = 0.dp,
+            hoveredElevation = 0.dp,
+        )
     ) {
         Box(
             modifier = Modifier
