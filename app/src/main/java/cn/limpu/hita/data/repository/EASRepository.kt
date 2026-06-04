@@ -3,6 +3,7 @@ package cn.limpu.hita.data.repository
 import android.app.Application
 import android.os.Handler
 import javax.inject.Inject
+import javax.inject.Singleton
 import android.os.Looper
 import androidx.annotation.WorkerThread
 import androidx.lifecycle.LiveData
@@ -32,6 +33,7 @@ import cn.limpu.hita.utils.LiveDataUtils
 import cn.limpu.hita.utils.TimeTools.getDateAtWOT
 import cn.limpu.hita.utils.TermNameFormatter
 import cn.limpu.hita.utils.CourseCodeUtils
+import cn.limpu.hita.utils.ColorTools
 import cn.limpu.hita.utils.CourseNameUtils
 import java.sql.Timestamp
 import java.text.SimpleDateFormat
@@ -44,6 +46,7 @@ import org.json.JSONArray
 import org.json.JSONObject
 import kotlin.concurrent.thread
 
+@Singleton
 class EASRepository @Inject constructor(
     application: Application,
     private val easPreferenceSource: EasPreferenceSource,
@@ -545,6 +548,7 @@ class EASRepository @Inject constructor(
                                         subject.name = rawName
                                         subject.timetableId = timetable.id
                                         subject.id = UUID.randomUUID().toString()
+                                        subject.color = ColorTools.colorForName(normalizedName)
                                     } else {
                                         // 科目已存在，总是尝试更新为更完整的名称
                                         // 优先选择包含更多信息（括号、方括号）的名称
