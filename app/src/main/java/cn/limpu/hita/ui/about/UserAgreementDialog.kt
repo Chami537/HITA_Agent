@@ -2,10 +2,12 @@ package cn.limpu.hita.ui.about
 
 import android.os.Bundle
 import android.text.Html
+import android.text.method.ScrollingMovementMethod
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.widget.TextView
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -26,6 +28,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
@@ -95,7 +98,10 @@ private fun UserAgreementScreen(
     val ppContent = stringResource(R.string.privacy_policy)
     var selectedTab by remember { mutableIntStateOf(0) }
 
-    Column(modifier = Modifier.fillMaxWidth()) {
+    Column(modifier = Modifier
+        .fillMaxWidth()
+        .background(MaterialTheme.colorScheme.surface)
+    ) {
         TabRow(
             selectedTabIndex = selectedTab,
             containerColor = MaterialTheme.colorScheme.surface,
@@ -128,6 +134,9 @@ private fun UserAgreementScreen(
         }
 
         val content = if (selectedTab == 0) uaContent else ppContent
+        val textColor = MaterialTheme.colorScheme.onSurface.toArgb()
+        val linkColor = MaterialTheme.colorScheme.primary.toArgb()
+        val surfaceColor = MaterialTheme.colorScheme.surface.toArgb()
         AndroidView(
             modifier = Modifier
                 .fillMaxWidth()
@@ -135,13 +144,16 @@ private fun UserAgreementScreen(
                 .padding(tokens.spacing.sm),
             factory = { context ->
                 TextView(context).apply {
-                    text = Html.fromHtml(content)
+                    movementMethod = ScrollingMovementMethod()
                     setPadding(16, 8, 16, 8)
                 }
             },
             update = { textView ->
                 val newContent = if (selectedTab == 0) uaContent else ppContent
                 textView.text = Html.fromHtml(newContent)
+                textView.setTextColor(textColor)
+                textView.setLinkTextColor(linkColor)
+                textView.setBackgroundColor(surfaceColor)
             }
         )
 
