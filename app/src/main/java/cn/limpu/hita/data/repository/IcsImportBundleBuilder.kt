@@ -69,7 +69,7 @@ object IcsImportBundleBuilder {
                 TermSubject().apply {
                     name = event.courseName
                     timetableId = timetable.id
-                    color = nextColor()
+                    color = ColorTools.colorForName(event.courseName)
                 }
             }
             val item = IcsImportEventMapper.map(

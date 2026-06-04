@@ -128,7 +128,7 @@ class SubjectRepository @Inject constructor(application: Application) {
             timetable?.let {
                 val subjects = subjectDao.getSubjectsSync(it.id)
                 for (s in subjects) {
-                    s.color = ColorTools.randomColorMaterial()
+                    s.color = ColorTools.colorForName(s.name)
                 }
                 subjectDao.saveSubjectsSync(subjects)
             }
@@ -140,7 +140,7 @@ class SubjectRepository @Inject constructor(application: Application) {
         executor.execute {
             val subjects = subjectDao.getSubjectsSync(timetableId)
             for (s in subjects) {
-                s.color = ColorTools.randomColorMaterial()
+                s.color = ColorTools.colorForName(s.name)
             }
             subjectDao.saveSubjectsSync(subjects)
         }

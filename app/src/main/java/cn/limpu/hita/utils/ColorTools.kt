@@ -27,6 +27,12 @@ object ColorTools {
         return parseHexColor(colorsQueue.removeAt(0))
     }
 
+    fun colorForName(name: String): Int {
+        val normalized = name.trim().lowercase()
+        val index = (normalized.hashCode() and Int.MAX_VALUE) % colors_material.size
+        return parseHexColor(colors_material[index])
+    }
+
 
     fun changeAlpha(color: Int, alpha: Float): Int {
         val alphaChannel = (255 * alpha).toInt().coerceIn(0, 255)

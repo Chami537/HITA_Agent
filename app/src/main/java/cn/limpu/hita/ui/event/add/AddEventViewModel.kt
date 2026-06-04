@@ -13,6 +13,7 @@ import cn.limpu.hita.data.model.timetable.Timetable
 import cn.limpu.hita.data.repository.ScheduleEventCreator
 import cn.limpu.hita.data.repository.SubjectRepository
 import cn.limpu.hita.data.repository.TimetableRepository
+import cn.limpu.hita.utils.ColorTools
 import dagger.hilt.android.lifecycle.HiltViewModel
 import java.sql.Timestamp
 import java.util.Calendar
@@ -306,6 +307,7 @@ class AddEventViewModel @Inject constructor(
                 val subject = TermSubject().apply {
                     name = nameLiveData.value?.trim().orEmpty()
                     timetableId = timetable.id
+                    color = ColorTools.colorForName(name)
                 }
                 subjectToSave = subject
                 ScheduleEventCreator.Content(

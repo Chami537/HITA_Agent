@@ -84,7 +84,7 @@ agent/
 
 ### UI Layer
 
-- ViewBinding enabled (Compose dependencies removed, not in use)
+- Compose + ViewBinding hybrid: UI is primarily Compose (Material3, 50+ files) hosted in Fragment shells via `ComposeViewBinding`
 - Fragments extend `BaseFragment` / `BaseFragmentClassic` from style module
 - Adapters extend `BaseListAdapter` / `BaseListAdapterClassic`
 - Markdown rendering via Markwon library
