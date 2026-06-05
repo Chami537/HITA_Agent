@@ -26,7 +26,8 @@ enum class HitaThemeStyle {
     Classic,
     Fresh,
     Focus,
-    HighContrast
+    HighContrast,
+    AppleGlass
 }
 
 @Immutable
@@ -143,6 +144,7 @@ private fun ThemeTools.STYLE.toHitaThemeStyle(): HitaThemeStyle {
         ThemeTools.STYLE.FRESH -> HitaThemeStyle.Fresh
         ThemeTools.STYLE.FOCUS -> HitaThemeStyle.Focus
         ThemeTools.STYLE.HIGH_CONTRAST -> HitaThemeStyle.HighContrast
+        ThemeTools.STYLE.APPLE_GLASS -> HitaThemeStyle.AppleGlass
     }
 }
 
@@ -228,6 +230,17 @@ private fun hitaColorScheme(
             surface = if (darkTheme) Color.Black else Color.White,
             background = if (darkTheme) Color.Black else Color.White,
             onSurface = if (darkTheme) Color.White else Color.Black
+        )
+        HitaThemeStyle.AppleGlass -> base.copy(
+            primary = Color(0xFF007AFF),
+            onPrimary = Color.White,
+            onPrimaryContainer = if (darkTheme) Color(0xFFD6EAFF) else Color(0xFF00315C),
+            background = if (darkTheme) Color(0xFF090B10) else Color(0xFFF4F8FC),
+            surface = if (darkTheme) Color.White.copy(alpha = 0.16f) else Color.White.copy(alpha = 0.42f),
+            surfaceVariant = if (darkTheme) Color.White.copy(alpha = 0.12f) else Color.White.copy(alpha = 0.30f),
+            primaryContainer = if (darkTheme) Color(0xFF0A84FF).copy(alpha = 0.18f) else Color.White.copy(alpha = 0.34f),
+            outline = Color.White.copy(alpha = if (darkTheme) 0.34f else 0.72f),
+            outlineVariant = Color.White.copy(alpha = if (darkTheme) 0.18f else 0.48f)
         )
     }
 }

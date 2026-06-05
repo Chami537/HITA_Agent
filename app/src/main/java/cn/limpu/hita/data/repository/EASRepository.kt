@@ -985,13 +985,21 @@ class EASRepository @Inject constructor(
     private fun saveEasToken(token: EASToken) {
         val mergedToken = mergeWithStoredEasToken(token)
         easPreferenceSource.saveEasToken(mergedToken)
-        easTokenLiveData.postValue(mergedToken)
+        publishEasToken(mergedToken)
     }
 
     fun saveEasTokenSync(token: EASToken) {
         val mergedToken = mergeWithStoredEasToken(token)
         easPreferenceSource.saveEasToken(mergedToken)
-        easTokenLiveData.postValue(mergedToken)
+        publishEasToken(mergedToken)
+    }
+
+    private fun publishEasToken(token: EASToken) {
+        if (Looper.myLooper() == Looper.getMainLooper()) {
+            easTokenLiveData.value = token
+        } else {
+            easTokenLiveData.postValue(token)
+        }
     }
 
     private fun mergeWithStoredEasToken(token: EASToken): EASToken {
@@ -1029,7 +1037,7 @@ class EASRepository @Inject constructor(
 
     private fun clearEasToken() {
         easPreferenceSource.clearEasToken()
-        easTokenLiveData.postValue(easPreferenceSource.getEasToken())
+        publishEasToken(easPreferenceSource.getEasToken())
     }
 
     fun logout() {

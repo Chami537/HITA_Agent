@@ -104,6 +104,9 @@
     <string name="main_drawer_menu_studyassistant">助手</string>
     <string name="main_drawer_menu_hita">希塔</string>
     <string name="main_drawer_menu_theme">主题</string>
+    <string name="main_drawer_menu_theme_style">界面风格</string>
+    <string name="theme_style_changed">已切换到 %1$s</string>
+    <string name="theme_style_apple_glass_marker">Apple Glass 测试标记</string>
     <string name="punch_success_normal">打卡成功</string>
     <string name="punch_success_happy">打卡成功，祝你开心每一天</string>
     <string name="punch_success_sad">打卡成功，加油呀！</string>
