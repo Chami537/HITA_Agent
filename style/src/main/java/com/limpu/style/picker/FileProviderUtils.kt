@@ -36,7 +36,7 @@ object FileProviderUtils {
      */
     private fun getUriForFile24(context: Context, file: File): Uri {
         return FileProvider.getUriForFile(context,
-                context.packageName + ".style.fileprovider", file)
+                "com.limpu.hita.fileprovider", file)
     }
 
     @JvmStatic

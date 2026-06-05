@@ -43,7 +43,6 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.ComposeView
@@ -66,10 +65,6 @@ import cn.limpu.hita.data.work.CourseReminderScheduler
 import cn.limpu.hita.ui.credit.CreditStatsActivity
 import cn.limpu.hita.ui.design.HitaComposeTheme
 import cn.limpu.hita.ui.design.HitaTheme
-import cn.limpu.hita.ui.design.hitaGlassCardBorder
-import cn.limpu.hita.ui.design.hitaGlassCardColors
-import cn.limpu.hita.ui.design.hitaGlassCardModifier
-import cn.limpu.hita.ui.design.hitaIsAppleGlassSurface
 import cn.limpu.hita.ui.eas.classroom.EmptyClassroomActivity
 import cn.limpu.hita.ui.eas.exam.ExamActivity
 import cn.limpu.hita.ui.eas.imp.ImportTimetableActivity
@@ -343,13 +338,7 @@ private fun NavigationScreen(
         modifier = Modifier
             .fillMaxSize()
             .verticalScroll(rememberScrollState())
-            .background(
-                if (hitaIsAppleGlassSurface()) {
-                    Color.Transparent
-                } else {
-                    MaterialTheme.colorScheme.background
-                }
-            )
+            .background(MaterialTheme.colorScheme.background)
             .padding(bottom = 80.dp),
         verticalArrangement = Arrangement.spacedBy(tokens.spacing.sm)
     ) {
@@ -458,17 +447,14 @@ private fun UserCard(
         subtitle = stringResource(R.string.eas_account_not_logged_in_subtitle)
         avatarSource = localAvatar
     }
-    val cardShape = RoundedCornerShape(tokens.radius.lg)
     Card(
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = tokens.spacing.lg, vertical = tokens.spacing.sm)
-            .hitaGlassCardModifier(cardShape)
             .clickable(onClick = onClick),
-        shape = cardShape,
-        colors = hitaGlassCardColors(glassAlpha = 0.48f),
-        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
-        border = hitaGlassCardBorder(alpha = 0.30f)
+        shape = RoundedCornerShape(tokens.radius.lg),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
     ) {
         Row(
             modifier = Modifier.padding(tokens.spacing.lg),
@@ -530,15 +516,11 @@ private fun ShortcutCard(
     modifier: Modifier = Modifier,
 ) {
     val tokens = HitaTheme.tokens
-    val cardShape = RoundedCornerShape(tokens.radius.lg)
     Card(
-        modifier = modifier
-            .hitaGlassCardModifier(cardShape, elevation = 10.dp)
-            .clickable(onClick = onClick),
-        shape = cardShape,
-        colors = hitaGlassCardColors(glassAlpha = 0.44f),
-        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
-        border = hitaGlassCardBorder(alpha = 0.28f)
+        modifier = modifier.clickable(onClick = onClick),
+        shape = RoundedCornerShape(tokens.radius.lg),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
     ) {
         Row(
             modifier = Modifier
@@ -590,16 +572,13 @@ private fun NavigationGroup(
             bottom = tokens.spacing.xs
         )
     )
-    val cardShape = RoundedCornerShape(tokens.radius.lg)
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = tokens.spacing.lg)
-            .hitaGlassCardModifier(cardShape, elevation = 12.dp),
-        shape = cardShape,
-        colors = hitaGlassCardColors(glassAlpha = 0.46f),
-        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
-        border = hitaGlassCardBorder(alpha = 0.28f)
+            .padding(horizontal = tokens.spacing.lg),
+        shape = RoundedCornerShape(tokens.radius.lg),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
     ) {
         Column(
             modifier = Modifier.padding(vertical = tokens.spacing.xs)

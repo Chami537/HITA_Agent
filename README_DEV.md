@@ -7,12 +7,12 @@ HITA Agent 是一款面向哈工大三校区的 Android 校园助手 App，集�
 - **开发语言**：Kotlin
 - **最低 SDK**：26 (Android 8.0)
 - **目标 SDK**：34 (Android 14)
-- **构建工具**：Gradle 8.7, AGP 8.6.1, Kotlin 2.2.21
-- **JDK**：21
+- **构建工具**：Gradle 8.7, AGP 8.5.2, Kotlin 1.9.22
+- **JDK**：17
 
 ## 环境要求
-- Android Studio 2025.3.2 或更高
-- JDK 21
+- Android Studio Hedgehog | 2023.1.1 或更高
+- JDK 17
 - Android SDK 26+
 
 ## 项目结构

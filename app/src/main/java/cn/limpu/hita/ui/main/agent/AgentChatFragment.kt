@@ -87,10 +87,6 @@ import cn.limpu.hita.data.model.chat.ChatSession
 import cn.limpu.hita.data.model.resource.AgentResourceCard
 import cn.limpu.hita.ui.design.HitaComposeTheme
 import cn.limpu.hita.ui.design.HitaTheme
-import cn.limpu.hita.ui.design.hitaGlassCardBorder
-import cn.limpu.hita.ui.design.hitaGlassCardColors
-import cn.limpu.hita.ui.design.hitaGlassCardModifier
-import cn.limpu.hita.ui.design.hitaIsAppleGlassSurface
 import cn.limpu.hita.ui.resource.UnifiedResourceSearchActivity
 import cn.limpu.hita.utils.ActivityUtils
 import cn.limpu.hita.utils.LogUtils
@@ -301,13 +297,7 @@ private fun AgentChatScreen(
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(
-                if (hitaIsAppleGlassSurface()) {
-                    Color.Transparent
-                } else {
-                    MaterialTheme.colorScheme.background
-                }
-            )
+            .background(MaterialTheme.colorScheme.background)
     ) {
         Column(modifier = Modifier.fillMaxSize()) {
             Row(
@@ -322,14 +312,12 @@ private fun AgentChatScreen(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Box(modifier = Modifier.weight(1f)) {
-                    val sessionShape = RoundedCornerShape(18.dp)
                     Surface(
                         color = MaterialTheme.colorScheme.surface,
-                        shape = sessionShape,
+                        shape = RoundedCornerShape(18.dp),
                         modifier = Modifier
                             .fillMaxWidth()
                             .height(36.dp)
-                            .hitaGlassCardModifier(sessionShape, elevation = 8.dp)
                             .clickable { sessionMenuExpanded = true }
                     ) {
                         Row(
@@ -543,29 +531,17 @@ private fun AgentMessageBubble(
             .padding(vertical = tokens.spacing.xs),
         horizontalArrangement = if (isUser) Arrangement.End else Arrangement.Start
     ) {
-        val bubbleShape = RoundedCornerShape(20.dp)
-        val isGlass = hitaIsAppleGlassSurface()
         Card(
-            colors = if (isGlass) {
-                hitaGlassCardColors(
-                    containerColor = if (isUser) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surface,
-                    glassAlpha = if (isUser) 0.38f else 0.56f
-                )
-            } else {
-                CardDefaults.cardColors(
-                    containerColor = if (isUser) {
-                        MaterialTheme.colorScheme.primary
-                    } else {
-                        MaterialTheme.colorScheme.surface
-                    }
-                )
-            },
-            shape = bubbleShape,
+            colors = CardDefaults.cardColors(
+                containerColor = if (isUser) {
+                    MaterialTheme.colorScheme.primary
+                } else {
+                    MaterialTheme.colorScheme.surface
+                }
+            ),
+            shape = RoundedCornerShape(20.dp),
             elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
-            border = hitaGlassCardBorder(alpha = if (isUser) 0.32f else 0.28f),
-            modifier = Modifier
-                .fillMaxWidth(0.88f)
-                .hitaGlassCardModifier(bubbleShape, elevation = 8.dp)
+            modifier = Modifier.fillMaxWidth(0.88f)
         ) {
             Column(modifier = Modifier.padding(tokens.spacing.md)) {
                 if (message.isPlaceholder) {
@@ -679,23 +655,14 @@ private fun AgentResourceCardView(
     onClick: () -> Unit,
 ) {
     val tokens = HitaTheme.tokens
-    val cardShape = RoundedCornerShape(tokens.radius.md)
     Card(
-        colors = hitaGlassCardColors(
-            containerColor = MaterialTheme.colorScheme.background,
-            glassAlpha = 0.44f
-        ),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.background),
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
-        border = if (hitaIsAppleGlassSurface()) {
-            hitaGlassCardBorder(alpha = 0.24f)
-        } else {
-            CardDefaults.outlinedCardBorder()
-        },
-        shape = cardShape,
+        border = CardDefaults.outlinedCardBorder(),
+        shape = RoundedCornerShape(tokens.radius.md),
         modifier = Modifier
             .fillMaxWidth()
             .padding(bottom = 6.dp)
-            .hitaGlassCardModifier(cardShape, elevation = 6.dp)
             .clickable(onClick = onClick)
     ) {
         Row(
