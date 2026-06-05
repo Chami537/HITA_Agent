@@ -82,6 +82,7 @@ object LlmChatService {
             ChatMessage(role = "user", content = userMessage),
         )
         val thinkingSteps = mutableListOf<String>()
+        val usefulObservations = mutableListOf<String>()
 
         repeat(30) { step ->
             emitTraceToMain(onTrace, AgentTraceEvent(stage = "react_step", message = "步骤 ${step + 1}/30: 正在思考…", payload = ""))
@@ -156,7 +157,8 @@ object LlmChatService {
             if (parsed.action == "答案" || parsed.action.isBlank()) {
                 delay(FINAL_THOUGHT_PREVIEW_MS)
                 val thinking = thinkingSteps.joinToString("\n")
-                return Pair(parsed.thought, thinking)
+                val answer = parsed.thought.ifBlank { buildFallbackAnswer(usefulObservations) }
+                return Pair(answer.ifBlank { "我找到了相关资料，但模型没有生成文字总结。你可以先查看下方资料卡片。" }, thinking)
             }
 
             LogUtils.d("[ReAct] tool=${parsed.action} step=${step + 1}")
@@ -171,6 +173,7 @@ object LlmChatService {
                     onResourceCards = onResourceCards,
                 ))
                 ?: "未知工具: ${parsed.action}"
+            collectUsefulObservation(parsed.action, observation, usefulObservations)
             emitTraceToMain(onTrace, AgentTraceEvent(stage = "react_step", message = "观察: ${observation.take(100)}", payload = observation.take(500)))
 
             messages.add(ChatMessage(role = "assistant", content = content))
@@ -178,7 +181,8 @@ object LlmChatService {
         }
 
         val thinking = thinkingSteps.joinToString("\n")
-        return Pair("达到最大步骤限制（30步），请简化您的问题", thinking)
+        val fallbackAnswer = buildFallbackAnswer(usefulObservations)
+        return Pair(fallbackAnswer.ifBlank { "达到最大步骤限制（30步），请简化您的问题" }, thinking)
     }
 
     internal data class ParsedStep(val thought: String, val action: String, val actionInput: String)
@@ -209,6 +213,44 @@ object LlmChatService {
         }
 
         return ParsedStep(thought = thought, action = action, actionInput = actionInput)
+    }
+
+    private fun collectUsefulObservation(
+        action: String,
+        observation: String,
+        usefulObservations: MutableList<String>,
+    ) {
+        if (observation.isBlank() || observation.startsWith("未知工具")) return
+        val shouldKeep = when (action) {
+            "get_timetable",
+            "search_timetable",
+            "search_course",
+            "get_course_detail",
+            "search_external_resource",
+            "rag_search",
+            "search_teacher" -> true
+            else -> false
+        }
+        if (!shouldKeep) return
+        usefulObservations.add(
+            buildString {
+                append("【")
+                append(action)
+                append("】\n")
+                append(observation.trim().take(MAX_OBSERVATION_CHARS))
+            }
+        )
+    }
+
+    private fun buildFallbackAnswer(usefulObservations: List<String>): String {
+        if (usefulObservations.isEmpty()) return ""
+        return buildString {
+            append("我先把已查到的信息整理如下：\n\n")
+            usefulObservations.takeLast(MAX_FALLBACK_OBSERVATIONS).forEachIndexed { index, observation ->
+                if (index > 0) append("\n\n")
+                append(observation)
+            }
+        }
     }
 }
 
@@ -250,6 +292,8 @@ sealed class LlmChatResult {
 }
 
 private const val FINAL_THOUGHT_PREVIEW_MS = 120L
+private const val MAX_OBSERVATION_CHARS = 1800
+private const val MAX_FALLBACK_OBSERVATIONS = 6
 
 private suspend fun emitTraceToMain(
     onTrace: (AgentTraceEvent) -> Unit,

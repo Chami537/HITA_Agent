@@ -47,14 +47,24 @@ internal object ToolHelper {
             "周日" to Calendar.SUNDAY, "星期日" to Calendar.SUNDAY, "周天" to Calendar.SUNDAY,
         )
         if (text.contains("今天")) return 0
+        if (text.contains("大前天")) return -3
+        if (text.contains("前天")) return -2
+        if (text.contains("昨天")) return -1
         if (text.contains("明天")) return 1
         if (text.contains("大后天")) return 3
         if (text.contains("后天")) return 2
         for ((label, dow) in dowMap) {
             if (text.contains(label)) {
                 var diff = dow - todayDow
-                if (diff <= 0) diff += 7
-                if (text.contains("下个") || text.contains("下周")) diff += 7
+                diff = when {
+                    text.contains("上个") || text.contains("上周") -> {
+                        if (diff >= 0) diff - 7 else diff
+                    }
+                    text.contains("下个") || text.contains("下周") -> {
+                        if (diff <= 0) diff + 7 else diff
+                    }
+                    else -> diff
+                }
                 return diff
             }
         }
@@ -65,7 +75,7 @@ internal object ToolHelper {
         val target = Calendar.getInstance().apply { set(Calendar.MONTH, month - 1); set(Calendar.DAY_OF_MONTH, day) }
         val diffMs = target.timeInMillis - cal.timeInMillis
         val diffDays = (diffMs / (24 * 3600 * 1000)).toInt()
-        return if (diffDays in 0..365) diffDays else 0
+        return if (diffDays in -365..365) diffDays else 0
     }
 
     fun runTimetableToolSync(
