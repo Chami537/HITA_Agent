@@ -24,8 +24,9 @@ object TimetableOverlapLayout {
         if (events.isEmpty()) {
             return emptyList()
         }
+        val distinctEvents = events.distinctBy { it.id }
         val positioned = mutableListOf<PositionedEvent>()
-        events.groupBy { it.getDow() }
+        distinctEvents.groupBy { it.getDow() }
             .toSortedMap()
             .values
             .forEach { dayEvents ->

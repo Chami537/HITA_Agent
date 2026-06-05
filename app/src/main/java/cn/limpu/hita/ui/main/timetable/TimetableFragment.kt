@@ -50,6 +50,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.livedata.observeAsState
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -570,6 +571,7 @@ private fun TimetableWeekContent(
                         endHour = endHour,
                         style = style,
                         dpPerMinute = dpPerMinute,
+                        showTodayHighlight = !isAppleGlass,
                     )
                 }
                 TimetableEventLayer(
@@ -725,6 +727,7 @@ private fun TimetableGrid(
     endHour: Int,
     style: TimetableStyleSheet,
     dpPerMinute: Dp,
+    showTodayHighlight: Boolean = false,
 ) {
     val density = LocalDensity.current
     val currentDow = TimeTools.currentDOW()
@@ -736,7 +739,7 @@ private fun TimetableGrid(
     }
     Canvas(modifier = Modifier.fillMaxSize()) {
         val sectionWidth = size.width / 7f
-        if (isCurrentWeek) {
+        if (showTodayHighlight && isCurrentWeek) {
             drawRect(
                 color = Color(style.todayBGColor),
                 topLeft = Offset(sectionWidth * (currentDow - 1), 0f),
@@ -784,7 +787,8 @@ private fun TimetableEventLayer(
     onEventClick: (EventItem) -> Unit,
     onEventLongClick: (EventItem, IntOffset) -> Unit,
 ) {
-    val arranged = remember(events) { TimetableOverlapLayout.arrange(events) }
+    val distinctEvents = remember(events) { events.distinctBy { it.id } }
+    val arranged = remember(distinctEvents) { TimetableOverlapLayout.arrange(distinctEvents) }
 
     val renderList = remember(arranged) {
         val result = mutableListOf<Pair<PositionedEvent, List<EventItem>?>>()
@@ -815,14 +819,11 @@ private fun TimetableEventLayer(
 
     var conflictCluster by remember { mutableStateOf<List<EventItem>?>(null) }
     val baseMinutes = startHour * 60
-    val realGlassDays = remember(startDate) {
-        focusedRealGlassDows(startDate)
-    }
+    val todayDow = TimeTools.currentDOW()
 
     BoxWithConstraintsCompat {
         val sectionWidth = maxWidth / 7f
         val cascadeOffset = 6.dp
-        var realBackdropBudget = 3
         val cardPlacements = renderList.map { (positioned, clusterEvents) ->
             val event = positioned.event
             val overlapCount = positioned.overlapCount
@@ -833,10 +834,8 @@ private fun TimetableEventLayer(
             val rawHeight = duration.toFloat() * dpPerMinute
             val dayLeft = sectionWidth * (event.getDow() - 1)
             val isCascade = clusterEvents != null
-            val usesRealBackdrop = event.getDow() in realGlassDays && !isCascade && realBackdropBudget > 0
-            if (usesRealBackdrop) {
-                realBackdropBudget--
-            }
+            val isTodayEvent = event.getDow() == todayDow
+            val usesRealBackdrop = isTodayEvent && !isCascade
             if (isCascade) {
                 val offsetTotal = overlapCount - 1
                 val cardWidth = (sectionWidth - cascadeOffset * offsetTotal).coerceAtLeast(0.dp)
@@ -887,36 +886,38 @@ private fun TimetableEventLayer(
         cardPlacements.forEach { placement ->
             val event = placement.positioned.event
             val clusterEvents = placement.clusterEvents
-            if (clusterEvents != null) {
-                TimetableEventCard(
-                    event = event,
-                    style = style,
-                    modifier = Modifier
-                        .offset(x = placement.xOffset, y = placement.yOffset)
-                        .width(placement.width)
-                        .height(placement.height),
-                    cardHeight = placement.height,
-                    columnCount = placement.columnCount,
-                    cardElevation = placement.cardElevation,
-                    isBottomCascadeCard = placement.isBottomCascadeCard,
-                    usesRealBackdrop = placement.usesRealBackdrop,
-                    onClick = { conflictCluster = clusterEvents },
-                    onLongClick = { position -> onEventLongClick(event, position) }
-                )
-            } else {
-                TimetableEventCard(
-                    event = event,
-                    style = style,
-                    modifier = Modifier
-                        .offset(x = placement.xOffset, y = placement.yOffset)
-                        .width(placement.width)
-                        .height(placement.height),
-                    cardHeight = placement.height,
-                    columnCount = placement.columnCount,
-                    usesRealBackdrop = placement.usesRealBackdrop,
-                    onClick = { onEventClick(event) },
-                    onLongClick = { position -> onEventLongClick(event, position) }
-                )
+            key(event.id) {
+                if (clusterEvents != null) {
+                    TimetableEventCard(
+                        event = event,
+                        style = style,
+                        modifier = Modifier
+                            .offset(x = placement.xOffset, y = placement.yOffset)
+                            .width(placement.width)
+                            .height(placement.height),
+                        cardHeight = placement.height,
+                        columnCount = placement.columnCount,
+                        cardElevation = placement.cardElevation,
+                        isBottomCascadeCard = placement.isBottomCascadeCard,
+                        usesRealBackdrop = placement.usesRealBackdrop,
+                        onClick = { conflictCluster = clusterEvents },
+                        onLongClick = { position -> onEventLongClick(event, position) }
+                    )
+                } else {
+                    TimetableEventCard(
+                        event = event,
+                        style = style,
+                        modifier = Modifier
+                            .offset(x = placement.xOffset, y = placement.yOffset)
+                            .width(placement.width)
+                            .height(placement.height),
+                        cardHeight = placement.height,
+                        columnCount = placement.columnCount,
+                        usesRealBackdrop = placement.usesRealBackdrop,
+                        onClick = { onEventClick(event) },
+                        onLongClick = { position -> onEventLongClick(event, position) }
+                    )
+                }
             }
         }
     }
@@ -953,20 +954,6 @@ private fun TimetableEventLayer(
 /** Extract minutes past midnight from an epoch-millis timestamp */
 private fun eventMinutes(epochMillis: Long): Int {
     return TimeTools.getHour(epochMillis) * 60 + TimeTools.getMinute(epochMillis)
-}
-
-private fun focusedRealGlassDows(weekStartMillis: Long): Set<Int> {
-    if (!TimeTools.isSameWeekWithStartDate(
-            Calendar.getInstance().apply { timeInMillis = weekStartMillis },
-            System.currentTimeMillis()
-        )
-    ) {
-        return setOf(2, 3, 4)
-    }
-    val today = TimeTools.currentDOW()
-    return ((today - 1)..(today + 1))
-        .filter { it in 1..7 }
-        .toSet()
 }
 
 @Composable

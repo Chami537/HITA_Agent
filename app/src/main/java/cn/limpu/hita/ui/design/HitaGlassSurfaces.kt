@@ -1,5 +1,6 @@
 package cn.limpu.hita.ui.design
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.material3.CardColors
 import androidx.compose.material3.CardDefaults
@@ -63,7 +64,11 @@ fun hitaGlassCardColors(
 
 @Composable
 fun hitaGlassCardBorder(alpha: Float = 0.34f): BorderStroke? {
-    return null
+    return if (hitaIsAppleGlassSurface()) {
+        BorderStroke(0.5.dp, Color.White.copy(alpha = alpha))
+    } else {
+        null
+    }
 }
 
 @Composable
@@ -128,6 +133,8 @@ fun Modifier.hitaGlassCardModifier(
             }
     } else {
         this
+            .background(color = MaterialTheme.colorScheme.surfaceVariant, shape = shape)
+            .clip(shape)
     }
 }
 
@@ -218,5 +225,7 @@ fun Modifier.hitaCourseCrystalGlassModifier(
             }
     } else {
         this
+            .background(color = MaterialTheme.colorScheme.surfaceVariant, shape = shape)
+            .clip(shape)
     }
 }

@@ -5,6 +5,7 @@ import android.content.Context
 import android.content.SharedPreferences
 import android.graphics.Color
 import javax.inject.Inject
+import javax.inject.Singleton
 import androidx.lifecycle.MediatorLiveData
 import androidx.lifecycle.MutableLiveData
 import com.limpu.component.data.booleanLiveData
@@ -22,6 +23,7 @@ const val KEY_WALLPAPER_PATH = "wallpaper_path"
 const val KEY_WALLPAPER_SCRIM = "wallpaper_scrim"
 const val KEY_CARD_OPACITY = "card_opacity"
 
+@Singleton
 class TimetableStyleRepository @Inject constructor(application: Application) {
     private val timetableStyleSP: SharedPreferences = application.getSharedPreferences(SP_NAME, Context.MODE_PRIVATE)
     val startTimeLiveData = timetableStyleSP.intLiveData(KEY_START_DATE, 830)
