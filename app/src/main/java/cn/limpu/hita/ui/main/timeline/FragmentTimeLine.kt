@@ -10,6 +10,9 @@ import android.os.Bundle
 import android.view.HapticFeedbackConstants
 import android.view.View
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -42,16 +45,20 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.livedata.observeAsState
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.rotate
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.ComposeView
@@ -132,6 +139,10 @@ class FragmentTimeLine : HiltBaseFragmentWithReceiver<ComposeViewBinding>() {
         )
     }
 
+    fun onTabActivated() {
+        viewModel.triggerEnterAnimation()
+    }
+
     override fun initViewBinding(): ComposeViewBinding {
         return ComposeViewBinding(ComposeView(requireContext()))
     }
@@ -202,6 +213,8 @@ private fun TimelineScreen(
         buildHeaderState(context, todayEvents, upcomingExams)
     }
 
+    val enterTick by viewModel.enterTick.observeAsState(0L)
+
     LaunchedEffect(todayEventsRaw) {
         onRefreshWidget()
     }
@@ -241,16 +254,46 @@ private fun TimelineScreen(
                 val isLastTimeline = remember(displayEvents) {
                     index == displayEvents.indexOfLast { it.type != EventItem.TYPE.TAG }
                 }
-                TimelineEventRow(
-                    event = event,
-                    isPassed = TimeTools.passed(event.to),
-                    isUpcomingExam = SpecialEventReminderUtils.isExamEvent(event) &&
-                            event.from.time > System.currentTimeMillis(),
-                    isNow = event.containsTimeStamp(System.currentTimeMillis()),
-                    isFirstTimeline = isFirstTimeline,
-                    isLastTimeline = isLastTimeline,
-                    onClick = { onEventClick(event) },
-                )
+                val isPassed = TimeTools.passed(event.to)
+                val spec = tween<Float>(durationMillis = 450, easing = FastOutSlowInEasing)
+                val alpha = remember { Animatable(if (isPassed) 1f else 0f) }
+                val translationY = remember { Animatable(if (isPassed) 0f else 120f) }
+                val scale = remember { Animatable(if (isPassed) 1f else 0.94f) }
+
+                LaunchedEffect(isPassed, enterTick) {
+                    if (!isPassed) {
+                        alpha.snapTo(0f)
+                        translationY.snapTo(120f)
+                        scale.snapTo(0.94f)
+                        delay(index * 50L)
+                        coroutineScope {
+                            launch { alpha.animateTo(1f, spec) }
+                            launch { translationY.animateTo(0f, spec) }
+                            launch { scale.animateTo(1f, spec) }
+                        }
+                    } else {
+                        alpha.snapTo(1f)
+                        translationY.snapTo(0f)
+                        scale.snapTo(1f)
+                    }
+                }
+                Box(modifier = Modifier.graphicsLayer {
+                    this.alpha = alpha.value
+                    this.translationY = translationY.value
+                    this.scaleX = scale.value
+                    this.scaleY = scale.value
+                }) {
+                    TimelineEventRow(
+                        event = event,
+                        isPassed = isPassed,
+                        isUpcomingExam = SpecialEventReminderUtils.isExamEvent(event) &&
+                                event.from.time > System.currentTimeMillis(),
+                        isNow = event.containsTimeStamp(System.currentTimeMillis()),
+                        isFirstTimeline = isFirstTimeline,
+                        isLastTimeline = isLastTimeline,
+                        onClick = { onEventClick(event) },
+                    )
+                }
             }
         }
 

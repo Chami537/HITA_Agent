@@ -973,7 +973,7 @@ private fun TimetableEventCard(
         .minus(if (style.cardIconEnabled) 10f * textScale else 0f)
     val maxTitleFromSpace = (titleAvailableDp / 1.2f).coerceAtMost(16f)
     val titleFontSize = (13f * textScale * lengthScale)
-        .coerceIn(minTitleSize, maxTitleFromSpace)
+        .coerceIn(minTitleSize, maxTitleFromSpace.coerceAtLeast(minTitleSize))
         .sp
     val subtitleFontSize = (10f * textScale).sp
     val maxTitleLines = when {

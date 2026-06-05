@@ -2,7 +2,7 @@ package cn.limpu.hita.ui.about
 
 import android.os.Bundle
 import android.text.Html
-import android.text.method.ScrollingMovementMethod
+import androidx.core.widget.NestedScrollView
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -30,6 +31,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.ComposeView
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
@@ -98,8 +100,10 @@ private fun UserAgreementScreen(
     val ppContent = stringResource(R.string.privacy_policy)
     var selectedTab by remember { mutableIntStateOf(0) }
 
+    val screenHeightDp = LocalConfiguration.current.screenHeightDp.dp
     Column(modifier = Modifier
         .fillMaxWidth()
+        .heightIn(max = screenHeightDp * 0.8f)
         .background(MaterialTheme.colorScheme.surface)
     ) {
         TabRow(
@@ -133,7 +137,6 @@ private fun UserAgreementScreen(
             }
         }
 
-        val content = if (selectedTab == 0) uaContent else ppContent
         val textColor = MaterialTheme.colorScheme.onSurface.toArgb()
         val linkColor = MaterialTheme.colorScheme.primary.toArgb()
         val surfaceColor = MaterialTheme.colorScheme.surface.toArgb()
@@ -143,12 +146,15 @@ private fun UserAgreementScreen(
                 .weight(1f)
                 .padding(tokens.spacing.sm),
             factory = { context ->
-                TextView(context).apply {
-                    movementMethod = ScrollingMovementMethod()
-                    setPadding(16, 8, 16, 8)
+                NestedScrollView(context).apply {
+                    isFillViewport = true
+                    addView(TextView(context).apply {
+                        setPadding(16, 8, 16, 8)
+                    })
                 }
             },
-            update = { textView ->
+            update = { nestedScrollView ->
+                val textView = nestedScrollView.getChildAt(0) as TextView
                 val newContent = if (selectedTab == 0) uaContent else ppContent
                 textView.text = Html.fromHtml(newContent)
                 textView.setTextColor(textColor)

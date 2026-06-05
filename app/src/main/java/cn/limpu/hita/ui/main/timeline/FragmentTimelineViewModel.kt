@@ -39,7 +39,14 @@ class FragmentTimelineViewModel @Inject constructor(
     }
 
 
+    private val _enterTick = MutableLiveData(0L)
+    val enterTick: LiveData<Long> = _enterTick
+
     fun startRefresh(){
         todayEventsController.value = Trigger.actioning
+    }
+
+    fun triggerEnterAnimation() {
+        _enterTick.value = System.currentTimeMillis()
     }
 }
