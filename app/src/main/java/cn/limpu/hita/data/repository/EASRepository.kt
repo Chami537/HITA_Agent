@@ -45,7 +45,6 @@ import cn.limpu.hita.utils.LogUtils
 import org.json.JSONArray
 import org.json.JSONObject
 import kotlin.concurrent.thread
-import javax.inject.Singleton
 
 @Singleton
 class EASRepository @Inject constructor(
