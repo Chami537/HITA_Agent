@@ -6,7 +6,7 @@ import androidx.appcompat.app.AppCompatDelegate
 
 object ThemeTools {
     enum class MODE { DARK, LIGHT, FOLLOW }
-    enum class STYLE { CLASSIC, FRESH, FOCUS, HIGH_CONTRAST }
+    enum class STYLE { CLASSIC, FRESH, FOCUS, HIGH_CONTRAST, APPLE_GLASS }
 
 
     fun getThemeMode(context: Context): MODE {
@@ -34,6 +34,7 @@ object ThemeTools {
             "fresh" -> STYLE.FRESH
             "focus" -> STYLE.FOCUS
             "high_contrast" -> STYLE.HIGH_CONTRAST
+            "apple_glass" -> STYLE.APPLE_GLASS
             else -> STYLE.CLASSIC
         }
     }
@@ -44,6 +45,7 @@ object ThemeTools {
             STYLE.FRESH -> "fresh"
             STYLE.FOCUS -> "focus"
             STYLE.HIGH_CONTRAST -> "high_contrast"
+            STYLE.APPLE_GLASS -> "apple_glass"
         }
         context.getSharedPreferences("theme", Context.MODE_PRIVATE)
             .edit()

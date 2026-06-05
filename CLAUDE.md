@@ -15,7 +15,7 @@ HITA Agent is an Android app for Harbin Institute of Technology (HIT) students a
 ./gradlew testClasses            # Alias for testDebugUnitTest
 ```
 
-**Environment**: JDK 17 required (configured in `gradle.properties` via `org.gradle.java.home`). Gradle 8.7, AGP 8.5.2, Kotlin 1.9.22.
+**Environment**: JDK 21 required (configured in `gradle.properties` via `org.gradle.java.home`). Gradle 8.7, AGP 8.6.1, Kotlin 2.2.21.
 
 **Maven mirrors**: All repos use Chinese mirrors (Aliyun, Tencent, JitPack) — see `build.gradle`.
 

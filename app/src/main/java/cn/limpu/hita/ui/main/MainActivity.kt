@@ -25,6 +25,7 @@ import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -73,6 +74,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.toArgb
@@ -88,6 +90,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.DpOffset
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -112,6 +115,7 @@ import cn.limpu.hita.ui.base.ComposeViewBinding
 import cn.limpu.hita.ui.base.HiltBaseActivity
 import cn.limpu.hita.ui.design.HitaComposeTheme
 import cn.limpu.hita.ui.design.HitaTheme
+import cn.limpu.hita.ui.design.HitaThemeStyle
 import cn.limpu.hita.ui.eas.login.PopUpLoginEAS
 import cn.limpu.hita.ui.event.add.PopupAddEvent
 import cn.limpu.hita.ui.main.agent.AgentChatFragment
@@ -126,6 +130,21 @@ import cn.limpu.hita.utils.LogUtils
 import cn.limpu.hita.utils.WallpaperColorAnalyzer
 import com.limpu.hitauser.data.repository.LocalUserRepository
 import com.limpu.style.ThemeTools
+import com.kyant.backdrop.backdrops.layerBackdrop
+import com.kyant.backdrop.backdrops.rememberLayerBackdrop
+import com.kyant.backdrop.drawBackdrop
+import com.kyant.backdrop.effects.blur
+import com.kyant.backdrop.effects.colorControls
+import com.kyant.backdrop.effects.lens
+import com.kyant.backdrop.effects.vibrancy
+import com.kyant.backdrop.highlight.Highlight
+import com.kyant.backdrop.highlight.HighlightStyle
+import com.kyant.backdrop.shadow.InnerShadow
+import com.kyant.backdrop.shadow.Shadow
+import dev.chrisbanes.haze.HazeState
+import dev.chrisbanes.haze.HazeStyle
+import dev.chrisbanes.haze.haze
+import dev.chrisbanes.haze.hazeChild
 import dagger.hilt.android.AndroidEntryPoint
 import java.io.File
 import javax.inject.Inject
@@ -163,6 +182,7 @@ class MainActivity : HiltBaseActivity<ComposeViewBinding>(),
     private var wallpaperScrimOpacity by mutableIntStateOf(0)
     private var wallpaperTitleColor by mutableStateOf(AndroidColor.WHITE)
     private var wallpaperLabelColor by mutableStateOf(AndroidColor.WHITE)
+    private var themeStyle by mutableStateOf(ThemeTools.STYLE.CLASSIC)
 
     private val easTokenObserver = Observer<cn.limpu.hita.data.model.eas.EASToken> {
         refreshDrawerState()
@@ -224,8 +244,9 @@ class MainActivity : HiltBaseActivity<ComposeViewBinding>(),
 
     override fun initViews() {
         todayTitle = getString(R.string.maintab_today)
+        themeStyle = ThemeTools.getThemeStyle(this)
         (binding.root as ComposeView).setContent {
-            HitaComposeTheme() {
+            HitaComposeTheme(style = themeStyle.toHitaThemeStyle()) {
                 MainScreen(
                     selectedTab = selectedTab,
                     drawerOpen = drawerOpen,
@@ -241,6 +262,7 @@ class MainActivity : HiltBaseActivity<ComposeViewBinding>(),
                     wallpaperScrimOpacity = wallpaperScrimOpacity,
                     wallpaperTitleColor = Color(wallpaperTitleColor),
                     wallpaperLabelColor = Color(wallpaperLabelColor),
+                    themeStyle = themeStyle,
                     drawerState = drawerState,
                     onSelectTab = { selectedTab = it },
                     onOpenDrawer = { refreshDrawerState(); drawerOpen = true },
@@ -256,6 +278,7 @@ class MainActivity : HiltBaseActivity<ComposeViewBinding>(),
                     onAddEvent = { PopupAddEvent().show(supportFragmentManager, "add_event") },
                     onDrawerHeader = { openDrawerHeader() },
                     onDrawerAvatarClick = { showAvatarPicker() },
+                    onThemeStyle = { showThemeStyleMenu() },
                     onDrawerAgreement = { UserAgreementDialog().show(supportFragmentManager, "ua") },
                     onDrawerAbout = { ActivityUtils.startActivity(getThis(), ActivityAbout::class.java) },
                     onGitHubUser = { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/Chami537"))) },
@@ -441,6 +464,33 @@ class MainActivity : HiltBaseActivity<ComposeViewBinding>(),
         }
     }
 
+    private fun showThemeStyleMenu() {
+        val styles = arrayOf(
+            ThemeTools.STYLE.CLASSIC,
+            ThemeTools.STYLE.FRESH,
+            ThemeTools.STYLE.FOCUS,
+            ThemeTools.STYLE.HIGH_CONTRAST,
+            ThemeTools.STYLE.APPLE_GLASS
+        )
+        val labels = styles.map { it.displayName() }.toTypedArray()
+        val checked = styles.indexOf(themeStyle).coerceAtLeast(0)
+        MaterialAlertDialogBuilder(this)
+            .setTitle(R.string.main_drawer_menu_theme_style)
+            .setSingleChoiceItems(labels, checked) { dialog, which ->
+                val selected = styles[which]
+                ThemeTools.setThemeStyle(this, selected)
+                themeStyle = selected
+                WidgetUtils.sendRefreshToAll(this)
+                Toast.makeText(
+                    this,
+                    getString(R.string.theme_style_changed, selected.displayName()),
+                    Toast.LENGTH_SHORT
+                ).show()
+                dialog.dismiss()
+            }
+            .show()
+    }
+
     private fun showWallpaperMenu() {
         MaterialAlertDialogBuilder(this)
             .setTitle(R.string.timetable_wallpaper)
@@ -570,6 +620,26 @@ class MainActivity : HiltBaseActivity<ComposeViewBinding>(),
     }
 }
 
+private fun ThemeTools.STYLE.toHitaThemeStyle(): HitaThemeStyle {
+    return when (this) {
+        ThemeTools.STYLE.CLASSIC -> HitaThemeStyle.Classic
+        ThemeTools.STYLE.FRESH -> HitaThemeStyle.Fresh
+        ThemeTools.STYLE.FOCUS -> HitaThemeStyle.Focus
+        ThemeTools.STYLE.HIGH_CONTRAST -> HitaThemeStyle.HighContrast
+        ThemeTools.STYLE.APPLE_GLASS -> HitaThemeStyle.AppleGlass
+    }
+}
+
+private fun ThemeTools.STYLE.displayName(): String {
+    return when (this) {
+        ThemeTools.STYLE.CLASSIC -> "经典"
+        ThemeTools.STYLE.FRESH -> "清新"
+        ThemeTools.STYLE.FOCUS -> "专注"
+        ThemeTools.STYLE.HIGH_CONTRAST -> "高对比"
+        ThemeTools.STYLE.APPLE_GLASS -> "Apple Glass"
+    }
+}
+
 private data class DrawerUserState(
     val title: String = "",
     val subtitle: String = "",
@@ -598,6 +668,7 @@ private fun MainScreen(
     wallpaperScrimOpacity: Int,
     wallpaperTitleColor: Color,
     wallpaperLabelColor: Color,
+    themeStyle: ThemeTools.STYLE,
     drawerState: DrawerUserState,
     onSelectTab: (Int) -> Unit,
     onOpenDrawer: () -> Unit,
@@ -609,6 +680,7 @@ private fun MainScreen(
     onAddEvent: () -> Unit,
     onDrawerHeader: () -> Unit,
     onDrawerAvatarClick: () -> Unit,
+    onThemeStyle: () -> Unit,
     onDrawerAgreement: () -> Unit,
     onDrawerAbout: () -> Unit,
     onGitHubUser: () -> Unit,
@@ -623,8 +695,9 @@ private fun MainScreen(
         animationSpec = spring(dampingRatio = 0.9f, stiffness = 300f),
         label = "drawer"
     )
-    val contentScale = 1f - drawerProgress * 0.2f
-    val contentOffset = -drawerWidthPx * drawerProgress
+    val isAppleGlass = themeStyle == ThemeTools.STYLE.APPLE_GLASS
+    val contentScale = if (isAppleGlass) 1f else 1f - drawerProgress * 0.2f
+    val contentOffset = if (isAppleGlass) 0f else -drawerWidthPx * drawerProgress
     val imeVisible = WindowInsets.ime.getBottom(density) > 0
     val navBottomPx = WindowInsets.navigationBars.getBottom(density)
     val threeButtonThresholdPx = with(density) { 32.dp.toPx() }
@@ -633,8 +706,13 @@ private fun MainScreen(
     } else {
         12.dp
     }
-
-    val wallpaperTargetAlpha = if (selectedTab == 1 && wallpaperVisible && wallpaperBitmap != null) 1f else 0f
+    val hazeState = remember { HazeState() }
+    val liquidGlassBackdrop = rememberLayerBackdrop()
+    val liquidGlassBackdropHandle = remember(liquidGlassBackdrop) {
+        LiquidGlassBackdropHandle(liquidGlassBackdrop)
+    }
+    val useGlobalHaze = isAppleGlass
+    val wallpaperTargetAlpha = if (wallpaperVisible && wallpaperBitmap != null) 1f else 0f
     val wallpaperAlpha by animateFloatAsState(
         targetValue = wallpaperTargetAlpha,
         animationSpec = spring(dampingRatio = 0.9f, stiffness = 300f),
@@ -646,79 +724,93 @@ private fun MainScreen(
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
     ) {
-        if (wallpaperBitmap != null) {
-            Box(modifier = Modifier.fillMaxSize().graphicsLayer { alpha = wallpaperAlpha }) {
-                Image(
-                    bitmap = wallpaperBitmap.asImageBitmap(),
-                    contentDescription = stringResource(R.string.timetable_wallpaper_description),
-                    contentScale = ContentScale.Crop,
-                    modifier = Modifier.fillMaxSize()
-                )
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .background(Color.Black.copy(alpha = wallpaperScrimOpacity / 100f))
-                )
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .windowInsetsTopHeight(WindowInsets.statusBars)
-                        .background(
-                            Brush.verticalGradient(
-                                colors = listOf(Color.Black.copy(alpha = 0.55f), Color.Transparent)
-                            )
-                        )
-                )
-            }
-        }
-
-        Column(
+        Box(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(top = 6.dp)
-                .graphicsLayer {
-                    translationX = contentOffset
-                    scaleX = contentScale
-                    scaleY = contentScale
-                    transformOrigin = androidx.compose.ui.graphics.TransformOrigin(1f, 0.5f)
-                }
+                .then(if (useGlobalHaze) Modifier.haze(hazeState) else Modifier)
+                .then(if (isAppleGlass) Modifier.layerBackdrop(liquidGlassBackdrop) else Modifier)
         ) {
-            MainTopBar(
-                selectedTab = selectedTab,
-                todayTitle = todayTitle,
-                timetableTitle = timetableTitle,
-                timetableName = timetableName,
-                showTimetableName = showTimetableName,
-                timetableOptions = timetableOptions,
-                onTimetableSelected = onTimetableSelected,
-                themeIcon = themeIcon,
-                wallpaperAlpha = wallpaperAlpha,
-                wallpaperTitleColor = wallpaperTitleColor,
-                onOpenDrawer = onOpenDrawer,
-                onTheme = onTheme,
-                onWallpaper = onWallpaper,
-                onWallpaperLongPress = onWallpaperLongPress,
-                onTimetableSetting = onTimetableSetting,
-                onAddEvent = onAddEvent,
-            )
-            Spacer(Modifier.height(8.dp))
-            Box(
+            if (isAppleGlass) {
+                AppleGlassBackground()
+            }
+
+            if (wallpaperBitmap != null) {
+                Box(modifier = Modifier.fillMaxSize().graphicsLayer { alpha = wallpaperAlpha }) {
+                    Image(
+                        bitmap = wallpaperBitmap.asImageBitmap(),
+                        contentDescription = stringResource(R.string.timetable_wallpaper_description),
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier.fillMaxSize()
+                    )
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .background(Color.Black.copy(alpha = wallpaperScrimOpacity / 100f))
+                    )
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .windowInsetsTopHeight(WindowInsets.statusBars)
+                            .background(
+                                Brush.verticalGradient(
+                                    colors = listOf(Color.Black.copy(alpha = 0.55f), Color.Transparent)
+                                )
+                            )
+                    )
+                }
+            }
+
+            Column(
                 modifier = Modifier
-                    .weight(1f)
-                    .fillMaxWidth()
+                    .fillMaxSize()
+                    .padding(top = 6.dp)
+                    .graphicsLayer {
+                        translationX = contentOffset
+                        scaleX = contentScale
+                        scaleY = contentScale
+                        transformOrigin = androidx.compose.ui.graphics.TransformOrigin(1f, 0.5f)
+                    }
             ) {
-                MainFragmentPager(
+                MainTopBar(
                     selectedTab = selectedTab,
-                    fragmentFactory = fragmentFactory,
-                    modifier = Modifier.fillMaxSize()
+                    todayTitle = todayTitle,
+                    timetableTitle = timetableTitle,
+                    timetableName = timetableName,
+                    showTimetableName = showTimetableName,
+                    timetableOptions = timetableOptions,
+                    onTimetableSelected = onTimetableSelected,
+                    themeIcon = themeIcon,
+                    wallpaperAlpha = wallpaperAlpha,
+                    wallpaperTitleColor = wallpaperTitleColor,
+                    onOpenDrawer = onOpenDrawer,
+                    onTheme = onTheme,
+                    onWallpaper = onWallpaper,
+                    onWallpaperLongPress = onWallpaperLongPress,
+                    onTimetableSetting = onTimetableSetting,
+                    onAddEvent = onAddEvent,
                 )
+                Spacer(Modifier.height(8.dp))
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxWidth()
+                ) {
+                    MainFragmentPager(
+                        selectedTab = selectedTab,
+                        fragmentFactory = fragmentFactory,
+                        modifier = Modifier.fillMaxSize()
+                    )
+                }
             }
         }
 
         if (!imeVisible) {
             MainPillTabBar(
                 selectedTab = selectedTab,
-                alpha = if (selectedTab == 1 && wallpaperVisible) 0.72f else 1f,
+                alpha = if (wallpaperVisible && wallpaperBitmap != null) 0.72f else 1f,
+                themeStyle = themeStyle,
+                hazeState = if (useGlobalHaze) hazeState else null,
+                liquidGlassBackdrop = if (isAppleGlass) liquidGlassBackdropHandle else null,
                 onSelectTab = onSelectTab,
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
@@ -739,8 +831,12 @@ private fun MainScreen(
 
         MainDrawer(
             drawerState = drawerState,
+            themeStyle = themeStyle,
+            hazeState = if (useGlobalHaze) hazeState else null,
+            liquidGlassBackdrop = if (isAppleGlass) liquidGlassBackdropHandle else null,
             onHeaderClick = onDrawerHeader,
             onAvatarClick = onDrawerAvatarClick,
+            onThemeStyle = onThemeStyle,
             onAgreement = onDrawerAgreement,
             onAbout = onDrawerAbout,
             onGitHubUser = onGitHubUser,
@@ -752,6 +848,36 @@ private fun MainScreen(
                 .offset { IntOffset(((1f - drawerProgress) * drawerWidthPx).roundToInt(), 0) }
         )
     }
+}
+
+@Composable
+private fun AppleGlassBackground() {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(
+                Brush.verticalGradient(
+                    colors = listOf(
+                        Color(0xFFF8FBFF),
+                        Color(0xFFEFF5FB),
+                        Color(0xFFF7F8FA)
+                    )
+                )
+            )
+    )
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(
+                Brush.linearGradient(
+                    colors = listOf(
+                        Color.White.copy(alpha = 0.42f),
+                        Color.Transparent,
+                        MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)
+                    )
+                )
+            )
+    )
 }
 
 @Composable
@@ -1038,10 +1164,63 @@ private val ActiveBlue = Color(0xFF0088CC)
 private val CapsuleTabWidth = 68.dp
 private val CapsuleTabIconSize = 18.dp
 
+private class LiquidGlassBackdropHandle(val value: Any)
+
+private fun Modifier.liquidGlassSurface(
+    backdropHandle: LiquidGlassBackdropHandle,
+    shape: Shape,
+    blurRadius: Float,
+    refractionHeight: Float,
+    refractionAmount: Float,
+): Modifier {
+    val backdrop = backdropHandle.value as com.kyant.backdrop.backdrops.LayerBackdrop
+    return drawBackdrop(
+        backdrop = backdrop,
+        shape = { shape },
+        effects = {
+            blur(blurRadius)
+            vibrancy()
+            colorControls(brightness = 0.05f, contrast = 1.08f, saturation = 1.16f)
+            lens(
+                refractionHeight = refractionHeight,
+                refractionAmount = refractionAmount,
+                depthEffect = true,
+                chromaticAberration = true
+            )
+        },
+        highlight = {
+            Highlight(
+                width = 1.2.dp,
+                blurRadius = 7.dp,
+                alpha = 0.92f,
+                style = HighlightStyle.Default(intensity = 0.7f, angle = 315f, falloff = 1.35f)
+            )
+        },
+        shadow = {
+            Shadow(
+                radius = 30.dp,
+                offset = DpOffset(0.dp, 9.dp),
+                color = Color.Black.copy(alpha = 0.13f)
+            )
+        },
+        innerShadow = {
+            InnerShadow(
+                radius = 18.dp,
+                offset = DpOffset(0.dp, 8.dp),
+                color = Color.White.copy(alpha = 0.20f),
+                alpha = 0.82f
+            )
+        }
+    )
+}
+
 @Composable
 private fun MainPillTabBar(
     selectedTab: Int,
     alpha: Float,
+    themeStyle: ThemeTools.STYLE,
+    hazeState: HazeState?,
+    liquidGlassBackdrop: LiquidGlassBackdropHandle?,
     onSelectTab: (Int) -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -1062,12 +1241,61 @@ private fun MainPillTabBar(
         animationSpec = spring(dampingRatio = 0.85f, stiffness = 350f),
         label = "pill_offset"
     )
+    val isAppleGlass = themeStyle == ThemeTools.STYLE.APPLE_GLASS
+    val barShape = RoundedCornerShape(if (isAppleGlass) 30.dp else 28.dp)
+    val indicatorColor = if (isAppleGlass) {
+        MaterialTheme.colorScheme.primary.copy(alpha = 0.16f)
+    } else {
+        CapsuleBlue.copy(alpha = 0.12f)
+    }
+    val activeColor = if (isAppleGlass) MaterialTheme.colorScheme.primary else ActiveBlue
+    val barHazeStyle = HazeStyle(
+        tint = Color.White.copy(alpha = 0.16f),
+        blurRadius = 24.dp,
+        noiseFactor = 0.05f
+    )
 
     Surface(
-        modifier = modifier.alpha(alpha),
-        shape = RoundedCornerShape(28.dp),
-        color = MaterialTheme.colorScheme.surface,
-        shadowElevation = 6.dp
+        modifier = modifier
+            .alpha(alpha)
+            .then(
+                if (isAppleGlass && liquidGlassBackdrop != null) {
+                    Modifier.liquidGlassSurface(
+                        backdropHandle = liquidGlassBackdrop,
+                        shape = barShape,
+                        blurRadius = 22f,
+                        refractionHeight = 26f,
+                        refractionAmount = 40f
+                    )
+                } else {
+                    Modifier
+                }
+            )
+            .then(
+                if (isAppleGlass && hazeState != null) {
+                    Modifier.hazeChild(state = hazeState, shape = barShape, style = barHazeStyle)
+                } else {
+                    Modifier
+                }
+            )
+            .then(
+                if (isAppleGlass) {
+                    Modifier.border(
+                        width = 1.dp,
+                        color = Color.White.copy(alpha = 0.52f),
+                        shape = barShape
+                    )
+                } else {
+                    Modifier
+                }
+            ),
+        shape = barShape,
+        color = if (isAppleGlass) {
+            MaterialTheme.colorScheme.surface.copy(alpha = 0.18f)
+        } else {
+            MaterialTheme.colorScheme.surface
+        },
+        shadowElevation = if (isAppleGlass) 14.dp else 6.dp
     ) {
         Box(modifier = Modifier.padding(horizontal = 4.dp, vertical = 4.dp)) {
             Surface(
@@ -1076,7 +1304,7 @@ private fun MainPillTabBar(
                     .width(CapsuleTabWidth)
                     .height(44.dp),
                 shape = RoundedCornerShape(22.dp),
-                color = CapsuleBlue.copy(alpha = 0.12f)
+                color = indicatorColor
             ) {}
 
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -1084,7 +1312,7 @@ private fun MainPillTabBar(
                     val active = index == selectedTab
 
                     val tint by animateColorAsState(
-                        targetValue = if (active) ActiveBlue else MaterialTheme.colorScheme.onSurface,
+                        targetValue = if (active) activeColor else MaterialTheme.colorScheme.onSurface,
                         animationSpec = spring(dampingRatio = 0.85f, stiffness = 350f),
                         label = "tab_tint_$index"
                     )
@@ -1129,77 +1357,167 @@ private fun MainPillTabBar(
 @Composable
 private fun MainDrawer(
     drawerState: DrawerUserState,
+    themeStyle: ThemeTools.STYLE,
+    hazeState: HazeState?,
+    liquidGlassBackdrop: LiquidGlassBackdropHandle?,
     onHeaderClick: () -> Unit,
     onAvatarClick: () -> Unit,
+    onThemeStyle: () -> Unit,
     onAgreement: () -> Unit,
     onAbout: () -> Unit,
     onGitHubUser: () -> Unit,
     onGitHubProject: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val isAppleGlass = themeStyle == ThemeTools.STYLE.APPLE_GLASS
+    val drawerShape = RoundedCornerShape(
+        topStart = if (isAppleGlass) 32.dp else 24.dp,
+        bottomStart = if (isAppleGlass) 32.dp else 24.dp
+    )
+    val drawerHazeStyle = HazeStyle(
+        tint = Color.White.copy(alpha = 0.22f),
+        blurRadius = 30.dp,
+        noiseFactor = 0.06f
+    )
     Surface(
-        modifier = modifier,
-        shape = RoundedCornerShape(topStart = 24.dp, bottomStart = 24.dp),
-        shadowElevation = 16.dp,
-        color = MaterialTheme.colorScheme.surface
+        modifier = modifier
+            .then(
+                if (isAppleGlass && liquidGlassBackdrop != null) {
+                    Modifier.liquidGlassSurface(
+                        backdropHandle = liquidGlassBackdrop,
+                        shape = drawerShape,
+                        blurRadius = 34f,
+                        refractionHeight = 34f,
+                        refractionAmount = 54f
+                    )
+                } else {
+                    Modifier
+                }
+            )
+            .then(
+                if (isAppleGlass && hazeState != null) {
+                    Modifier.hazeChild(state = hazeState, shape = drawerShape, style = drawerHazeStyle)
+                } else {
+                    Modifier
+                }
+            )
+            .then(
+                if (isAppleGlass) {
+                    Modifier.border(
+                        width = 1.dp,
+                        color = Color.White.copy(alpha = 0.72f),
+                        shape = drawerShape
+                    )
+                } else {
+                    Modifier
+                }
+            ),
+        shape = drawerShape,
+        shadowElevation = if (isAppleGlass) 28.dp else 16.dp,
+        color = if (isAppleGlass) {
+            MaterialTheme.colorScheme.surface.copy(alpha = 0.30f)
+        } else {
+            MaterialTheme.colorScheme.surface
+        }
     ) {
-        Column(
-            modifier = Modifier
-                .statusBarsPadding()
-                .fillMaxHeight(),
-        ) {
-            DrawerHeader(drawerState = drawerState, onClick = onHeaderClick, onAvatarClick = onAvatarClick)
-            Spacer(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(1.dp)
-                    .padding(horizontal = HitaTheme.tokens.spacing.xl)
-                    .background(MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.8f))
-            )
-            DrawerItem(R.drawable.ic_info, stringResource(R.string.name_ua_and_pp), onAgreement)
-            DrawerItem(R.drawable.logo, stringResource(R.string.main_drawer_menu_about), onAbout)
-            Spacer(Modifier.weight(1f))
-            Spacer(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(1.dp)
-                    .padding(horizontal = HitaTheme.tokens.spacing.xl)
-                    .background(MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
-            )
-            Spacer(Modifier.height(12.dp))
-            Text(
-                text = stringResource(R.string.main_drawer_co_authored),
-                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.35f),
-                fontSize = 11.sp,
-                modifier = Modifier.fillMaxWidth(),
-                textAlign = TextAlign.Center
-            )
-            Spacer(Modifier.height(6.dp))
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 32.dp),
-                horizontalArrangement = Arrangement.Center
-            ) {
-                Text(
-                    text = stringResource(R.string.main_drawer_github_user),
-                    color = MaterialTheme.colorScheme.primary,
-                    fontSize = 13.sp,
-                    modifier = Modifier.clickable(onClick = onGitHubUser)
-                )
-                Text(
-                    text = " | ",
-                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.3f),
-                    fontSize = 13.sp
-                )
-                Text(
-                    text = stringResource(R.string.main_drawer_github_project),
-                    color = MaterialTheme.colorScheme.primary,
-                    fontSize = 13.sp,
-                    modifier = Modifier.clickable(onClick = onGitHubProject)
+        Box(modifier = Modifier.fillMaxSize()) {
+            if (isAppleGlass) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(
+                            Brush.verticalGradient(
+                                colors = listOf(
+                                    Color.White.copy(alpha = 0.42f),
+                                    Color.Transparent,
+                                    MaterialTheme.colorScheme.primary.copy(alpha = 0.08f)
+                                )
+                            )
+                        )
                 )
             }
-            Spacer(Modifier.height(24.dp))
+            Column(
+                modifier = Modifier
+                    .statusBarsPadding()
+                    .fillMaxHeight(),
+            ) {
+                DrawerHeader(drawerState = drawerState, onClick = onHeaderClick, onAvatarClick = onAvatarClick)
+                Spacer(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(1.dp)
+                        .padding(horizontal = HitaTheme.tokens.spacing.xl)
+                        .background(MaterialTheme.colorScheme.outlineVariant.copy(alpha = if (isAppleGlass) 0.45f else 0.8f))
+                )
+                DrawerItem(
+                    R.drawable.ic_baseline_color_lens_24,
+                    "${stringResource(R.string.main_drawer_menu_theme_style)} · ${themeStyle.displayName()}",
+                    onThemeStyle
+                )
+                if (isAppleGlass) {
+                    Text(
+                        text = stringResource(R.string.theme_style_apple_glass_marker),
+                        color = MaterialTheme.colorScheme.primary,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier
+                            .padding(horizontal = 32.dp)
+                            .clip(RoundedCornerShape(14.dp))
+                            .border(
+                                width = 1.dp,
+                                color = Color.White.copy(alpha = 0.72f),
+                                shape = RoundedCornerShape(14.dp)
+                            )
+                            .background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.58f))
+                            .padding(horizontal = 12.dp, vertical = 6.dp)
+                    )
+                    Spacer(Modifier.height(8.dp))
+                }
+                DrawerItem(R.drawable.ic_info, stringResource(R.string.name_ua_and_pp), onAgreement)
+                DrawerItem(R.drawable.logo, stringResource(R.string.main_drawer_menu_about), onAbout)
+                Spacer(Modifier.weight(1f))
+                Spacer(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(1.dp)
+                        .padding(horizontal = HitaTheme.tokens.spacing.xl)
+                        .background(MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
+                )
+                Spacer(Modifier.height(12.dp))
+                Text(
+                    text = stringResource(R.string.main_drawer_co_authored),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.35f),
+                    fontSize = 11.sp,
+                    modifier = Modifier.fillMaxWidth(),
+                    textAlign = TextAlign.Center
+                )
+                Spacer(Modifier.height(6.dp))
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 32.dp),
+                    horizontalArrangement = Arrangement.Center
+                ) {
+                    Text(
+                        text = stringResource(R.string.main_drawer_github_user),
+                        color = MaterialTheme.colorScheme.primary,
+                        fontSize = 13.sp,
+                        modifier = Modifier.clickable(onClick = onGitHubUser)
+                    )
+                    Text(
+                        text = " | ",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.3f),
+                        fontSize = 13.sp
+                    )
+                    Text(
+                        text = stringResource(R.string.main_drawer_github_project),
+                        color = MaterialTheme.colorScheme.primary,
+                        fontSize = 13.sp,
+                        modifier = Modifier.clickable(onClick = onGitHubProject)
+                    )
+                }
+                Spacer(Modifier.height(24.dp))
+            }
         }
     }
 }
