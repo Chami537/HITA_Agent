@@ -40,7 +40,6 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
@@ -48,6 +47,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.livedata.observeAsState
@@ -60,8 +60,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.zIndex
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.toArgb
@@ -96,6 +98,10 @@ import cn.limpu.hita.ui.base.ComposeViewBinding
 import cn.limpu.hita.ui.base.HiltBaseFragment
 import cn.limpu.hita.ui.design.HitaComposeTheme
 import cn.limpu.hita.ui.design.HitaTheme
+import cn.limpu.hita.ui.design.hitaCourseCrystalGlassModifier
+import cn.limpu.hita.ui.design.hitaGlassCardModifier
+import cn.limpu.hita.ui.design.hitaIsAppleGlassSurface
+import cn.limpu.hita.ui.design.updateHitaCourseHazeState
 import cn.limpu.hita.ui.event.add.PopupAddEvent
 import cn.limpu.hita.ui.main.timetable.views.TimetableCardTextScale
 import cn.limpu.hita.ui.main.timetable.views.TimetableOverlapLayout
@@ -105,6 +111,8 @@ import cn.limpu.hita.utils.ActivityUtils
 import cn.limpu.hita.utils.EventsUtils
 import cn.limpu.hita.utils.TimeTools
 import dagger.hilt.android.AndroidEntryPoint
+import dev.chrisbanes.haze.HazeState
+import dev.chrisbanes.haze.haze
 import java.util.Calendar
 import kotlinx.coroutines.launch
 import kotlin.math.abs
@@ -444,6 +452,15 @@ private fun TimetableWeekContent(
     var dragAccum by remember { mutableStateOf(0f) }
     val animOffset = remember { Animatable(0f) }
     var isAnimating by remember { mutableStateOf(false) }
+    val isAppleGlass = hitaIsAppleGlassSurface()
+    val courseHazeState = remember { HazeState() }
+
+    DisposableEffect(isAppleGlass, courseHazeState) {
+        updateHitaCourseHazeState(if (isAppleGlass) courseHazeState else null)
+        onDispose {
+            updateHitaCourseHazeState(null)
+        }
+    }
 
     val displayOffset = if (isAnimating) animOffset.value else dragAccum
     val displayAlpha = if (contentWidthPx > 0f) {
@@ -542,15 +559,22 @@ private fun TimetableWeekContent(
                         )
                     }
             ) {
-                TimetableGrid(
-                    startDate = startDate,
-                    startHour = startHour,
-                    endHour = endHour,
-                    style = style,
-                    dpPerMinute = dpPerMinute,
-                )
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .then(if (isAppleGlass) Modifier.haze(courseHazeState) else Modifier)
+                ) {
+                    TimetableGrid(
+                        startDate = startDate,
+                        startHour = startHour,
+                        endHour = endHour,
+                        style = style,
+                        dpPerMinute = dpPerMinute,
+                    )
+                }
                 TimetableEventLayer(
                     events = events,
+                    startDate = startDate,
                     startHour = startHour,
                     style = style,
                     dpPerMinute = dpPerMinute,
@@ -753,6 +777,7 @@ private fun TimetableGrid(
 @Composable
 private fun TimetableEventLayer(
     events: List<EventItem>,
+    startDate: Long,
     startHour: Int,
     style: TimetableStyleSheet,
     dpPerMinute: Dp,
@@ -790,14 +815,17 @@ private fun TimetableEventLayer(
 
     var conflictCluster by remember { mutableStateOf<List<EventItem>?>(null) }
     val baseMinutes = startHour * 60
+    val realGlassDays = remember(startDate) {
+        focusedRealGlassDows(startDate)
+    }
 
     BoxWithConstraintsCompat {
         val sectionWidth = maxWidth / 7f
         val cascadeOffset = 6.dp
-        renderList.forEach { (positioned, clusterEvents) ->
+        var realBackdropBudget = 3
+        val cardPlacements = renderList.map { (positioned, clusterEvents) ->
             val event = positioned.event
             val overlapCount = positioned.overlapCount
-            // Extract time-of-day minutes from absolute timestamp
             val eventMinutesPastMidnight = eventMinutes(event.from.time)
             val minutesFromBase = (eventMinutesPastMidnight - baseMinutes).coerceAtLeast(0)
             val duration = event.getDurationInMinutes().coerceAtLeast(15)
@@ -805,7 +833,10 @@ private fun TimetableEventLayer(
             val rawHeight = duration.toFloat() * dpPerMinute
             val dayLeft = sectionWidth * (event.getDow() - 1)
             val isCascade = clusterEvents != null
-
+            val usesRealBackdrop = event.getDow() in realGlassDays && !isCascade && realBackdropBudget > 0
+            if (usesRealBackdrop) {
+                realBackdropBudget--
+            }
             if (isCascade) {
                 val offsetTotal = overlapCount - 1
                 val cardWidth = (sectionWidth - cascadeOffset * offsetTotal).coerceAtLeast(0.dp)
@@ -813,18 +844,62 @@ private fun TimetableEventLayer(
                 val xOffset = dayLeft + cascadeOffset * positioned.columnIndex
                 val yOffset = top + cascadeOffset * positioned.columnIndex
                 val elevation = 2.dp + 2.dp * positioned.columnIndex
+                TimetableCardPlacement(
+                    positioned = positioned,
+                    clusterEvents = clusterEvents,
+                    xOffset = xOffset,
+                    yOffset = yOffset,
+                    width = cardWidth,
+                    height = cardHeight,
+                    columnCount = overlapCount,
+                    cardElevation = elevation,
+                    isBottomCascadeCard = positioned.columnIndex < overlapCount - 1,
+                    usesRealBackdrop = false
+                )
+            } else {
+                TimetableCardPlacement(
+                    positioned = positioned,
+                    clusterEvents = null,
+                    xOffset = dayLeft + 2.dp,
+                    yOffset = top,
+                    width = (sectionWidth - 4.dp).coerceAtLeast(0.dp),
+                    height = rawHeight,
+                    columnCount = 1,
+                    cardElevation = 0.dp,
+                    isBottomCascadeCard = false,
+                    usesRealBackdrop = usesRealBackdrop
+                )
+            }
+        }
 
+        cardPlacements.forEach { placement ->
+            if (placement.usesRealBackdrop) {
+                TimetableCourseHazeSource(
+                    tint = if (style.isColorEnabled) Color(placement.positioned.event.color) else MaterialTheme.colorScheme.primary,
+                    modifier = Modifier
+                        .offset(x = placement.xOffset, y = placement.yOffset)
+                        .width(placement.width)
+                        .height(placement.height)
+                )
+            }
+        }
+
+        cardPlacements.forEach { placement ->
+            val event = placement.positioned.event
+            val clusterEvents = placement.clusterEvents
+            if (clusterEvents != null) {
                 TimetableEventCard(
                     event = event,
                     style = style,
                     modifier = Modifier
-                        .offset(x = xOffset, y = yOffset)
-                        .width(cardWidth)
-                        .height(cardHeight),
-                    cardHeight = cardHeight,
-                    columnCount = overlapCount,
-                    cardElevation = elevation,
-                    isBottomCascadeCard = positioned.columnIndex < overlapCount - 1,
+                        .offset(x = placement.xOffset, y = placement.yOffset)
+                        .width(placement.width)
+                        .height(placement.height),
+                    cardHeight = placement.height,
+                    columnCount = placement.columnCount,
+                    cardElevation = placement.cardElevation,
+                    isBottomCascadeCard = placement.isBottomCascadeCard,
+                    usesRealBackdrop = placement.usesRealBackdrop,
                     onClick = { conflictCluster = clusterEvents },
                     onLongClick = { position -> onEventLongClick(event, position) }
                 )
@@ -833,11 +908,12 @@ private fun TimetableEventLayer(
                     event = event,
                     style = style,
                     modifier = Modifier
-                        .offset(x = dayLeft + 2.dp, y = top)
-                        .width((sectionWidth - 4.dp).coerceAtLeast(0.dp))
-                        .height(rawHeight),
-                    cardHeight = rawHeight,
-                    columnCount = 1,
+                        .offset(x = placement.xOffset, y = placement.yOffset)
+                        .width(placement.width)
+                        .height(placement.height),
+                    cardHeight = placement.height,
+                    columnCount = placement.columnCount,
+                    usesRealBackdrop = placement.usesRealBackdrop,
                     onClick = { onEventClick(event) },
                     onLongClick = { position -> onEventLongClick(event, position) }
                 )
@@ -877,6 +953,20 @@ private fun TimetableEventLayer(
 /** Extract minutes past midnight from an epoch-millis timestamp */
 private fun eventMinutes(epochMillis: Long): Int {
     return TimeTools.getHour(epochMillis) * 60 + TimeTools.getMinute(epochMillis)
+}
+
+private fun focusedRealGlassDows(weekStartMillis: Long): Set<Int> {
+    if (!TimeTools.isSameWeekWithStartDate(
+            Calendar.getInstance().apply { timeInMillis = weekStartMillis },
+            System.currentTimeMillis()
+        )
+    ) {
+        return setOf(2, 3, 4)
+    }
+    val today = TimeTools.currentDOW()
+    return ((today - 1)..(today + 1))
+        .filter { it in 1..7 }
+        .toSet()
 }
 
 @Composable
@@ -929,6 +1019,42 @@ private fun BoxWithConstraintsCompat(content: @Composable androidx.compose.found
     androidx.compose.foundation.layout.BoxWithConstraints(modifier = Modifier.fillMaxSize(), content = content)
 }
 
+private data class TimetableCardPlacement(
+    val positioned: PositionedEvent,
+    val clusterEvents: List<EventItem>?,
+    val xOffset: Dp,
+    val yOffset: Dp,
+    val width: Dp,
+    val height: Dp,
+    val columnCount: Int,
+    val cardElevation: Dp,
+    val isBottomCascadeCard: Boolean,
+    val usesRealBackdrop: Boolean,
+)
+
+@Composable
+private fun TimetableCourseHazeSource(
+    tint: Color,
+    modifier: Modifier = Modifier,
+) {
+    val shape = RoundedCornerShape(HitaTheme.tokens.radius.md)
+    Box(
+        modifier = modifier
+            .clip(shape)
+            .background(
+                Brush.linearGradient(
+                    colors = listOf(
+                        Color.White.copy(alpha = 0.88f),
+                        tint.copy(alpha = 0.52f),
+                        Color.White.copy(alpha = 0.68f)
+                    ),
+                    start = Offset(0f, 0f),
+                    end = Offset(160f, 260f)
+                )
+            )
+    )
+}
+
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun TimetableEventCard(
@@ -941,19 +1067,44 @@ private fun TimetableEventCard(
     onLongClick: (IntOffset) -> Unit,
     cardElevation: Dp = 0.dp,
     isBottomCascadeCard: Boolean = false,
+    usesRealBackdrop: Boolean = true,
 ) {
     val view = LocalView.current
     var cardPositionInWindow by remember { mutableStateOf(IntOffset.Zero) }
-    val background = if (style.isColorEnabled) {
+    val isAppleGlass = hitaIsAppleGlassSurface()
+    val courseTint = if (style.isColorEnabled) {
         Color(event.color)
     } else {
         MaterialTheme.colorScheme.primary
-    }.copy(alpha = (120 - style.cardOpacity.coerceIn(20, 100)) / 100f * if (isBottomCascadeCard) 0.5f else 1f)
-    val borderColor = background.copy(alpha = 0.3f)
+    }
+    val baseAlpha = (120 - style.cardOpacity.coerceIn(20, 100)) / 100f
+    val backgroundAlpha = if (isAppleGlass) {
+        if (isBottomCascadeCard) {
+            0.04f
+        } else {
+            (baseAlpha * 0.34f).coerceIn(0.10f, 0.18f)
+        }
+    } else {
+        baseAlpha * if (isBottomCascadeCard) 0.5f else 1f
+    }
+    val background = courseTint.copy(alpha = backgroundAlpha)
+    val borderColor = if (isAppleGlass) {
+        Color.Transparent
+    } else {
+        background.copy(alpha = 0.3f)
+    }
     val cardShape = RoundedCornerShape(HitaTheme.tokens.radius.md)
     val effectiveBg = background.toArgb()
-    val titleColor = resolveCardTextColor(style.cardTitleColor, style.isColorEnabled, event.color, effectiveBg)
-    val subtitleColor = resolveCardTextColor(style.subTitleColor, style.isColorEnabled, event.color, effectiveBg)
+    val titleColor = if (isAppleGlass) {
+        MaterialTheme.colorScheme.onSurface.copy(alpha = 0.90f)
+    } else {
+        resolveCardTextColor(style.cardTitleColor, style.isColorEnabled, event.color, effectiveBg)
+    }
+    val subtitleColor = if (isAppleGlass) {
+        MaterialTheme.colorScheme.onSurface.copy(alpha = 0.72f)
+    } else {
+        resolveCardTextColor(style.subTitleColor, style.isColorEnabled, event.color, effectiveBg)
+    }
     val textScale = TimetableCardTextScale.forColumnCount(columnCount)
     val marginScale = TimetableCardTextScale.marginScaleForColumnCount(columnCount)
     val horizontalPadding = (5 * marginScale).dp
@@ -981,8 +1132,15 @@ private fun TimetableEventCard(
         cardHeight < 60.dp -> 2
         else -> 3
     }
-    Card(
+    Box(
         modifier = modifier
+            .then(
+                if (isAppleGlass) {
+                    Modifier
+                } else {
+                    Modifier.hitaGlassCardModifier(cardShape, elevation = 8.dp)
+                }
+            )
             .onGloballyPositioned { coordinates ->
                 val windowPosition = coordinates.localToWindow(Offset.Zero)
                 cardPositionInWindow = IntOffset(
@@ -990,7 +1148,13 @@ private fun TimetableEventCard(
                     windowPosition.y.roundToInt()
                 )
             }
-            .border(0.5.dp, borderColor, cardShape)
+            .then(
+                if (isAppleGlass) {
+                    Modifier
+                } else {
+                    Modifier.border(0.5.dp, borderColor, cardShape)
+                }
+            )
             .pointerInput(event.id) {
                 detectTapGestures(
                     onLongPress = { localOffset ->
@@ -1004,19 +1168,28 @@ private fun TimetableEventCard(
                     },
                     onTap = { onClick() }
                 )
-            },
-        shape = cardShape,
-        colors = CardDefaults.cardColors(containerColor = background),
-        elevation = CardDefaults.cardElevation(
-            defaultElevation = 0.dp,
-            pressedElevation = 0.dp,
-            focusedElevation = 0.dp,
-            hoveredElevation = 0.dp,
-        )
+            }
+            .clip(cardShape)
+            .background(if (isAppleGlass) Color.Transparent else background)
     ) {
+        if (isAppleGlass) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .zIndex(0f)
+                    .hitaCourseCrystalGlassModifier(
+                        shape = cardShape,
+                        tint = courseTint,
+                        isMuted = isBottomCascadeCard,
+                        usesRealBackdrop = usesRealBackdrop
+                    )
+            )
+        }
+
         Box(
             modifier = Modifier
                 .fillMaxSize()
+                .zIndex(1f)
                 .padding(horizontal = horizontalPadding, vertical = verticalPadding)
         ) {
             if (hasPlace && !isBottomCascadeCard) {
@@ -1033,7 +1206,7 @@ private fun TimetableEventCard(
                         .align(Alignment.BottomCenter)
                         .fillMaxWidth()
                         .basicMarquee(iterations = Int.MAX_VALUE)
-                        .alpha(style.subtitleAlpha / 100f)
+                        .alpha(if (isAppleGlass) 0.78f else style.subtitleAlpha / 100f)
                 )
             }
             if (style.cardIconEnabled && !isBottomCascadeCard) {
@@ -1067,7 +1240,7 @@ private fun TimetableEventCard(
                         overflow = TextOverflow.Ellipsis,
                         modifier = Modifier
                             .fillMaxWidth()
-                            .alpha(style.titleAlpha / 100f)
+                            .alpha(if (isAppleGlass) 1f else style.titleAlpha / 100f)
                     )
                 }
             }

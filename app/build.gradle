@@ -2,6 +2,7 @@ plugins {
     id 'com.android.application'
     id 'kotlin-android'
     id 'kotlin-kapt'
+    id 'org.jetbrains.kotlin.plugin.compose'
     id 'dagger.hilt.android.plugin'
 }
 
@@ -60,10 +61,6 @@ android {
         viewBinding = true
         compose = true
     }
-    composeOptions {
-        kotlinCompilerExtensionVersion '1.5.10'
-    }
-
     buildTypes {
         debug {
             if (keystorePropertiesFile.exists() && keystoreProperties['storeFile']) {
@@ -100,7 +97,7 @@ dependencies {
     implementation 'androidx.core:core-splashscreen:1.0.1'
     implementation 'androidx.appcompat:appcompat:1.7.0'
     implementation 'com.google.android.material:material:1.12.0'
-    implementation platform('androidx.compose:compose-bom:2024.06.00')
+    implementation platform('androidx.compose:compose-bom:2025.09.01')
     implementation 'androidx.activity:activity-compose:1.9.2'
     implementation 'androidx.compose.foundation:foundation'
     implementation 'androidx.compose.material3:material3'
@@ -108,6 +105,8 @@ dependencies {
     implementation 'androidx.compose.runtime:runtime-livedata'
     implementation 'androidx.compose.ui:ui'
     implementation 'androidx.compose.ui:ui-tooling-preview'
+    implementation 'dev.chrisbanes.haze:haze:0.7.3'
+    implementation 'io.github.kyant0:backdrop:1.0.0'
     debugImplementation 'androidx.compose.ui:ui-tooling'
     implementation 'androidx.constraintlayout:constraintlayout:2.1.4'
     implementation 'androidx.viewpager:viewpager:1.0.0'
@@ -124,8 +123,8 @@ dependencies {
     androidTestImplementation 'androidx.test.ext:junit:1.2.1'
     androidTestImplementation 'androidx.test.espresso:espresso-core:3.6.1'
 
-    implementation "androidx.room:room-runtime:2.6.1"
-    kapt "androidx.room:room-compiler:2.6.1"
+    implementation "androidx.room:room-runtime:2.8.4"
+    kapt "androidx.room:room-compiler:2.8.4"
 
     //kotlin的viewModel
     implementation "androidx.lifecycle:lifecycle-viewmodel-ktx:2.8.4"
@@ -183,8 +182,8 @@ dependencies {
     implementation 'ru.noties:jlatexmath-android:0.2.0'
 
     // Hilt DI
-    implementation 'com.google.dagger:hilt-android:2.50'
-    kapt 'com.google.dagger:hilt-android-compiler:2.50'
+    implementation 'com.google.dagger:hilt-android:2.57.2'
+    kapt 'com.google.dagger:hilt-android-compiler:2.57.2'
 
     // Fragment KTX for by viewModels()
     implementation 'androidx.fragment:fragment-ktx:1.8.2'

@@ -79,6 +79,10 @@ import cn.limpu.hita.ui.base.ComposeViewBinding
 import cn.limpu.hita.ui.base.HiltBaseFragmentWithReceiver
 import cn.limpu.hita.ui.design.HitaComposeTheme
 import cn.limpu.hita.ui.design.HitaTheme
+import cn.limpu.hita.ui.design.hitaGlassCardBorder
+import cn.limpu.hita.ui.design.hitaGlassCardColors
+import cn.limpu.hita.ui.design.hitaGlassCardModifier
+import cn.limpu.hita.ui.design.hitaIsAppleGlassSurface
 import cn.limpu.hita.ui.widgets.WidgetUtils
 import cn.limpu.hita.utils.EventsUtils
 import cn.limpu.hita.utils.HintUtils
@@ -231,7 +235,13 @@ private fun TimelineScreen(
     LazyColumn(
         modifier = Modifier
             .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background),
+            .background(
+                if (hitaIsAppleGlassSurface()) {
+                    Color.Transparent
+                } else {
+                    MaterialTheme.colorScheme.background
+                }
+            ),
         contentPadding = PaddingValues(bottom = HitaTheme.tokens.spacing.xxl)
     ) {
         item(key = "timeline_header") {
@@ -469,6 +479,8 @@ private fun TimelineHeaderCard(
     onEventClick: (EventItem) -> Unit,
 ) {
     val view = LocalView.current
+    val isGlass = hitaIsAppleGlassSurface()
+    val cardShape = RoundedCornerShape(20.dp)
     Card(
         modifier = Modifier
             .fillMaxWidth()
@@ -478,23 +490,37 @@ private fun TimelineHeaderCard(
                 end = HitaTheme.tokens.spacing.lg,
                 bottom = HitaTheme.tokens.spacing.xl
             )
+            .hitaGlassCardModifier(cardShape, elevation = 18.dp)
             .clickable {
                 view.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
                 onToggleExpanded()
             },
-        shape = RoundedCornerShape(20.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primary),
-        elevation = CardDefaults.cardElevation(defaultElevation = 14.dp)
+        shape = cardShape,
+        colors = if (isGlass) {
+            hitaGlassCardColors(MaterialTheme.colorScheme.primary, glassAlpha = 0.38f)
+        } else {
+            CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primary)
+        },
+        elevation = CardDefaults.cardElevation(defaultElevation = if (isGlass) 0.dp else 14.dp),
+        border = hitaGlassCardBorder(alpha = 0.34f)
     ) {
         Box(
             modifier = Modifier
                 .fillMaxWidth()
                 .background(
                     Brush.linearGradient(
-                        colors = listOf(
-                            MaterialTheme.colorScheme.primary,
-                            MaterialTheme.colorScheme.secondary
-                        )
+                        colors = if (isGlass) {
+                            listOf(
+                                MaterialTheme.colorScheme.primary.copy(alpha = 0.34f),
+                                Color.White.copy(alpha = 0.12f),
+                                MaterialTheme.colorScheme.secondary.copy(alpha = 0.22f)
+                            )
+                        } else {
+                            listOf(
+                                MaterialTheme.colorScheme.primary,
+                                MaterialTheme.colorScheme.secondary
+                            )
+                        }
                     )
                 )
         ) {
@@ -766,13 +792,21 @@ private fun TimelineTopEventRow(event: EventItem, onClick: () -> Unit) {
 @Composable
 private fun TimelineHintCard(event: EventItem, onConfirmed: (EventItem) -> Unit) {
     val view = LocalView.current
+    val isGlass = hitaIsAppleGlassSurface()
+    val cardShape = RoundedCornerShape(16.dp)
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(HitaTheme.tokens.spacing.lg),
-        shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primary),
-        elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)
+            .padding(HitaTheme.tokens.spacing.lg)
+            .hitaGlassCardModifier(cardShape, elevation = 12.dp),
+        shape = cardShape,
+        colors = if (isGlass) {
+            hitaGlassCardColors(MaterialTheme.colorScheme.primary, glassAlpha = 0.38f)
+        } else {
+            CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primary)
+        },
+        elevation = CardDefaults.cardElevation(defaultElevation = if (isGlass) 0.dp else 8.dp),
+        border = hitaGlassCardBorder(alpha = 0.32f)
     ) {
         Column(modifier = Modifier.fillMaxWidth()) {
             Row(
@@ -841,11 +875,15 @@ private fun TimelineEventRow(
                     end = HitaTheme.tokens.spacing.xl,
                     bottom = if (isPassed) HitaTheme.tokens.spacing.sm else HitaTheme.tokens.spacing.lg
                 )
+                .hitaGlassCardModifier(cardShape, elevation = if (isPassed) 6.dp else 12.dp)
                 .clip(cardShape)
                 .clickable(onClick = onClick),
             shape = cardShape,
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-            elevation = CardDefaults.cardElevation(defaultElevation = if (isPassed) 0.dp else 8.dp)
+            colors = hitaGlassCardColors(glassAlpha = if (isPassed) 0.32f else 0.48f),
+            elevation = CardDefaults.cardElevation(
+                defaultElevation = if (hitaIsAppleGlassSurface() || isPassed) 0.dp else 8.dp
+            ),
+            border = hitaGlassCardBorder(alpha = if (isPassed) 0.22f else 0.30f)
         ) {
             if (isPassed) {
                 Row(
