@@ -452,7 +452,7 @@ private fun typeLabel(type: TermSubject.TYPE): String {
 
 private fun typeColor(type: TermSubject.TYPE): Color {
     return when (type) {
-        TermSubject.TYPE.COM_A -> Color(0xFF304FFE)
+        TermSubject.TYPE.COM_A -> Color(0xFF3390EC)
         TermSubject.TYPE.COM_B -> Color(0xFF5C6BC0)
         TermSubject.TYPE.OPT_A -> Color(0xFF26A69A)
         TermSubject.TYPE.OPT_B -> Color(0xFF66BB6A)
