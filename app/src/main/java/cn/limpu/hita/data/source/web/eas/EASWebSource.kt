@@ -32,6 +32,7 @@ import java.security.spec.X509EncodedKeySpec
 import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Locale
+import java.util.concurrent.ConcurrentHashMap
 import javax.crypto.Cipher
 
 /**
@@ -52,6 +53,7 @@ class EASWebSource internal constructor(
     private val timeout = 15000
     private val DEBUG_WEEK = 6
     private val DEBUG_DOW = 1
+    private val overviewTermDatesCache = ConcurrentHashMap<String, List<String>>()
 
     // ---------------------------------------------------------------- 公共头
     private fun baseHeaders(authorization: String, rolecode: String = "06"): Map<String, String> =
@@ -1674,7 +1676,7 @@ class EASWebSource internal constructor(
                         val item = CourseScoreItem()
                         item.courseCode = tp.optString("kcdm")
                         item.courseName = tp.optString("kcmc")
-                        item.credits = tp.optString("xf").toIntOrNull() ?: 0
+                        item.credits = tp.optString("xf").toFloatOrNull() ?: 0f
                         item.finalScoresText = tp.optString("zf").trim().ifBlank { null }
                         item.finalScores = item.finalScoresText?.toIntOrNull() ?: -1
                         item.courseProperty = tp.optString("kcxz")
@@ -1723,7 +1725,7 @@ class EASWebSource internal constructor(
                         val item = CourseScoreItem()
                         item.courseCode = tp.optString("kcdm")
                         item.courseName = tp.optString("kcmc")
-                        item.credits = tp.optString("xf").toIntOrNull() ?: 0
+                        item.credits = tp.optString("xf").toFloatOrNull() ?: 0f
                         item.finalScoresText = tp.optString("zf").trim().ifBlank { null }
                         item.finalScores = item.finalScoresText?.toIntOrNull() ?: -1
                         item.courseProperty = tp.optString("kcxz")
@@ -1828,13 +1830,10 @@ class EASWebSource internal constructor(
             try {
                 val week = (weeks.firstOrNull()?.trim() ?: "").ifBlank { "1" }
                 val dates = resolveWeekDates(token, term, week)
-                val fallbackDate = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
-                    .format(Calendar.getInstance().time)
-                val datePairs = if (dates.isNotEmpty()) {
-                    dates.mapIndexed { index, d -> index + 1 to d }
-                } else {
-                    listOf(1 to fallbackDate)
+                if (dates.isEmpty()) {
+                    throw IllegalStateException("未获取到 ${term.name} 第${week}周的日期")
                 }
+                val datePairs = dates.mapIndexed { index, date -> index + 1 to date }
 
                 for ((dow, date) in datePairs) {
                     val resp = authedFormPost(
@@ -1878,25 +1877,75 @@ class EASWebSource internal constructor(
     }
 
     private fun resolveWeekDates(token: EASToken, term: TermItem, week: String): List<String> {
-        return try {
+        val matrixDates = try {
             val kbBody = """{"xn":"${term.yearCode}","xq":"${term.termCode}","zc":"$week","type":"json"}"""
             val kbResp = jsonPost(token, "/app/Kbcx/query", kbBody)
             val kbJo = JsonUtils.getJsonObject(kbResp.body())
-            val contentArr = kbJo?.optJSONArray("content") ?: return emptyList()
-            for (i in 0 until contentArr.length()) {
-                val obj = contentArr.optJSONObject(i) ?: continue
+            val contentArr = kbJo?.optJSONArray("content")
+            val dates = mutableListOf<String>()
+            for (i in 0 until (contentArr?.length() ?: 0)) {
+                val obj = contentArr?.optJSONObject(i) ?: continue
                 val rqList = obj.optJSONArray("rqList") ?: continue
-                val dates = mutableListOf<String>()
                 for (j in 0 until rqList.length()) {
                     val rq = rqList.optJSONObject(j)?.optString("RQ")?.trim().orEmpty()
                     if (rq.isNotBlank()) dates.add(rq)
                 }
-                if (dates.isNotEmpty()) return dates
+                if (dates.isNotEmpty()) break
             }
-            emptyList()
+            dates
         } catch (_: Exception) {
             emptyList()
         }
+        if (matrixDates.isNotEmpty()) {
+            // rqList 在部分周只返回一个或少数日期，不能把数组下标直接当星期。
+            // 请求本身已经限定了目标周，因此从其中任一日期恢复该周完整 7 天即可。
+            return ShenzhenAcademicWeekResolver.resolveQueryDates(
+                matrixDates = matrixDates,
+                overviewTermDates = emptyList(),
+                requestedWeek = week.toIntOrNull() ?: 1
+            )
+        }
+
+        val targetWeek = week.toIntOrNull()?.coerceAtLeast(1) ?: 1
+        val termDates = overviewTermDatesCache[term.id]
+            ?: fetchOverviewTermDates(token, term).also { dates ->
+                if (dates.isNotEmpty()) overviewTermDatesCache[term.id] = dates
+            }
+        return ShenzhenAcademicWeekResolver.resolveQueryDates(
+            matrixDates = emptyList(),
+            overviewTermDates = termDates,
+            requestedWeek = targetWeek
+        )
+    }
+
+    /**
+     * 周课表矩阵在尚无个人课程时可能不给 rqList。总览接口按日期查询且返回 XN/XQ，
+     * 因而可用于定位该学期真正的第一周；这里只在矩阵日期缺失时调用。
+     */
+    private fun fetchOverviewTermDates(token: EASToken, term: TermItem): List<String> {
+        val dates = linkedSetOf<String>()
+        var stagnantCount = 0
+        val anchor = ShenzhenAcademicWeekResolver.approximateAnchor(term)
+        for (weekOffset in 0 until 26) {
+            val queryDate = anchor.plusWeeks(weekOffset.toLong()).toString()
+            val response = authedFormPost(
+                token,
+                "/app/kbrcbyapp/querykbrczong",
+                mapOf("nyr" to queryDate)
+            )
+            val content = JsonUtils.getJsonObject(response.body())?.optJSONArray("content")
+            val sizeBefore = dates.size
+            for (index in 0 until (content?.length() ?: 0)) {
+                val row = content?.optJSONObject(index) ?: continue
+                if (row.optString("XN").trim() != term.yearCode) continue
+                if (row.optString("XQ").trim() != term.termCode) continue
+                val date = row.optString("RQ").trim()
+                if (date.isNotEmpty()) dates.add(date)
+            }
+            stagnantCount = if (dates.size == sizeBefore) stagnantCount + 1 else 0
+            if (dates.isNotEmpty() && stagnantCount >= 4) break
+        }
+        return dates.sorted()
     }
 
 

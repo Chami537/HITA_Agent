@@ -5,6 +5,10 @@ import cn.limpu.hita.data.model.eas.CourseScoreItem
 import org.jsoup.Jsoup
 import org.jsoup.nodes.Element
 
+internal fun parseScoreCredit(raw: String): Float {
+    return raw.trim().toFloatOrNull() ?: 0f
+}
+
 object BenbuScoreParser {
 
     fun parseGradesHtml(html: String): List<CourseScoreItem> {
@@ -61,7 +65,7 @@ object BenbuScoreParser {
                     courseCategory = getValue(values, "课程类别").ifBlank { null }
                     schoolName = getValue(values, "开课院系", "开课学院").ifBlank { null }
                     assessMethod = getValue(values, "是否考试课", "考核方式").ifBlank { null }
-                    credits = parseCreditToInt(getValue(values, "学分"))
+                    credits = parseScoreCredit(getValue(values, "学分"))
                     finalScoresText = getValue(values, "最终成绩", "成绩", "总成绩").ifBlank { null }
                     finalScores = parseGradeToInt(finalScoresText.orEmpty())
                     hours = getValue(values, "学时").toIntOrNull() ?: 0
@@ -141,10 +145,6 @@ object BenbuScoreParser {
             .replace("：", "")
             .replace(":", "")
             .trim()
-    }
-
-    private fun parseCreditToInt(raw: String): Int {
-        return raw.trim().toDoubleOrNull()?.toInt() ?: 0
     }
 
     private fun parseGradeToInt(raw: String): Int {

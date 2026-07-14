@@ -26,7 +26,10 @@ object TermUtils {
      * @return 过滤后的学期列表，按学年代码和学期代码降序排序
      */
     fun filterRecentTerms(allTerms: List<TermItem>): List<TermItem> {
-        val currentYear = Calendar.getInstance().get(Calendar.YEAR)
+        return filterRecentTerms(allTerms, Calendar.getInstance().get(Calendar.YEAR))
+    }
+
+    internal fun filterRecentTerms(allTerms: List<TermItem>, currentYear: Int): List<TermItem> {
         val cutoffYear = currentYear - 3 // 最近4年（含当前年）
 
         // 过滤学期：只保留近4年的学期

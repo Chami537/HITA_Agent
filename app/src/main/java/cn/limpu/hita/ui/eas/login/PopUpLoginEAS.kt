@@ -78,6 +78,7 @@ class PopUpLoginEAS : BottomSheetDialogFragment() {
     private var pendingWebViewCampus: EASToken.Campus? = null
     private var autoLaunchTriggered = false
     private var silentWebLoginTried = false
+    private var loginInProgress by mutableStateOf(false)
 
     private val viewModel: LoginEASViewModel by viewModels()
 
@@ -117,6 +118,8 @@ class PopUpLoginEAS : BottomSheetDialogFragment() {
                         viewModel = viewModel,
                         loginResult = loginResult,
                         loginCheckResult = loginCheckResult,
+                        isLoading = loginInProgress,
+                        onLoadingChange = { loginInProgress = it },
                         isAgreementAccepted = isUserAgreementAccepted(),
                         onMarkAgreementAccepted = { markUserAgreementAccepted() },
                         initialCampus = preferredCampus ?: viewModel.easRepo.getEasToken().campus,
@@ -171,6 +174,7 @@ class PopUpLoginEAS : BottomSheetDialogFragment() {
         launcher: androidx.activity.result.ActivityResultLauncher<Intent>
     ) {
         pendingWebViewCampus = campus
+        loginInProgress = true
         launcher.launch(
             Intent(requireContext(), WebViewLoginActivity::class.java).apply {
                 putExtra(WebViewLoginActivity.EXTRA_SILENT_MODE, silentMode)
@@ -181,6 +185,7 @@ class PopUpLoginEAS : BottomSheetDialogFragment() {
 
     private fun handleWebViewResult(resultCode: Int, data: Intent?) {
         if (resultCode != Activity.RESULT_OK) {
+            loginInProgress = false
             val campus = pendingWebViewCampus
             pendingWebViewCampus = null
             if (autoLaunchWebLogin && silentWebLoginTried && campus == EASToken.Campus.BENBU) {
@@ -213,10 +218,12 @@ class PopUpLoginEAS : BottomSheetDialogFragment() {
                 val electronicExpToken = data.getStringExtra("electronic_exp_token")
                 startCookieLogin(campus, cookiesMap, electronicExpToken)
             } catch (e: Exception) {
+                loginInProgress = false
                 LogUtils.e("Failed to parse cookies: ${e.message}")
                 onResponseListener?.onFailed(this)
             }
         } else {
+            loginInProgress = false
             onResponseListener?.onFailed(this)
         }
     }
@@ -233,6 +240,7 @@ class PopUpLoginEAS : BottomSheetDialogFragment() {
                 val state = value
                 if (state.state == DataState.STATE.NOTHING) return
                 loginSource.removeObserver(this)
+                loginInProgress = false
                 if (state.state == DataState.STATE.SUCCESS && state.data == true) {
                     onResponseListener?.onSuccess(this@PopUpLoginEAS)
                 } else {
@@ -264,6 +272,8 @@ private fun LoginEASScreen(
     viewModel: LoginEASViewModel,
     loginResult: DataState<Boolean>?,
     loginCheckResult: DataState<Boolean>?,
+    isLoading: Boolean,
+    onLoadingChange: (Boolean) -> Unit,
     isAgreementAccepted: Boolean,
     onMarkAgreementAccepted: () -> Unit,
     initialCampus: EASToken.Campus,
@@ -285,7 +295,6 @@ private fun LoginEASScreen(
         mutableStateOf(token.password?.takeIf { token.campus == EASToken.Campus.SHENZHEN } ?: "")
     }
     var agreementChecked by remember { mutableStateOf(isAgreementAccepted) }
-    var isLoading by remember { mutableStateOf(false) }
     var lastHandledLoginResult by remember { mutableStateOf<DataState<Boolean>?>(null) }
     var lastHandledCheckResult by remember { mutableStateOf<DataState<Boolean>?>(null) }
 
@@ -297,7 +306,7 @@ private fun LoginEASScreen(
         val result = loginResult ?: return@LaunchedEffect
         if (result === lastHandledLoginResult) return@LaunchedEffect
         lastHandledLoginResult = result
-        isLoading = false
+        onLoadingChange(false)
         view.performHapticFeedback(HapticFeedbackConstants.CONFIRM)
         if (result.state == DataState.STATE.SUCCESS && result.data == true) {
             onSuccess()
@@ -315,7 +324,7 @@ private fun LoginEASScreen(
         val result = loginCheckResult ?: return@LaunchedEffect
         if (result === lastHandledCheckResult) return@LaunchedEffect
         lastHandledCheckResult = result
-        isLoading = false
+        onLoadingChange(false)
         view.performHapticFeedback(HapticFeedbackConstants.CONFIRM)
         if (result.state == DataState.STATE.SUCCESS && result.data == true) {
             onSuccess()
@@ -369,7 +378,7 @@ private fun LoginEASScreen(
                         return@Button
                     }
                     onMarkAgreementAccepted()
-                    isLoading = true
+                    onLoadingChange(true)
                     onLogin(selectedCampus, username, password)
                 },
                 enabled = isFormValid && !isLoading,

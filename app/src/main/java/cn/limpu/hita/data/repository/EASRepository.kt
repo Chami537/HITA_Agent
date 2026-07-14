@@ -36,7 +36,6 @@ import cn.limpu.hita.utils.CourseCodeUtils
 import cn.limpu.hita.utils.ColorTools
 import cn.limpu.hita.utils.CourseNameUtils
 import java.sql.Timestamp
-import java.text.SimpleDateFormat
 import java.util.*
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
@@ -73,6 +72,12 @@ class EASRepository @Inject constructor(
         private const val LOGIN_ENRICH_RETRY_DELAY_MS = 800L
     }
 
+    /**
+     * 三校区教务策略入口。
+     *
+     * UI 和导入流程只依赖 EASService 的统一模型；具体校区的登录方式、
+     * HTML/JSON 字段、WebVPN 地址都应留在对应 WebSource 内部。
+     */
     private fun getService(campus: EASToken.Campus): EASService {
         return when (campus) {
             EASToken.Campus.SHENZHEN -> shenzhenService
@@ -440,7 +445,14 @@ class EASRepository @Inject constructor(
     }
 
     /**
-     * 动作：导入课表
+     * 动作：导入课表。
+     *
+     * 这里是导入编排层，不解析各校区原始响应：
+     * - WebSource 负责把不同校区接口规范化为 CourseItem；
+     * - Repository 负责复用/创建本地 Timetable、生成 EventItem、保存 Subject；
+     * - EasImportIdentity 负责结构化去重，避免同一课程因名称长短、校区 code 差异重复导入。
+     *
+     * 老教务解析逻辑不要挪到这里；如果某校区字段变化，应优先修改对应 WebSource 或 Parser。
      */
     private var timetableWebLiveData: LiveData<DataState<List<CourseItem>>>? = null
     fun startImportTimetableOfTerm(
@@ -453,6 +465,8 @@ class EASRepository @Inject constructor(
         startDate.set(Calendar.MINUTE, 0)
         startDate.firstDayOfWeek = Calendar.MONDAY
         startDate.set(Calendar.DAY_OF_WEEK, Calendar.MONDAY)
+        startDate.set(Calendar.SECOND, 0)
+        startDate.set(Calendar.MILLISECOND, 0)
         val easToken = easPreferenceSource.getEasToken()
         val timetableCode = EASTimetableCode.of(easToken.campus, term)
         val legacyTimetableCode = term.getCode()
@@ -507,15 +521,19 @@ class EASRepository @Inject constructor(
                                 )
                                 if (timetable == null) {
                                     timetable = Timetable()
-                                } else {
-                                    //若存在，则先清空原有课表课程
-                                    eventItemDao.deleteCourseFromTimetable(timetable.id)
                                 }
                                 //记录最后的时间戳，作为学期结束的标志
                                 var maxTs: Long = 0
                                 //添加时间表
                                 val events = mutableListOf<EventItem>()
-                                val requireSubjects = mutableMapOf<String, String>()
+                                val pendingSubjects = linkedMapOf<String, TermSubject>()
+                                val subjectsByKey = mutableMapOf<String, TermSubject>()
+                                subjectDao.getSubjectsSync(timetable.id).forEach { subject ->
+                                    EasImportIdentity.subjectLookupKeys(subject.code, subject.name, subject.name).forEach { key ->
+                                        subjectsByKey[key] = subject
+                                    }
+                                }
+                                val generatedClassKeys = mutableSetOf<String>()
 
                                 // Count free time courses before processing
                                 val freeTimeCount = courseItems.count { item ->
@@ -538,10 +556,15 @@ class EASRepository @Inject constructor(
                                     }
 
                                     val rawName = item.name?.toString().orEmpty().trim()
+                                    if (rawName.isBlank()) {
+                                        continue
+                                    }
                                     val normalizedName = CourseNameUtils.normalize(rawName) ?: rawName
+                                    val code = CourseCodeUtils.normalize(item.code) ?: item.code?.trim().orEmpty()
 
                                     //添加科目
-                                    var subject = subjectDao.getSubjectByName(timetable.id, normalizedName)
+                                    val lookupKeys = EasImportIdentity.subjectLookupKeys(code, normalizedName, rawName)
+                                    var subject = lookupKeys.firstNotNullOfOrNull { key -> subjectsByKey[key] }
                                     if (subject == null) {//不存在，新建
                                         subject = TermSubject()
                                         // 优先保存完整的原始名称
@@ -565,7 +588,6 @@ class EASRepository @Inject constructor(
                                             subject.name = rawName
                                         }
                                     }
-                                    val code = CourseCodeUtils.normalize(item.code) ?: item.code?.trim().orEmpty()
                                     if (code.isNotBlank() && subject.code.isNullOrBlank()) {
                                         subject.code = code
                                     }
@@ -601,10 +623,10 @@ class EASRepository @Inject constructor(
                                             subject.nature = mappedNature
                                         }
                                     }
-                                    subjectDao.saveSubjectSync(subject)
-                                    if (requireSubjects[subject.id] == null) {
-                                        requireSubjects[subject.id] = subject.id
+                                    EasImportIdentity.subjectLookupKeys(subject.code, normalizedName, subject.name).forEach { key ->
+                                        subjectsByKey[key] = subject
                                     }
+                                    var itemHasEvent = false
 
                                     for (week in item.weeks) {
                                         val from = getDateAtWOT(startDate, week, item.dow)
@@ -657,8 +679,15 @@ class EASRepository @Inject constructor(
                                         e.teacher = mappedTeacher
                                         e.place = item.classroom
                                         e.timetableId = timetable.id
+                                        if (!generatedClassKeys.add(EasImportIdentity.classEventIdentityKey(e))) {
+                                            continue
+                                        }
                                         if (e.to.time > maxTs) maxTs = e.to.time
                                         events.add(e)
+                                        itemHasEvent = true
+                                    }
+                                    if (itemHasEvent) {
+                                        pendingSubjects[subject.id] = subject
                                     }
                                 }
                                 if (events.isEmpty()) {
@@ -672,6 +701,8 @@ class EASRepository @Inject constructor(
                                     return@Thread
                                 }
                                 LogUtils.d( "import: saving ${events.size} events for term=${term.getCode()}")
+                                eventItemDao.deleteCourseFromTimetable(timetable.id)
+                                subjectDao.saveSubjectsSync(pendingSubjects.values.toList())
                                 eventItemDao.saveEvents(events)
 
                                 //更新timetable对象
@@ -681,6 +712,7 @@ class EASRepository @Inject constructor(
                                 timetable.code = timetableCode
                                 timetable.scheduleStructure = safeSchedule
                                 timetableDao.saveTimetableSync(timetable)
+                                cleanupDefaultDuplicateTimetablesAfterImport(timetable.id)
 
                                 if (finished.compareAndSet(false, true)) {
                                     timeoutHandler.removeCallbacks(timeoutRunnable)
@@ -713,6 +745,60 @@ class EASRepository @Inject constructor(
             LogUtils.e("startImport: not logged in, cannot import")
             importTimetableLiveData.value = DataState(DataState.STATE.NOT_LOGGED_IN)
         }
+    }
+
+    /**
+     * 清理历史遗留的“默认课表”重复数据。
+     *
+     * 早期版本可能把 EAS 导入课程放入默认课表，升级后同一学期会同时存在：
+     * - 带 EAS code 的正式学期课表；
+     * - code 为空、名字像“默认课表”的历史表。
+     *
+     * 只清理纯 EAS 课程且内容完全被正式课表覆盖的默认表；
+     * 如果里面有手动活动、考试、ICS 或 AI 创建内容，一律保留。
+     */
+    private fun cleanupDefaultDuplicateTimetablesAfterImport(importedTimetableId: String) {
+        val defaultPrefix = appContext.getString(R.string.default_timetable_name)
+        val defaults = timetableDao.getDefaultNamedCustomTimetablesSync("$defaultPrefix%")
+        if (defaults.isEmpty()) return
+
+        val importedKeys = eventItemDao.getImportedClassEventsOfTimetableSync(importedTimetableId)
+            .mapTo(mutableSetOf()) { importedClassEventIdentityKey(it) }
+        if (importedKeys.isEmpty()) return
+
+        val deleteIds = defaults.mapNotNull { timetable ->
+            val eventCount = eventItemDao.countEventsOfTimetableSync(timetable.id)
+            if (eventCount == 0) return@mapNotNull timetable.id
+
+            val nonImportedClassCount = eventItemDao.countNonImportedClassEventsOfTimetableSync(timetable.id)
+            if (nonImportedClassCount > 0) return@mapNotNull null
+
+            val defaultKeys = eventItemDao.getImportedClassEventsOfTimetableSync(timetable.id)
+                .mapTo(mutableSetOf()) { importedClassEventIdentityKey(it) }
+            if (defaultKeys.isNotEmpty() && importedKeys.containsAll(defaultKeys)) {
+                timetable.id
+            } else {
+                null
+            }
+        }
+        if (deleteIds.isEmpty()) return
+
+        LogUtils.d("import: cleanup duplicate default timetables=$deleteIds")
+        timetableDao.deleteTimetablesInIdsSync(deleteIds)
+        eventItemDao.deleteEventsFromTimetablesSync(deleteIds)
+        subjectDao.deleteSubjectsFromTimetablesSync(deleteIds)
+    }
+
+    private fun importedClassEventIdentityKey(event: EventItem): String {
+        return listOf(
+            event.name.trim(),
+            event.place.orEmpty().trim(),
+            event.teacher.orEmpty().trim(),
+            event.from.time.toString(),
+            event.to.time.toString(),
+            event.fromNumber.toString(),
+            event.lastNumber.toString(),
+        ).joinToString("|")
     }
 
     private fun sanitizeImportedTeacher(courseName: String?, teacherRaw: String?): String? {
@@ -882,71 +968,18 @@ class EASRepository @Inject constructor(
     @WorkerThread
     private fun importExamItemsSync(exams: List<ExamItem>, timetable: Timetable): Int {
         if (exams.isEmpty()) return 0
-        val existingEvents = eventItemDao.getEventsOfTimetableSync(timetable.id)
-            .filter { it.type == EventItem.TYPE.EXAM }
-            .toMutableList()
+        val existingKeys = eventItemDao.getExamEventsSync()
+            .mapTo(mutableSetOf()) { ExamEventMapper.identityKey(it) }
         var importedCount = 0
 
         for (exam in exams) {
-            val examEvent = parseExamToEvent(exam, timetable.id) ?: continue
-            val exists = existingEvents.any { event ->
-                event.name == examEvent.name &&
-                    event.place == examEvent.place &&
-                    event.from.time == examEvent.from.time
-            }
-            if (exists) continue
+            val examEvent = ExamEventMapper.toEvent(exam, timetable.id, "EASRepository") ?: continue
+            val key = ExamEventMapper.identityKey(examEvent)
+            if (!existingKeys.add(key)) continue
             eventItemDao.insertEventSync(examEvent)
-            existingEvents.add(examEvent)
             importedCount++
         }
         return importedCount
-    }
-
-    private fun parseExamToEvent(exam: ExamItem, timetableId: String): EventItem? {
-        return try {
-            val date = exam.examDate ?: return null
-            val timeRange = exam.examTime ?: return null
-            val times = timeRange.split("-")
-            if (times.size != 2) return null
-
-            val dateFormat = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
-            val timeFormat = SimpleDateFormat("HH:mm", Locale.getDefault())
-            val parsedDate = dateFormat.parse(date) ?: return null
-            val parsedStart = timeFormat.parse(times[0].trim()) ?: return null
-            val parsedEnd = timeFormat.parse(times[1].trim()) ?: return null
-            val startClock = Calendar.getInstance().apply { time = parsedStart }
-            val endClock = Calendar.getInstance().apply { time = parsedEnd }
-            val calendarStart = Calendar.getInstance().apply {
-                time = parsedDate
-                set(Calendar.HOUR_OF_DAY, startClock.get(Calendar.HOUR_OF_DAY))
-                set(Calendar.MINUTE, startClock.get(Calendar.MINUTE))
-                set(Calendar.SECOND, 0)
-                set(Calendar.MILLISECOND, 0)
-            }
-            val calendarEnd = Calendar.getInstance().apply {
-                time = parsedDate
-                set(Calendar.HOUR_OF_DAY, endClock.get(Calendar.HOUR_OF_DAY))
-                set(Calendar.MINUTE, endClock.get(Calendar.MINUTE))
-                set(Calendar.SECOND, 0)
-                set(Calendar.MILLISECOND, 0)
-            }
-            EventItem().apply {
-                type = EventItem.TYPE.EXAM
-                source = EventItem.SOURCE_EAS_IMPORT
-                name = "[考试] " + (exam.courseName ?: "考试")
-                place = exam.examLocation.orEmpty()
-                teacher = ""
-                subjectId = ""
-                this.timetableId = timetableId
-                from = Timestamp(calendarStart.timeInMillis)
-                to = Timestamp(calendarEnd.timeInMillis)
-                fromNumber = 0
-                lastNumber = 0
-            }
-        } catch (e: Exception) {
-            LogUtils.e("autoImport: parse exam failed ${exam.courseName}", e)
-            null
-        }
     }
 
     private fun <T> awaitLiveData(

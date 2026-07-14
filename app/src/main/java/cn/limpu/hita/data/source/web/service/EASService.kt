@@ -9,6 +9,19 @@ import cn.limpu.hita.ui.eas.classroom.BuildingItem
 import cn.limpu.hita.ui.eas.classroom.ClassroomItem
 import java.util.*
 
+/**
+ * 三校区教务系统的统一适配接口。
+ *
+ * 实现类负责消化各校区真实接口差异：
+ * - 深圳：新版 JSON API；
+ * - 本部：旧教务 / 实验系统 / Cookie；
+ * - 威海：WebVPN 包裹下的旧教务。
+ *
+ * 调用方只能依赖这里定义的统一模型，不能依赖某个校区的原始字段。
+ * 因此每个实现都必须尽量把原始响应规范化为 TermItem、CourseItem、ExamItem、
+ * ClassroomItem 等本地模型。老教务解析分支很多是兼容旧系统返回格式的补丁，
+ * 修改时应优先补 fixture/回归用例，避免为了“看起来更整洁”改变解析语义。
+ */
 interface EASService {
     /**
      * 登录
@@ -25,13 +38,18 @@ interface EASService {
     fun loginCheck(token:EASToken):LiveData<DataState<Pair<Boolean,EASToken>>>
 
     /**
-     * 获取学年学期
-     * @param token 登录凭证
+     * 获取可查询学期。
+     *
+     * 契约：返回的 TermItem.getCode() 必须能稳定标识该校区该学期，
+     * Repository 会用它生成本地课表 code、缓存 key 和导入去重依据。
      */
     fun getAllTerms(token: EASToken):LiveData<DataState<List<TermItem>>>;
 
     /**
-     * 获取学年学期开始日期
+     * 获取学期起始日期。
+     *
+     * 契约：返回值应尽量是教学第一周所在周的日期；Repository 会再归一化到周一零点。
+     * 对本部/威海等旧系统，如果只能通过课表页面反推，应保留解析逻辑的兼容分支。
      */
     fun getStartDate(token: EASToken,term:TermItem):LiveData<DataState<Calendar>>;
 
@@ -40,15 +58,20 @@ interface EASService {
      */
     fun getSubjectsOfTerm(token: EASToken, term: TermItem): LiveData<DataState<MutableList<TermSubject>>>
     /**
-     * 获取个人总课表
-     * @param term 学期
-     * @param token 登录凭证
+     * 获取个人总课表。
+     *
+     * 契约：无论原始来源是周课表、总课表、实验系统还是补充接口，
+     * 最终都应转换为 CourseItem，并尽量补齐 name/code/teacher/classroom/weeks/dow/begin/last。
+     * EASRepository 只做统一导入、去重和事件落库，不应再理解各校区原始 HTML/JSON 结构。
      */
     fun getTimetableOfTerm(term:TermItem, token: EASToken):LiveData<DataState<List<CourseItem>>>
 
 
     /**
-     * 获取某学期的课表结构
+     * 获取某学期的课表节次结构。
+     *
+     * 契约：返回列表下标与 CourseItem.begin/last 使用的节次编号保持一致。
+     * 如果旧系统无法可靠返回完整结构，实现类应给出该校区当前可用的保守默认值。
      */
     fun getScheduleStructure(term: TermItem,isUndergraduate:Boolean?, token: EASToken):LiveData<DataState<MutableList<TimePeriodInDay>>>
 
@@ -59,7 +82,10 @@ interface EASService {
     fun getTeachingBuildings(token: EASToken):LiveData<DataState<List<BuildingItem>>>
 
     /**
-     * 查询空教室
+     * 查询空教室。
+     *
+     * 契约：各校区返回的 ClassroomItem.scheduleList 需要使用相同语义，
+     * 这样本地缓存和 AI 工具才能在不关心校区的情况下读取。
      */
     fun queryEmptyClassroom(
         token: EASToken,
@@ -83,7 +109,11 @@ interface EASService {
     }
 
     /**
-     * 获取考试信息
+     * 获取考试信息。
+     *
+     * 契约：可解析的考试必须提供 examDate 和 examTime，后续由 ExamEventMapper
+     * 统一转换为本地 EventItem。暂不支持的校区应返回明确的失败状态或空结果，
+     * 不要伪造考试时间。
      */
     fun getExamItems(
         token: EASToken,

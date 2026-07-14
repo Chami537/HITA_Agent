@@ -42,7 +42,6 @@ object IcsImportBundleBuilder {
         events: List<VEvent>,
         sourceName: String?,
         now: Long = System.currentTimeMillis(),
-        nextColor: () -> Int = ColorTools::randomColorMaterial
     ): IcsImportBundle {
         val validEvents = expandEvents(events).mapNotNull { expanded ->
             val courseName = resolveCourseName(expanded.rawEvent)

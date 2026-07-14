@@ -11,7 +11,6 @@ import android.os.Message
 import android.graphics.Color
 import android.view.View
 import android.view.ViewGroup
-import android.widget.FrameLayout
 import android.webkit.CookieManager
 import android.webkit.JavascriptInterface
 import android.webkit.RenderProcessGoneDetail
@@ -38,6 +37,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -61,6 +61,9 @@ import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Color as ComposeColor
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import cn.limpu.hita.BuildConfig
@@ -71,6 +74,7 @@ import dagger.hilt.android.AndroidEntryPoint
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
 import org.json.JSONObject
+import org.json.JSONArray
 import java.net.URL
 
 /** Plan D: native MFA overlay state shared between activity and composable. */
@@ -84,6 +88,7 @@ internal data class MfaOverlayState(
     val inputType: String = "text",
     val inputPlaceholder: String = "",
     val submitButtonId: String = "",
+    val canSendCode: Boolean = false,
     val switchMethodJs: String = ""
 )
 
@@ -129,6 +134,9 @@ class WebViewLoginActivity : AppCompatActivity() {
         private const val COOKIE_RETRY_COUNT = 30
         private const val COOKIE_RETRY_DELAY_MS = 500L
         private const val SILENT_TIMEOUT_MS = 18000L
+        private const val MFA_DETECTION_INITIAL_DELAY_MS = 800L
+        private const val MFA_DETECTION_RETRY_DELAY_MS = 700L
+        private const val MFA_DETECTION_MAX_RETRIES = 4
         private val BENBU_REQUIRED_COOKIES = setOf("JSESSIONID", "HIT")
         private const val WEIHAI_TICKET_COOKIE_PREFIX = "wengine_vpn_ticket"
         private val WEIHAI_EAS_SESSION_COOKIE_HINTS = listOf("JSESSIONID", "HIT", "TWFID")
@@ -143,6 +151,7 @@ class WebViewLoginActivity : AppCompatActivity() {
 
     private var finished = false
     private var cookieRetryCount = 0
+    private var cookiePollingGeneration = 0
     private var autoOpeningJwts = false
     private var silentMode = false
     private lateinit var config: CampusWebConfig
@@ -151,13 +160,13 @@ class WebViewLoginActivity : AppCompatActivity() {
     private var eelabTokenFetching = false
     private var lastPageHadError = false
     private lateinit var webView: WebView
-    private var popupContainer: FrameLayout? = null
     private var progressVisible by mutableStateOf(false)
     private var progressValue by mutableIntStateOf(0)
 
     private var mfaState by mutableStateOf(MfaOverlayState())
     private var mfaError by mutableStateOf<String?>(null)
     private var mfaInputValue by mutableStateOf("")
+    private var mfaDetectionGeneration = 0
 
     override fun onCreate(savedInstanceState: Bundle?) {
         val campus = runCatching {
@@ -203,9 +212,6 @@ class WebViewLoginActivity : AppCompatActivity() {
                         webView = createdWebView
                         initViews()
                     },
-                    onPopupContainerReady = { container ->
-                        popupContainer = container
-                    }
                 )
             }
         }
@@ -251,6 +257,7 @@ class WebViewLoginActivity : AppCompatActivity() {
         }
     }
 
+    @Suppress("DEPRECATION")
     private fun setupWebView() {
         webView.apply {
             setBackgroundColor(Color.WHITE)
@@ -289,63 +296,62 @@ class WebViewLoginActivity : AppCompatActivity() {
                     isUserGesture: Boolean,
                     resultMsg: Message?
                 ): Boolean {
-                    val container = popupContainer ?: run {
-                        LogUtils.w("onCreateWindow: popupContainer is null, cannot create popup")
-                        return false
-                    }
-                    LogUtils.d("onCreateWindow: creating popup WebView isDialog=$isDialog url=${safeUrl(view?.url)}")
-                    val popupWebView = WebView(view!!.context).apply {
+                    val sourceView = view ?: return false
+                    val transport = resultMsg?.obj as? WebView.WebViewTransport ?: return false
+                    LogUtils.d("onCreateWindow: forwarding popup navigation into main WebView isDialog=$isDialog")
+                    var forwarded = false
+                    val popupWebView = WebView(sourceView.context).apply {
                         settings.javaScriptEnabled = true
                         settings.domStorageEnabled = true
                         webViewClient = object : WebViewClient() {
-                            override fun onPageCommitVisible(view: WebView, url: String) {
-                                super.onPageCommitVisible(view, url)
-                                detectMfaAndBridge(view, url)
-                            }
-                            override fun onPageFinished(view: WebView, url: String) {
-                                super.onPageFinished(view, url)
-                                LogUtils.d("popup onPageFinished: ${safeUrl(url)}")
-                                schedulePageDiagnostics(view, url)
-                                if (isSuccessPage(url)) {
-                                    LogUtils.success("login success detected from popup")
-                                    handleSuccessPage()
+                            override fun shouldOverrideUrlLoading(
+                                popup: WebView,
+                                request: WebResourceRequest
+                            ): Boolean {
+                                val target = request.url?.toString().orEmpty()
+                                if (!forwarded && target.startsWith("http")) {
+                                    forwarded = true
+                                    this@WebViewLoginActivity.webView.loadUrl(target)
+                                    popup.post { popup.destroy() }
                                 }
+                                return true
                             }
                         }
-                        layoutParams = FrameLayout.LayoutParams(
-                            FrameLayout.LayoutParams.MATCH_PARENT,
-                            FrameLayout.LayoutParams.MATCH_PARENT
-                        )
-                        setBackgroundColor(Color.WHITE)
                     }
-                    container.addView(popupWebView)
-                    val transport = resultMsg?.obj as? WebView.WebViewTransport
-                    transport?.webView = popupWebView
+                    transport.webView = popupWebView
                     resultMsg?.sendToTarget()
-                    LogUtils.d("onCreateWindow: popup created, container children=${container.childCount}")
                     return true
                 }
 
                 override fun onCloseWindow(window: WebView?) {
-                    LogUtils.d("onCloseWindow: removing popup WebView ${window?.id}")
-                    window?.let { popupContainer?.removeView(it) }
+                    window?.destroy()
                 }
             }
 
             webViewClient = object : WebViewClient() {
                 override fun onPageStarted(view: WebView?, url: String?, favicon: android.graphics.Bitmap?) {
                     super.onPageStarted(view, url, favicon)
+                    mfaDetectionGeneration++
+                    mfaState = MfaOverlayState()
+                    mfaError = null
+                    mfaInputValue = ""
+                    progressVisible = true
+                    progressValue = 0
+                    if (url != null && isAuthenticationPage(url)) {
+                        stopCookiePolling()
+                    }
                     logWebViewRenderMarker("page-started", view, url)
                 }
 
                 override fun onPageCommitVisible(view: WebView, url: String) {
                     super.onPageCommitVisible(view, url)
                     logWebViewRenderMarker("page-commit-visible", view, url)
-                    detectMfaAndBridge(view, url)
+                    scheduleMfaDetection(view, url)
                 }
 
                 override fun onPageFinished(view: WebView, url: String) {
                     super.onPageFinished(view, url)
+                    progressVisible = false
 
                     if (finished) {
                         return
@@ -369,6 +375,9 @@ class WebViewLoginActivity : AppCompatActivity() {
                     LogUtils.d("onPageFinished: host=${uri.host} path=${uri.path} autoOpeningJwts=$autoOpeningJwts")
                     logWebViewRenderMarker("page-finished", view, url)
                     schedulePageDiagnostics(view, url)
+                    if (isMfaPage(url)) {
+                        scheduleMfaDetection(view, url)
+                    }
 
                     when {
                         isPortalHomePage(url) -> {
@@ -377,6 +386,7 @@ class WebViewLoginActivity : AppCompatActivity() {
                         }
                         isIvpnRedirectPage(url) -> {
                             autoOpeningJwts = false
+                            stopCookiePolling()
                             if (silentMode) {
                                 LogUtils.d("ivpn redirect page in silent mode, need user interaction")
                                 finishWithCancelledResult()
@@ -384,8 +394,19 @@ class WebViewLoginActivity : AppCompatActivity() {
                                 LogUtils.d("ivpn redirect page, waiting for CAS login: path=${uri.path}")
                             }
                         }
+                        isAuthenticationPage(url) -> {
+                            autoOpeningJwts = false
+                            stopCookiePolling()
+                            if (silentMode) {
+                                LogUtils.d("authentication page in silent mode, need user interaction")
+                                finishWithCancelledResult()
+                            } else {
+                                LogUtils.d("authentication page detected, waiting for user interaction")
+                            }
+                        }
                         isSuccessPage(url) -> {
                             autoOpeningJwts = false
+                            stopCookiePolling()
                             LogUtils.success("login success page detected campus=${config.campus}")
                             handleSuccessPage()
                         }
@@ -395,7 +416,8 @@ class WebViewLoginActivity : AppCompatActivity() {
                             startCookiePolling()
                         }
                         isJwtsPage(url) -> {
-                            LogUtils.d("jwts login page detected, waiting for CAS redirect")
+                            LogUtils.d("jwts login page detected, polling for session cookies")
+                            startCookiePolling()
                         }
                         else -> {
                             LogUtils.d("unhandled page: host=${uri.host} path=${uri.path}")
@@ -409,6 +431,9 @@ class WebViewLoginActivity : AppCompatActivity() {
                     error: WebResourceError?
                 ) {
                     super.onReceivedError(view, request, error)
+                    if (request?.isForMainFrame == true) {
+                        progressVisible = false
+                    }
                     LogUtils.w( "onReceivedError url=${request?.url} code=${error?.errorCode} desc=${error?.description} campus=${config.campus}")
                 }
 
@@ -447,50 +472,115 @@ class WebViewLoginActivity : AppCompatActivity() {
      * Instead of trying to fix WebView's broken flexbox rendering,
      * we read the page state, show native Compose UI, and inject user input back.
      */
-    private fun detectMfaAndBridge(view: WebView, url: String) {
+    private fun scheduleMfaDetection(view: WebView, url: String) {
         val host = Uri.parse(url).host.orEmpty()
         val path = Uri.parse(url).path.orEmpty()
         if (!host.contains("ids") && !path.contains("authserver")) return
+        val generation = ++mfaDetectionGeneration
+        detectMfaAndBridge(view, url, generation, attempt = 0)
+    }
+
+    private fun detectMfaAndBridge(
+        view: WebView,
+        url: String,
+        generation: Int,
+        attempt: Int
+    ) {
         val detectScript = """
             (function() {
+              function isVisible(el) {
+                if (!el || el.disabled) return false;
+                var style = window.getComputedStyle(el);
+                var rect = el.getBoundingClientRect();
+                return style.display !== 'none' && style.visibility !== 'hidden' &&
+                  style.opacity !== '0' && rect.width > 0 && rect.height > 0;
+              }
+              function plainText(value) {
+                var container = document.createElement('div');
+                container.innerHTML = String(value || '');
+                return String(container.textContent || container.innerText || '').trim();
+              }
+              var params = (typeof reAuthParams === 'object' && reAuthParams) ? reAuthParams : {};
               var methodBtn = document.getElementById('changeReAuthTypeButton');
-              if (!methodBtn) return JSON.stringify({mfa:false});
-              var promptEl = document.getElementById('reAuthDec');
+              var submitButtons = Array.prototype.slice.call(document.querySelectorAll('#reAuthSubmitBtn, [id*=reAuthSubmit]'));
+              var submitButton = submitButtons.find(isVisible) || null;
+              var specificInput = document.querySelector('#dynamicCode, input[name=dynamicCode], input[name=otpCode]');
+              var pathLooksLikeMfa = /\/authserver\/reAuthCheck\//i.test(location.pathname);
+              if (!pathLooksLikeMfa && !submitButton && !specificInput) {
+                return JSON.stringify({mfa:false, ready:document.readyState});
+              }
+              var inputCandidates = Array.prototype.slice.call(document.querySelectorAll(
+                '#dynamicCode, input[name=dynamicCode], input[name=otpCode], #password, input:not([type=hidden])'
+              ));
+              var visibleInput = inputCandidates.find(isVisible) || null;
+              if (!submitButton && !visibleInput) {
+                return JSON.stringify({mfa:false, ready:document.readyState});
+              }
+              var reAuthType = String(params.reAuthType || '');
+              var methodNames = {
+                '2':'统一身份认证密码', '7':'统一身份认证密码',
+                '3':'手机号验证码', '4':'企业微信验证码', '5':'HIT APP 验证码',
+                '11':'邮箱验证码', '12':'钉钉验证码', '13':'WeLink 验证码'
+              };
+              var descriptionKey = reAuthType ? ('reAuthDec' + reAuthType) : '';
+              var visiblePromptEl = Array.prototype.slice.call(
+                document.querySelectorAll('[id^=reAuthDec]')
+              ).find(isVisible) || null;
+              var promptEl = visiblePromptEl ||
+                (descriptionKey && document.getElementById(descriptionKey)) ||
+                document.getElementById('reAuthDec');
+              var visibleTypeMatch = promptEl && promptEl.id ? promptEl.id.match(/^reAuthDec(\d+)$/) : null;
+              var effectiveType = visibleTypeMatch ? visibleTypeMatch[1] : reAuthType;
+              var method = methodNames[effectiveType] ||
+                (methodBtn ? methodBtn.textContent.trim() : '') || '二次验证';
+              var effectiveDescriptionKey = effectiveType ? ('reAuthDec' + effectiveType) : descriptionKey;
+              var prompt = plainText((promptEl && promptEl.textContent) ||
+                (effectiveDescriptionKey && params[effectiveDescriptionKey]) || '');
+              var sendIds = ['getDynamicCode', 'getImprovePhoneCodeId_otp', 'getImproveEmailCodeId_otp'];
+              var sendButton = null;
+              for (var i = 0; i < sendIds.length && !sendButton; i++) {
+                var candidate = document.getElementById(sendIds[i]);
+                if (isVisible(candidate)) sendButton = candidate;
+              }
+              if (!sendButton) {
+                sendButton = Array.prototype.slice.call(document.querySelectorAll(
+                  '[onclick*=DynamicCode], [onclick*=dynamicCode], [id*=DynamicCode], [id*=dynamicCode]'
+                )).find(function(el) { return isVisible(el) && el !== visibleInput; }) || null;
+              }
               var result = {
                 mfa: true,
-                method: methodBtn.textContent.trim(),
-                prompt: promptEl ? promptEl.textContent.trim() : '',
+                method: method,
+                prompt: prompt,
                 inputs: [],
-                submitId: ''
+                submitId: submitButton ? (submitButton.id || 'visible-submit') : '',
+                canSendCode: !!sendButton,
+                ready: document.readyState
               };
-              var visibleInputs = document.querySelectorAll('.cotent-box input:not([type=hidden])');
-              visibleInputs.forEach(function(inp) {
-                if (inp.offsetParent !== null) {
-                  result.inputs.push({
-                    id: inp.id,
-                    type: inp.type || 'text',
-                    placeholder: inp.placeholder || ''
-                  });
-                }
-              });
-              var submitCandidates = document.querySelectorAll('button[type=submit], a[onclick*=submit], a[onclick*=login], .common-mobile-btn, [id*=submit], [id*=loginBtn]');
-              submitCandidates.forEach(function(btn) {
-                if (btn.offsetParent !== null && !result.submitId) {
-                  result.submitId = btn.id || btn.className || 'auto-click';
-                }
-              });
-              if (!result.submitId) {
-                var anyBtn = document.querySelector('.cotent-box a[onclick], .cotent-box button');
-                if (anyBtn) result.submitId = 'auto-click';
+              if (visibleInput) {
+                result.inputs.push({
+                  id: visibleInput.id || '',
+                  name: visibleInput.name || '',
+                  type: visibleInput.type || 'text',
+                  placeholder: visibleInput.placeholder || ''
+                });
               }
               return JSON.stringify(result);
             })();
         """.trimIndent()
         view.postDelayed({
+            if (finished || generation != mfaDetectionGeneration || view.url != url) {
+                return@postDelayed
+            }
             view.evaluateJavascript(detectScript) { raw ->
                 try {
-                    val json = JSONObject(raw.trim('"').replace("\\\"", "\""))
-                    if (!json.optBoolean("mfa", false)) return@evaluateJavascript
+                    if (generation != mfaDetectionGeneration) return@evaluateJavascript
+                    val json = parseJavascriptJson(raw)
+                    if (!json.optBoolean("mfa", false)) {
+                        if (isMfaPage(url) && attempt < MFA_DETECTION_MAX_RETRIES) {
+                            detectMfaAndBridge(view, url, generation, attempt + 1)
+                        }
+                        return@evaluateJavascript
+                    }
                     val method = json.optString("method", "")
                     val prompt = json.optString("prompt", "")
                     val inputsArr = json.optJSONArray("inputs")
@@ -503,12 +593,14 @@ class WebViewLoginActivity : AppCompatActivity() {
                         val first = inputsArr.getJSONObject(0)
                         inputId = first.optString("id", "")
                         inputType = first.optString("type", "number")
-                        inputPlaceholder = first.optString("placeholder", "验证码")
+                        inputPlaceholder = first.optString("placeholder", "").ifBlank {
+                            if (inputType.equals("password", ignoreCase = true)) "统一身份认证密码" else "验证码"
+                        }
                         hasVisibleInput = true
                     }
                     mfaState = MfaOverlayState(
                         visible = true,
-                        promptTitle = "多因子认证 — $method",
+                        promptTitle = "多因子认证",
                         promptText = prompt,
                         verifyMethod = method,
                         hasVisibleInput = hasVisibleInput,
@@ -516,15 +608,19 @@ class WebViewLoginActivity : AppCompatActivity() {
                         inputType = inputType,
                         inputPlaceholder = inputPlaceholder,
                         submitButtonId = submitId,
+                        canSendCode = json.optBoolean("canSendCode", false),
                         switchMethodJs = "mobileChangeOtherType()"
                     )
                     mfaError = null
-                    LogUtils.success("MFA detected: method=$method hasInput=$hasVisibleInput inputId=$inputId submitId=$submitId")
+                    LogUtils.success(
+                        "MFA detected: method=$method hasInput=$hasVisibleInput " +
+                            "inputId=$inputId submitId=$submitId canSend=${mfaState.canSendCode}"
+                    )
                 } catch (e: Exception) {
                     LogUtils.e("MFA detect parse error", e)
                 }
             }
-        }, 800)
+        }, if (attempt == 0) MFA_DETECTION_INITIAL_DELAY_MS else MFA_DETECTION_RETRY_DELAY_MS)
     }
 
     /** Called from native Compose UI: find and click "send code" button in WebView. */
@@ -533,17 +629,33 @@ class WebViewLoginActivity : AppCompatActivity() {
         val sendScript = """
             (function() {
               try {
+                function isVisible(el) {
+                  if (!el || el.disabled) return false;
+                  var style = window.getComputedStyle(el);
+                  var rect = el.getBoundingClientRect();
+                  return style.display !== 'none' && style.visibility !== 'hidden' &&
+                    rect.width > 0 && rect.height > 0;
+                }
                 var targetIds = ['getDynamicCode', 'getImprovePhoneCodeId_otp', 'getImproveEmailCodeId_otp'];
-                var clicked = null;
+                var target = null;
                 for (var i = 0; i < targetIds.length; i++) {
                   var btn = document.getElementById(targetIds[i]);
-                  if (btn) {
-                    btn.click();
-                    clicked = targetIds[i];
+                  if (isVisible(btn)) {
+                    target = btn;
                     break;
                   }
                 }
-                if (clicked) return JSON.stringify({ok:true, id:clicked});
+                if (!target) {
+                  target = Array.prototype.slice.call(document.querySelectorAll(
+                    '[onclick*=DynamicCode], [onclick*=dynamicCode], [id*=DynamicCode], [id*=dynamicCode]'
+                  )).find(function(el) {
+                    return isVisible(el) && el.tagName !== 'INPUT';
+                  }) || null;
+                }
+                if (target) {
+                  target.click();
+                  return JSON.stringify({ok:true, id:target.id || 'dynamic-code-action'});
+                }
                 return JSON.stringify({ok:false, error:'NOT_FOUND'});
               } catch(e) {
                 return JSON.stringify({ok:false, error: e.message});
@@ -552,9 +664,9 @@ class WebViewLoginActivity : AppCompatActivity() {
         """.trimIndent()
         webView.evaluateJavascript(sendScript) { raw ->
             try {
-                val json = JSONObject(raw.trim('"').replace("\\\"", "\""))
+                val json = parseJavascriptJson(raw)
                 if (json.optBoolean("ok", false)) {
-                    LogUtils.success("MFA send code triggered: ${json.optString("text", "")}")
+                    LogUtils.success("MFA send code triggered: ${json.optString("id", "")}")
                 } else {
                     LogUtils.w("MFA send code button not found: ${json.optString("error", "")}")
                     mfaError = "未找到发送按钮，请尝试切换验证方式"
@@ -570,14 +682,19 @@ class WebViewLoginActivity : AppCompatActivity() {
         val state = mfaState
         if (!state.visible) return
         LogUtils.d("submitNativeMfaInput hasInput=${state.hasVisibleInput} inputId=${state.inputId} submitId=${state.submitButtonId}")
-        val codeValue = value.replace("'", "\\'")
+        val codeValue = JSONObject.quote(value)
         val injectScript = """
             (function() {
               var result = {ok:false, error:''};
               // Find the visible code input field
               var input = null;
+              var preferredId = ${JSONObject.quote(mfaState.inputId)};
+              if (preferredId) {
+                var preferred = document.getElementById(preferredId);
+                if (preferred && preferred.offsetParent !== null) input = preferred;
+              }
               var codeIds = ['dynamicCode','captcha_code','smsCode','otpCode','verifyCode'];
-              for (var i=0;i<codeIds.length;i++) {
+              for (var i=0; !input && i<codeIds.length;i++) {
                 var el = document.getElementById(codeIds[i]);
                 if (el && el.offsetParent !== null) { input = el; break; }
               }
@@ -593,13 +710,18 @@ class WebViewLoginActivity : AppCompatActivity() {
                 var pwd = document.getElementById('password');
                 if (pwd) input = pwd;
               }
-              if (!input) { result.error='input not found'; return JSON.stringify(result); }
-              input.value = '$codeValue';
-              input.dispatchEvent(new Event('input', {bubbles:true}));
-              input.dispatchEvent(new Event('change', {bubbles:true}));
-              result.inputId = input.id || 'unknown';
+              if (input) {
+                input.value = $codeValue;
+                input.dispatchEvent(new Event('input', {bubbles:true}));
+                input.dispatchEvent(new Event('change', {bubbles:true}));
+                result.inputId = input.id || input.name || 'unknown';
+              }
               // Click submit button by exact ID
-              var submitBtn = document.getElementById('reAuthSubmitBtn');
+              var submitBtn = Array.prototype.slice.call(document.querySelectorAll('#reAuthSubmitBtn, [id*=reAuthSubmit], .submit_btn')).find(function(el) {
+                var rect = el.getBoundingClientRect();
+                var style = window.getComputedStyle(el);
+                return style.display !== 'none' && style.visibility !== 'hidden' && rect.width > 0 && rect.height > 0;
+              });
               if (submitBtn) {
                 submitBtn.click();
                 result.ok = true;
@@ -611,7 +733,7 @@ class WebViewLoginActivity : AppCompatActivity() {
         """.trimIndent()
         webView.evaluateJavascript(injectScript) { raw ->
             try {
-                val json = JSONObject(raw.trim('"').replace("\\\"", "\""))
+                val json = parseJavascriptJson(raw)
                 if (!json.optBoolean("ok", false)) {
                     val err = json.optString("error", "unknown")
                     LogUtils.w("MFA inject failed: $err")
@@ -635,7 +757,7 @@ class WebViewLoginActivity : AppCompatActivity() {
         LogUtils.d("MFA method switch triggered")
         mfaState = mfaState.copy(visible = false)
         webView.postDelayed({
-            detectMfaAndBridge(webView, webView.url ?: "")
+            webView.url?.let { scheduleMfaDetection(webView, it) }
         }, 1000)
     }
 
@@ -664,6 +786,7 @@ class WebViewLoginActivity : AppCompatActivity() {
         }, 2500)
     }
 
+    @Suppress("DEPRECATION")
     private fun evaluatePageDiagnostics(view: WebView, marker: String) {
         val script = """
             (function() {
@@ -744,6 +867,7 @@ class WebViewLoginActivity : AppCompatActivity() {
         }
     }
 
+    @Suppress("DEPRECATION")
     private fun logWebViewRenderMarker(marker: String, view: WebView?, url: String? = view?.url) {
         if (silentMode || view == null) return
         val rect = Rect()
@@ -801,6 +925,25 @@ class WebViewLoginActivity : AppCompatActivity() {
         if (config.campus != EASToken.Campus.BENBU) return false
         val uri = Uri.parse(url)
         return uri.host == "ivpn.hit.edu.cn"
+    }
+
+    private fun isAuthenticationPage(url: String): Boolean {
+        val uri = Uri.parse(url)
+        return uri.path.orEmpty().contains("/authserver/login", ignoreCase = true)
+    }
+
+    private fun isMfaPage(url: String): Boolean {
+        return Uri.parse(url).path.orEmpty().contains("/authserver/reAuthCheck/", ignoreCase = true)
+    }
+
+    private fun parseJavascriptJson(raw: String): JSONObject {
+        val trimmed = raw.trim()
+        val decoded = if (trimmed.startsWith('"')) {
+            JSONArray("[$trimmed]").getString(0)
+        } else {
+            trimmed
+        }
+        return JSONObject(decoded)
     }
 
     private fun isJwtsPage(url: String): Boolean {
@@ -875,14 +1018,19 @@ class WebViewLoginActivity : AppCompatActivity() {
     }
 
     private fun startCookiePolling() {
+        val generation = ++cookiePollingGeneration
         cookieRetryCount = 0
         webView.postDelayed({
-            checkCookiesAndFinish()
+            checkCookiesAndFinish(generation)
         }, COOKIE_RETRY_DELAY_MS)
     }
 
-    private fun checkCookiesAndFinish() {
-        if (finished) return
+    private fun stopCookiePolling() {
+        cookiePollingGeneration++
+    }
+
+    private fun checkCookiesAndFinish(generation: Int) {
+        if (finished || generation != cookiePollingGeneration) return
 
         val cookies = collectCookies()
         val currentUrl = webView.url ?: ""
@@ -921,7 +1069,7 @@ class WebViewLoginActivity : AppCompatActivity() {
 
         cookieRetryCount++
         webView.postDelayed({
-            checkCookiesAndFinish()
+            checkCookiesAndFinish(generation)
         }, COOKIE_RETRY_DELAY_MS)
     }
 
@@ -1219,6 +1367,7 @@ class WebViewLoginActivity : AppCompatActivity() {
     private fun finishWithCookies(cookies: Map<String, String>, eelabToken: String? = null) {
         if (finished) return
         finished = true
+        stopCookiePolling()
 
         val cookiesJson = JSONObject(cookies as Map<*, *>).toString()
         val intent = Intent().apply {
@@ -1235,6 +1384,7 @@ class WebViewLoginActivity : AppCompatActivity() {
     private fun finishWithCancelledResult() {
         if (finished) return
         finished = true
+        stopCookiePolling()
         setResult(Activity.RESULT_CANCELED)
         finish()
     }
@@ -1266,6 +1416,8 @@ class WebViewLoginActivity : AppCompatActivity() {
     }
 
     override fun onDestroy() {
+        finished = true
+        stopCookiePolling()
         if (::webView.isInitialized) {
             (webView.parent as? ViewGroup)?.removeView(webView)
             webView.stopLoading()
@@ -1296,7 +1448,6 @@ private fun WebViewLoginScreen(
     onMfaDismiss: () -> Unit,
     onBack: () -> Unit,
     onWebViewReady: (WebView) -> Unit,
-    onPopupContainerReady: (FrameLayout) -> Unit,
 ) {
     Column(
         modifier = Modifier
@@ -1325,14 +1476,16 @@ private fun WebViewLoginScreen(
                 )
             )
         }
-        if (progressVisible && !silentMode) {
-            LinearProgressIndicator(
-                progress = { (progressValue.coerceIn(0, 100)) / 100f },
-                color = MaterialTheme.colorScheme.primary,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(3.dp)
-            )
+        if (!silentMode) {
+            Box(modifier = Modifier.fillMaxWidth().height(3.dp)) {
+                if (progressVisible) {
+                    LinearProgressIndicator(
+                        progress = { (progressValue.coerceIn(0, 100)) / 100f },
+                        color = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.fillMaxSize()
+                    )
+                }
+            }
         }
         Box(
             modifier = Modifier
@@ -1343,12 +1496,6 @@ private fun WebViewLoginScreen(
                 modifier = Modifier.fillMaxSize(),
                 factory = { context ->
                     WebView(context).also(onWebViewReady)
-                }
-            )
-            AndroidView(
-                modifier = Modifier.fillMaxSize(),
-                factory = { context ->
-                    FrameLayout(context).also(onPopupContainerReady)
                 }
             )
             // Plan D: Native MFA overlay
@@ -1373,7 +1520,7 @@ private fun WebViewLoginScreen(
                             verticalArrangement = Arrangement.spacedBy(12.dp)
                         ) {
                             Text(
-                                text = "多因子认证",
+                                text = mfaState.promptTitle.ifBlank { "多因子认证" },
                                 style = MaterialTheme.typography.titleMedium,
                                 color = MaterialTheme.colorScheme.onSurface
                             )
@@ -1390,8 +1537,22 @@ private fun WebViewLoginScreen(
                                     onValueChange = onMfaInputChange,
                                     label = { Text(mfaState.inputPlaceholder) },
                                     singleLine = true,
+                                    keyboardOptions = KeyboardOptions(
+                                        keyboardType = if (mfaState.inputType.equals("password", ignoreCase = true)) {
+                                            KeyboardType.Password
+                                        } else {
+                                            KeyboardType.Number
+                                        }
+                                    ),
+                                    visualTransformation = if (mfaState.inputType.equals("password", ignoreCase = true)) {
+                                        PasswordVisualTransformation()
+                                    } else {
+                                        VisualTransformation.None
+                                    },
                                     modifier = Modifier.fillMaxWidth()
                                 )
+                            }
+                            if (mfaState.canSendCode) {
                                 Button(
                                     onClick = onMfaSendCode,
                                     modifier = Modifier.fillMaxWidth(),
@@ -1402,13 +1563,13 @@ private fun WebViewLoginScreen(
                                 ) {
                                     Text("获取验证码")
                                 }
-                                mfaError?.let { err ->
-                                    Text(
-                                        text = err,
-                                        color = MaterialTheme.colorScheme.error,
-                                        style = MaterialTheme.typography.bodySmall
-                                    )
-                                }
+                            }
+                            mfaError?.let { err ->
+                                Text(
+                                    text = err,
+                                    color = MaterialTheme.colorScheme.error,
+                                    style = MaterialTheme.typography.bodySmall
+                                )
                             }
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
@@ -1421,7 +1582,10 @@ private fun WebViewLoginScreen(
                                 TextButton(onClick = onMfaDismiss) {
                                     Text("取消")
                                 }
-                                Button(onClick = onMfaSubmit) {
+                                Button(
+                                    onClick = onMfaSubmit,
+                                    enabled = !mfaState.hasVisibleInput || mfaInputValue.isNotBlank()
+                                ) {
                                     Text("确认登录")
                                 }
                             }

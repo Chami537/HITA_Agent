@@ -12,22 +12,21 @@ import cn.limpu.hita.data.AppDatabase
 import cn.limpu.hita.data.model.eas.EASToken
 import cn.limpu.hita.data.model.eas.ExamItem
 import cn.limpu.hita.data.model.eas.TermItem
-import cn.limpu.hita.data.model.timetable.EventItem
 import cn.limpu.hita.data.model.timetable.Timetable
+import cn.limpu.hita.data.repository.ExamEventMapper
 import cn.limpu.hita.data.repository.EASRepository
 import cn.limpu.hita.ui.eas.EASViewModel
 import cn.limpu.hita.utils.LogUtils
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import java.sql.Timestamp
-import java.text.SimpleDateFormat
 import java.util.*
 import javax.inject.Inject
 
 @HiltViewModel
 class ExamViewModel @Inject constructor(
     easRepo: EASRepository,
-    @ApplicationContext private val context: Context
+    @param:ApplicationContext private val context: Context
 ) : EASViewModel(easRepo) {
     /**
      * LiveData区
@@ -117,7 +116,8 @@ class ExamViewModel @Inject constructor(
         if (selectedTerm == null) {
             LogUtils.d("⏳ term is null, waiting for term list to load first", "ExamViewModel")
             termsLiveData.observeForever(object : androidx.lifecycle.Observer<DataState<List<TermItem>>> {
-                override fun onChanged(result: DataState<List<TermItem>>) {
+                override fun onChanged(value: DataState<List<TermItem>>) {
+                    val result = value
                     if (result.state == DataState.STATE.SUCCESS) {
                         val termList = result.data
                         if (termList != null && termList.isNotEmpty()) {
@@ -283,28 +283,23 @@ class ExamViewModel @Inject constructor(
         }
 
         // 获取已导入的考试事件（用于去重）
-        val existingEvents = eventItemDao.getEventsOfTimetableSync(timetable.id)
-            .filter { it.type == EventItem.TYPE.EXAM }
+        val existingKeys = eventItemDao.getExamEventsSync()
+            .mapTo(mutableSetOf()) { ExamEventMapper.identityKey(it) }
 
         var successCount = 0
         var skippedCount = 0
 
         for (exam in exams) {
-            val examEvent = parseExamToEvent(exam, timetable.id)
+            val examEvent = ExamEventMapper.toEvent(exam, timetable.id, "ExamViewModel")
             if (examEvent == null) {
                 skippedCount++
                 LogUtils.e("❌ 解析失败: ${exam.courseName}", null, "ExamViewModel")
                 continue
             }
 
-            // 去重：名称 + 地点 + 开始时间完全一致则跳过
-            val isDuplicate = existingEvents.any { event ->
-                event.name == examEvent.name &&
-                    event.place == examEvent.place &&
-                    event.from.time == examEvent.from.time
-            }
+            val examKey = ExamEventMapper.identityKey(examEvent)
 
-            if (isDuplicate) {
+            if (!existingKeys.add(examKey)) {
                 skippedCount++
                 LogUtils.d("⏭️ 跳过已导入: ${exam.courseName}", "ExamViewModel")
                 continue
@@ -357,69 +352,6 @@ class ExamViewModel @Inject constructor(
         LogUtils.d("✅ 创建默认课表: ${newTable.name}", "ExamViewModel")
 
         return newTable
-    }
-
-    /**
-     * 将考试信息解析为EventItem
-     *
-     * 解析逻辑：
-     * 1. 解析日期：examDate格式 "YYYY-MM-DD"
-     * 2. 解析时间：examTime格式 "HH:MM-HH:MM"
-     * 3. 创建EventItem，type设置为EXAM
-     *
-     * @param exam 考试信息
-     * @param timetableId 课表ID
-     * @return EventItem对象，解析失败返回null
-     */
-    private fun parseExamToEvent(exam: ExamItem, timetableId: String): EventItem? {
-        try {
-            val dateFormat = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
-            val timeFormat = SimpleDateFormat("HH:mm", Locale.getDefault())
-
-            // 解析日期
-            val date = exam.examDate ?: return null
-            val parsedDate = dateFormat.parse(date) ?: return null
-
-            // 解析时间段 "HH:MM-HH:MM"
-            val timeRange = exam.examTime ?: return null
-            val times = timeRange.split("-")
-            if (times.size != 2) return null
-
-            val startTime = timeFormat.parse(times[0]) ?: return null
-            val endTime = timeFormat.parse(times[1]) ?: return null
-
-            // 组合日期和时间
-            val calendarStart = Calendar.getInstance().apply {
-                time = parsedDate
-                set(Calendar.HOUR_OF_DAY, startTime.hours)
-                set(Calendar.MINUTE, startTime.minutes)
-            }
-
-            val calendarEnd = Calendar.getInstance().apply {
-                time = parsedDate
-                set(Calendar.HOUR_OF_DAY, endTime.hours)
-                set(Calendar.MINUTE, endTime.minutes)
-            }
-
-            // 创建EventItem
-            return EventItem().apply {
-                type = EventItem.TYPE.EXAM
-                source = EventItem.SOURCE_EAS_IMPORT
-                name = "[考试] " + (exam.courseName ?: "考试")
-                place = exam.examLocation ?: ""
-                teacher = "" // 考试没有教师信息
-                subjectId = ""
-                this.timetableId = timetableId
-                from = Timestamp(calendarStart.timeInMillis)
-                to = Timestamp(calendarEnd.timeInMillis)
-                fromNumber = 0 // 考试不使用节次
-                lastNumber = 0
-            }
-
-        } catch (e: Exception) {
-            LogUtils.e("❌ 解析考试时间失败: ${e.message}", e, "ExamViewModel")
-            return null
-        }
     }
 
 }

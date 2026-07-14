@@ -70,6 +70,7 @@ import cn.limpu.hita.ui.design.HitaTheme
 import cn.limpu.hita.ui.eas.EASActivity
 import cn.limpu.hita.utils.TermNameFormatter
 import cn.limpu.hita.utils.WeightedScoreCalculator
+import cn.limpu.hita.utils.formatCredits
 import com.limpu.style.widgets.PopUpCheckableList
 import dagger.hilt.android.AndroidEntryPoint
 
@@ -535,7 +536,7 @@ private fun ScoreSummaryCard(
                 )
                 SummaryMetric(
                     label = stringResource(R.string.score_total_credits),
-                    value = if (hasCumulative) cumulative?.totalCredits.toString() else "-",
+                    value = if (hasCumulative) formatCredits(cumulative?.totalCredits ?: 0f) else "-",
                     primary = false,
                     modifier = Modifier.weight(1f)
                 )
@@ -690,7 +691,7 @@ private fun ScoreRow(
                 overflow = TextOverflow.Ellipsis
             )
             Text(
-                text = score.credits.takeIf { it > 0 }?.let { "${it}学分" }.orEmpty(),
+                text = score.credits.takeIf { it > 0 }?.let { "${formatCredits(it)}学分" }.orEmpty(),
                 modifier = Modifier.padding(end = tokens.spacing.sm),
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 fontSize = 12.sp

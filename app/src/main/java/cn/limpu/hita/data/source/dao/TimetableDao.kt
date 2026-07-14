@@ -37,6 +37,12 @@ interface TimetableDao {
         legacyCode: String
     ): LiveData<Timetable?>
 
+    /**
+     * 按候选 EAS code 查找本地课表。
+     *
+     * 新格式会带校区前缀，例如 BENBU:2025-2026-2；旧版本只保存 term.getCode()。
+     * 这里保留 legacyCode 优先级，是为了升级后能复用旧数据，避免同一学期导入出两张课表。
+     */
     @Query(
         """
         SELECT * FROM timetable
@@ -57,11 +63,27 @@ interface TimetableDao {
         legacyCode: String
     ): Timetable?
 
+    /**
+     * 自定义课表：code 为空或空白的课表。
+     *
+     * 注意：不要把“自定义课表”直接等同于“默认课表”。用户手动创建的课表也在这里。
+     */
     @Query("SELECT * FROM timetable WHERE code is null OR TRIM(code) = '' ORDER BY createdAt ASC LIMIT 1")
     fun getFirstCustomTimetableSync(): Timetable?
 
     @Query("SELECT * FROM timetable order by -startTime")
     fun getTimetables(): LiveData<List<Timetable>>
+
+    @Query("SELECT * FROM timetable order by -startTime")
+    fun getTimetablesSync(): List<Timetable>
+
+    /**
+     * 历史数据清理使用：只找名字像“默认课表”的自定义课表。
+     *
+     * 清理逻辑仍需在 Repository 中结合事件来源判断，DAO 不负责决定是否删除。
+     */
+    @Query("SELECT * FROM timetable WHERE (code is null OR TRIM(code) = '') AND name like :defaultName")
+    fun getDefaultNamedCustomTimetablesSync(defaultName: String): List<Timetable>
 
     @Query("SELECT * FROM timetable WHERE id is :id")
     fun getTimetableById(id: String): LiveData<Timetable>
@@ -76,7 +98,10 @@ interface TimetableDao {
     fun getTimetableNamesWithDefaultSync(defaultName: String): List<String>
 
     /**
-     * 获得离某时间戳最近的时间表
+     * 获得离某时间戳最近且已开始的时间表。
+     *
+     * 这个查询用于“没有显式选择课表”时的兜底，例如考试导入选择目标课表。
+     * SQL 保持旧实现不动；如需增强排序规则，应在 Repository 包装新方法。
      */
     @Query("SELECT * from timetable where (:ts-startTime in (select min(:ts-startTime) from timetable where :ts>startTime)) limit 1")
     fun getTimetableClosestToTimestamp(ts: Long): LiveData<Timetable?>

@@ -7,7 +7,7 @@ object WeightedScoreCalculator {
         val gpa: Float,              // 学期绩点（GPA）
         val cgpa: Float,             // 累计绩点（CGPA），单学期时等于GPA
         val weightedAverage: Float,  // 加权平均分（学分绩）
-        val totalCredits: Int,       // 总学分
+        val totalCredits: Float,     // 总学分
         val validCourses: Int        // 有效课程数
     )
 
@@ -34,16 +34,16 @@ object WeightedScoreCalculator {
     fun calculate(items: List<CourseScoreItem>): ScoreResult {
         val validItems = items.filter { it.credits > 0 && it.finalScores > 0 }
         if (validItems.isEmpty()) {
-            return ScoreResult(0f, 0f, 0f, 0, 0)
+            return ScoreResult(0f, 0f, 0f, 0f, 0)
         }
-        val totalCredits = validItems.sumOf { it.credits }
-        val totalScoreXCredit = validItems.sumOf { it.finalScores * it.credits }
+        val totalCredits = validItems.sumOf { it.credits.toDouble() }.toFloat()
+        val totalScoreXCredit = validItems.sumOf { it.finalScores * it.credits.toDouble() }
         val totalGradePointXCredit = validItems.sumOf {
             (scoreToGradePoint(it.finalScores) * it.credits.toDouble())
-        }.toFloat()
+        }
 
-        val weightedAverage = totalScoreXCredit.toFloat() / totalCredits
-        val gpa = totalGradePointXCredit / totalCredits
+        val weightedAverage = (totalScoreXCredit / totalCredits).toFloat()
+        val gpa = (totalGradePointXCredit / totalCredits).toFloat()
 
         return ScoreResult(
             gpa = gpa,
@@ -62,16 +62,16 @@ object WeightedScoreCalculator {
     fun calculateCumulative(allSemesterItems: List<List<CourseScoreItem>>): ScoreResult {
         val allValid = allSemesterItems.flatten().filter { it.credits > 0 && it.finalScores > 0 }
         if (allValid.isEmpty()) {
-            return ScoreResult(0f, 0f, 0f, 0, 0)
+            return ScoreResult(0f, 0f, 0f, 0f, 0)
         }
-        val totalCredits = allValid.sumOf { it.credits }
-        val totalScoreXCredit = allValid.sumOf { it.finalScores * it.credits }
+        val totalCredits = allValid.sumOf { it.credits.toDouble() }.toFloat()
+        val totalScoreXCredit = allValid.sumOf { it.finalScores * it.credits.toDouble() }
         val totalGradePointXCredit = allValid.sumOf {
             (scoreToGradePoint(it.finalScores) * it.credits.toDouble())
-        }.toFloat()
+        }
 
-        val cumulativeWeightedAverage = totalScoreXCredit.toFloat() / totalCredits
-        val cumulativeGpa = totalGradePointXCredit / totalCredits
+        val cumulativeWeightedAverage = (totalScoreXCredit / totalCredits).toFloat()
+        val cumulativeGpa = (totalGradePointXCredit / totalCredits).toFloat()
 
         return ScoreResult(
             gpa = cumulativeGpa,

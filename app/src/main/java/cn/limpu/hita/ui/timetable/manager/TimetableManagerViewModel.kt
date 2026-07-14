@@ -25,7 +25,7 @@ class TimetableManagerViewModel @Inject constructor(
 
 
     init {
-        timetableRepository.ensureDefaultCustomTimetableAsync()
+        timetableRepository.actionPrepareTimetableList()
     }
 
     fun startDeleteTimetables(timetables:List<Timetable>){

@@ -120,11 +120,16 @@ class TimetableRepository @Inject constructor(val application: Application) {
     }
     /**
      * 获取[from,to)内的事件，包含颜色
+     *
+     * 这是主课表显示入口，底层 DAO 会返回所有课表的事件。
+     * 为兼容历史版本产生的重复默认课表，这里对完全相同的 EAS 课程做显示层去重；
+     * 手动活动、考试、ICS 导入等非 EAS 课程不在这里合并。
      */
     fun getEventsDuringWithColor(from: Long, to: Long): LiveData<List<EventItem>> {
         return MTransformations.switchMap(eventItemDao.getEventsDuring(from, to)) { events ->
+            val displayEvents = dedupeDisplayEvents(events)
             val subjects = mutableSetOf<String>()
-            for (e in events) {
+            for (e in displayEvents) {
                 if (e.subjectId.isNotBlank()) {
                     subjects.add(e.subjectId)
                 }
@@ -135,7 +140,7 @@ class TimetableRepository @Inject constructor(val application: Application) {
                 for (color in colors) {
                     map[color.id] = color.color
                 }
-                for (e in events) {
+                for (e in displayEvents) {
                     map[e.subjectId]?.let {
                         e.color = it
                     } ?: run {
@@ -144,7 +149,7 @@ class TimetableRepository @Inject constructor(val application: Application) {
                         }
                     }
                 }
-                events
+                displayEvents
             }
         }
     }
@@ -272,6 +277,22 @@ class TimetableRepository @Inject constructor(val application: Application) {
         }
     }
 
+    /**
+     * 进入主页/课表管理页前的轻量维护动作。
+     *
+     * 顺序很重要：
+     * 1. 先清理历史遗留的纯重复默认课表；
+     * 2. 如果数据库完全没有课表，再创建一个默认自定义课表。
+     *
+     * 这样不会在已有 EAS 学期课表时额外造一张空“默认课表”。
+     */
+    fun actionPrepareTimetableList() {
+        executor.execute {
+            cleanupDefaultDuplicateTimetablesSync()
+            ensureDefaultCustomTimetableSync()
+        }
+    }
+
     fun ensureDefaultCustomTimetableAsync() {
         executor.execute {
             ensureDefaultCustomTimetableSync()
@@ -283,9 +304,53 @@ class TimetableRepository @Inject constructor(val application: Application) {
         val existing = timetableDao.getFirstCustomTimetableSync()
         if (existing != null) return existing
 
+        val firstTimetable = timetableDao.getTimetablesSync().firstOrNull()
+        if (firstTimetable != null) return firstTimetable
+
         val newTable = buildNextDefaultTimetableSync()
         timetableDao.saveTimetableSync(newTable)
         return newTable
+    }
+
+    @WorkerThread
+    fun cleanupDefaultDuplicateTimetablesSync() {
+        val defaultPrefix = application.getString(R.string.default_timetable_name)
+        val defaults = timetableDao.getDefaultNamedCustomTimetablesSync("$defaultPrefix%")
+        if (defaults.isEmpty()) return
+
+        val easTables = timetableDao.getTimetablesSync()
+            .filter { !it.code.isNullOrBlank() }
+        if (easTables.isEmpty()) return
+
+        val easEventKeys = easTables.associate { timetable ->
+            timetable.id to eventItemDao.getImportedClassEventsOfTimetableSync(timetable.id)
+                .mapTo(mutableSetOf()) { importedClassEventIdentityKey(it) }
+        }
+
+        val deleteIds = defaults.mapNotNull { timetable ->
+            val eventCount = eventItemDao.countEventsOfTimetableSync(timetable.id)
+            if (eventCount == 0) {
+                return@mapNotNull timetable.id
+            }
+
+            val nonImportedClassCount = eventItemDao.countNonImportedClassEventsOfTimetableSync(timetable.id)
+            if (nonImportedClassCount > 0) {
+                return@mapNotNull null
+            }
+
+            val defaultKeys = eventItemDao.getImportedClassEventsOfTimetableSync(timetable.id)
+                .mapTo(mutableSetOf()) { importedClassEventIdentityKey(it) }
+            val duplicatedByEas = defaultKeys.isNotEmpty() && easEventKeys.values.any { easKeys ->
+                easKeys.isNotEmpty() && easKeys.containsAll(defaultKeys)
+            }
+            if (duplicatedByEas) timetable.id else null
+        }
+        if (deleteIds.isEmpty()) return
+
+        LogUtils.d("cleanupDefaultDuplicateTimetables: deleting defaults=$deleteIds")
+        timetableDao.deleteTimetablesInIdsSync(deleteIds)
+        eventItemDao.deleteEventsFromTimetablesSync(deleteIds)
+        subjectDao.deleteSubjectsFromTimetablesSync(deleteIds)
     }
 
     @WorkerThread
@@ -519,6 +584,29 @@ class TimetableRepository @Inject constructor(val application: Application) {
             subjectDao.clear()
             timetableDao.clear()
         }
+    }
+
+    private fun dedupeDisplayEvents(events: List<EventItem>): List<EventItem> {
+        val seenImportedClasses = mutableSetOf<String>()
+        return events.filter { event ->
+            if (event.source != EventItem.SOURCE_EAS_IMPORT || event.type != EventItem.TYPE.CLASS) {
+                true
+            } else {
+                seenImportedClasses.add(importedClassEventIdentityKey(event))
+            }
+        }
+    }
+
+    private fun importedClassEventIdentityKey(event: EventItem): String {
+        return listOf(
+            event.name.trim(),
+            event.place.orEmpty().trim(),
+            event.teacher.orEmpty().trim(),
+            event.from.time.toString(),
+            event.to.time.toString(),
+            event.fromNumber.toString(),
+            event.lastNumber.toString(),
+        ).joinToString("|")
     }
 
 }
