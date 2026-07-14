@@ -18,6 +18,7 @@
 local.properties
 /.idea/
 .worktrees
+.kotlin/
 keystore.properties
 app/hita-release.jks
 .claude/
