@@ -56,7 +56,7 @@ class ExcelFileParser : FileParser {
                                 break
                             }
 
-                            val cellValue = when (cell.cellTypeEnum) {
+                            val cellValue = when (cell.cellType) {
                                 org.apache.poi.ss.usermodel.CellType.STRING -> cell.stringCellValue
                                 org.apache.poi.ss.usermodel.CellType.NUMERIC -> cell.numericCellValue.toString()
                                 org.apache.poi.ss.usermodel.CellType.BOOLEAN -> cell.booleanCellValue.toString()

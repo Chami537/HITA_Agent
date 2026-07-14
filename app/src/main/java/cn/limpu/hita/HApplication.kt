@@ -188,6 +188,7 @@ class HApplication : Application() {
                     val cache = cacheField.get(null)
                     LogUtils.d( "✅ 缓存类型: ${cache?.javaClass?.name}")
 
+                    @Suppress("UNCHECKED_CAST")
                     val cmapCache = cache as? MutableMap<String, Any>
                     if (cmapCache != null) {
                         // 创建 CMapParser 实例

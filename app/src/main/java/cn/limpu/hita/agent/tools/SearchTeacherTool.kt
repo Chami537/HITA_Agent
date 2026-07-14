@@ -11,7 +11,7 @@ class SearchTeacherTool : ReActTool {
             }
             AgentBackendClient.searchTeacherSync(query) ?: "无法执行教师搜索"
         } catch (e: Exception) {
-            "Error: ${e.message}"
+            "教师搜索失败：${e.message ?: "未知错误"}"
         }
     }
 

@@ -1,7 +1,6 @@
 package cn.limpu.hita.ui.about
 
 import android.os.Bundle
-import android.text.Html
 import android.text.method.LinkMovementMethod
 import android.view.LayoutInflater
 import android.view.View
@@ -59,10 +58,12 @@ import androidx.compose.ui.unit.Velocity
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.core.text.HtmlCompat
 import androidx.fragment.app.DialogFragment
 import cn.limpu.hita.R
 import cn.limpu.hita.ui.design.HitaComposeTheme
 import cn.limpu.hita.ui.design.HitaTheme
+import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.launch
 
@@ -127,6 +128,7 @@ class UserAgreementDialog : DialogFragment() {
 }
 
 @Composable
+@OptIn(FlowPreview::class)
 private fun UserAgreementScreen(
     showActions: Boolean,
     initialPage: Int = 0,
@@ -353,7 +355,7 @@ private fun UserAgreementScreen(
                         val newContent = pages[pageIndex]
                         if (textView.text.toString() != newContent) {
                             textView.text =
-                                Html.fromHtml(newContent, Html.FROM_HTML_MODE_LEGACY)
+                                HtmlCompat.fromHtml(newContent, HtmlCompat.FROM_HTML_MODE_LEGACY)
                             textView.setTextColor(textColor)
                             textView.setLinkTextColor(linkColor)
                         }

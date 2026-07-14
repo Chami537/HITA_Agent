@@ -32,7 +32,7 @@ class AgentToolExecutor(
             onTrace(
                 AgentTraceEvent(
                     stage = "tool_attempt",
-                    message = "Executing ${tool.name}",
+                    message = "正在执行工具：${tool.name}",
                     payload = "attempt=$attempt/$maxAttempts",
                 )
             )
@@ -43,7 +43,7 @@ class AgentToolExecutor(
                 onTrace(
                     AgentTraceEvent(
                         stage = "tool_timeout",
-                        message = "Tool timed out",
+                        message = "工具执行超时",
                         payload = "tool=${tool.name},attempt=$attempt/$maxAttempts,retry=$isRetryable",
                     )
                 )
@@ -52,7 +52,7 @@ class AgentToolExecutor(
                 } else {
                     onResult(
                         AgentToolResult.failure(
-                            "[${AgentToolErrorType.TIMEOUT}] tool ${tool.name} timed out after ${policy.timeoutMs}ms"
+                            "工具执行超时（${policy.timeoutMs}ms）"
                         )
                     )
                 }
@@ -68,11 +68,11 @@ class AgentToolExecutor(
                 }
 
                 val isRetryable = attempt < maxAttempts
-                val rawMessage = result.error?.ifBlank { null } ?: "tool ${tool.name} failed"
+                val rawMessage = result.error?.ifBlank { null } ?: "工具 ${tool.name} 执行失败"
                 onTrace(
                     AgentTraceEvent(
                         stage = "tool_failure",
-                        message = "Tool returned failure",
+                        message = "工具返回失败",
                         payload = "tool=${tool.name},attempt=$attempt/$maxAttempts,error=${AgentTraceSanitizer.sanitizeError(rawMessage)}",
                     )
                 )
@@ -81,7 +81,7 @@ class AgentToolExecutor(
                 } else {
                     onResult(
                         AgentToolResult.failure(
-                            "[${AgentToolErrorType.TOOL_FAILURE}] ${AgentTraceSanitizer.sanitizeError(rawMessage)}"
+                            AgentTraceSanitizer.sanitizeError(rawMessage)
                         )
                     )
                 }

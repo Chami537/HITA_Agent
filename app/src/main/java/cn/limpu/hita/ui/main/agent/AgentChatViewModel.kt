@@ -314,12 +314,12 @@ class AgentChatViewModel @Inject constructor(
                             when {
                                 action.contains("get_timetable") -> "正在查询课表…"
                                 action.contains("search_timetable") -> "正在搜索课表事件…"
+                                action.contains("search_empty_classroom") -> "正在查询空教室…"
                                 action.contains("search_external_resource") -> "正在搜索课程资料…"
                                 action.contains("search_course") -> "正在搜索课程信息…"
                                 action.contains("get_course_detail") -> "正在获取课程详情…"
                                 action.contains("search_teacher") -> "正在搜索教师信息…"
                                 action.contains("web_search") -> "正在搜索网页…"
-                                action.contains("brave_answer") -> "正在搜索答案…"
                                 action.contains("rag_search") -> "正在搜索知识库…"
                                 action.contains("crawl_page") -> "正在爬取网页…"
                                 action.contains("crawl_site") -> "正在爬取网站…"
@@ -401,13 +401,18 @@ class AgentChatViewModel @Inject constructor(
                             val action = trace.message.substringAfter("→ ", "").trim()
                             when {
                                 action.contains("get_timetable") -> "正在查询课表…"
+                                action.contains("search_timetable") -> "正在搜索课表事件…"
+                                action.contains("search_empty_classroom") -> "正在查询空教室…"
                                 action.contains("search_external_resource") -> "正在搜索课程资料…"
                                 action.contains("search_course") -> "正在搜索课程信息…"
                                 action.contains("get_course_detail") -> "正在获取课程详情…"
                                 action.contains("search_teacher") -> "正在搜索教师信息…"
                                 action.contains("web_search") -> "正在搜索网页…"
-                                action.contains("brave_answer") -> "正在搜索答案…"
                                 action.contains("rag_search") -> "正在搜索知识库…"
+                                action.contains("crawl_page") -> "正在爬取网页…"
+                                action.contains("crawl_site") -> "正在爬取网站…"
+                                action.contains("submit_review") -> "正在提交评价…"
+                                action.contains("add_activity") -> "正在添加活动…"
                                 else -> "正在思考…"
                             }
                         }
@@ -661,7 +666,7 @@ class AgentChatViewModel @Inject constructor(
                 }
             }
         }
-        return uri.lastPathSegment ?: "file"
+        return uri.lastPathSegment ?: "文件"
     }
 
     private fun formatFileSize(bytes: Int): String = when {
@@ -815,7 +820,7 @@ class AgentChatViewModel @Inject constructor(
                         rowData.append(" ...(列数过多)")
                         break
                     }
-                    val cellValue = when (cell.cellTypeEnum) {
+                    val cellValue = when (cell.cellType) {
                         org.apache.poi.ss.usermodel.CellType.STRING -> cell.stringCellValue
                         org.apache.poi.ss.usermodel.CellType.NUMERIC -> cell.numericCellValue.toString()
                         org.apache.poi.ss.usermodel.CellType.BOOLEAN -> cell.booleanCellValue.toString()

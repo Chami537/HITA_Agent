@@ -24,15 +24,17 @@
 AI 助手基于 ReAct 框架，支持以下工具调用：
 
 1. **课表查询** (`get_timetable`) - 查询今日/明日/任意日期的课程安排
-2. **课程搜索** (`search_course`) - 搜索课程代码和名称
-3. **课程详情** (`get_course_detail`) - 获取课程 README、评价、教师信息等详细内容
-4. **教师搜索** (`search_teacher`) - 搜索教师信息和主页
-5. **网页搜索** (`web_search`) - Brave 搜索引擎
-6. **AI 搜索** (`brave_answer`) - Brave AI 智能回答
-7. **知识库查询** (`rag_search`) - 查询学校相关知识库
-8. **网页爬取** (`crawl_page`/`crawl_site`) - 爬取网页内容
-9. **提交评价** (`submit_review`) - 提交课程评价/学习笔记/PR（Pull Request）
-10. **添加日程** (`add_activity`) - 添加日历提醒
+2. **添加日程** (`add_activity`) - 添加日历提醒
+3. **空教室查询** (`search_empty_classroom`) - 查询本地缓存的空教室
+4. **本地课表搜索** (`search_timetable`) - 搜索课程、考试、活动等本地课表事件
+5. **课程搜索** (`search_course`) - 搜索课程代码和名称
+6. **课程详情** (`get_course_detail`) - 获取课程 README、评价、教师信息等详细内容
+7. **课程资料搜索** (`search_external_resource`) - 搜索 HOA / HITCS / 薪火课程资料
+8. **教师搜索** (`search_teacher`) - 搜索教师信息和主页
+9. **网页搜索** (`web_search`) - Bocha 搜索引擎
+10. **知识库查询** (`rag_search`) - 查询学校相关知识库
+11. **网页爬取** (`crawl_page`/`crawl_site`/`crawl_status`) - 爬取网页内容并查询进度
+12. **提交评价** (`submit_review`) - 提交课程评价/学习笔记/PR（Pull Request）
 
 ### 技术架构
 - **前端**：Android Kotlin + Retrofit

@@ -5,6 +5,7 @@ import androidx.lifecycle.MutableLiveData
 import com.limpu.component.data.DataState
 import cn.limpu.hita.BuildConfig
 import cn.limpu.hita.data.model.resource.CourseReadmeData
+import cn.limpu.hita.data.model.resource.CoursePreviewData
 import cn.limpu.hita.data.model.resource.CourseResourceItem
 import cn.limpu.hita.data.model.resource.CourseSectionSummary
 import cn.limpu.hita.data.model.resource.CourseStructureSummary
@@ -16,6 +17,14 @@ import org.jsoup.Connection
 import org.jsoup.Jsoup
 import java.util.UUID
 import cn.limpu.hita.utils.LogUtils
+
+internal fun resolveHoaRepositoryIdentifier(repoName: String, fallbackCourseCode: String = ""): String {
+    return repoName.trim()
+        .trimEnd('/')
+        .substringAfterLast('/')
+        .trim()
+        .ifBlank { fallbackCourseCode.trim() }
+}
 
 object HoaResourceSource {
     private val baseUrl = BuildConfig.HOA_BASE_URL.removeSuffix("/")
@@ -82,19 +91,6 @@ object HoaResourceSource {
         val data = resObj.optJSONObject("data")
         val resultsArr = data?.optJSONArray("results") ?: JSONArray()
         return parseCourseItems(resultsArr)
-    }
-
-    /**
-     * Extract course_code from repo_name.
-     * repo_name format: "campus/COURSE_CODE" or "campus/repo_name"
-     */
-    private fun extractCourseCode(repoName: String): String {
-        val parts = repoName.split("/")
-        return if (parts.size >= 2) {
-            parts[1].uppercase()
-        } else {
-            repoName.uppercase()
-        }
     }
 
     fun searchCourses(query: String, campus: String? = null): LiveData<DataState<List<CourseResourceItem>>> {
@@ -212,7 +208,7 @@ object HoaResourceSource {
         Thread {
             try {
                 val resolvedCampus = normalizeHoaCampus(campus) ?: extractCampus(repoName)
-                val courseCode = extractCourseCode(repoName)
+                val courseCode = resolveHoaRepositoryIdentifier(repoName)
 
                 val requestBody = JSONObject()
                 val target = JSONObject()
@@ -262,7 +258,7 @@ object HoaResourceSource {
         Thread {
             try {
                 val resolvedCampus = normalizeHoaCampus(campus) ?: extractCampus(repoName)
-                val courseCode = extractCourseCode(repoName)
+                val courseCode = resolveHoaRepositoryIdentifier(repoName)
 
                 val requestBody = JSONObject()
                 val target = JSONObject()
@@ -399,7 +395,7 @@ object HoaResourceSource {
         Thread {
             try {
                 val resolvedCampus = normalizeHoaCampus(campus) ?: extractCampus(repoName)
-                val actualCourseCode = if (courseCode.isNotBlank()) courseCode else extractCourseCode(repoName)
+                val actualCourseCode = resolveHoaRepositoryIdentifier(repoName, courseCode)
 
                 val requestBody = JSONObject()
                 val target = JSONObject()
@@ -438,6 +434,64 @@ object HoaResourceSource {
                 val prUrl = pr?.optString("url", "")
 
                 result.postValue(DataState(prUrl ?: "", DataState.STATE.SUCCESS))
+            } catch (e: Exception) {
+                result.postValue(DataState(DataState.STATE.FETCH_FAILED, e.message))
+            }
+        }.start()
+        return result
+    }
+
+    fun previewOps(
+        repoName: String,
+        courseCode: String,
+        courseName: String,
+        ops: JSONArray,
+        campus: String? = null,
+    ): LiveData<DataState<CoursePreviewData>> {
+        val result = MutableLiveData<DataState<CoursePreviewData>>()
+        Thread {
+            try {
+                val resolvedCampus = normalizeHoaCampus(campus) ?: extractCampus(repoName)
+                val actualCourseCode = resolveHoaRepositoryIdentifier(repoName, courseCode)
+                val target = JSONObject().apply {
+                    put("campus", resolvedCampus)
+                    put("course_code", actualCourseCode)
+                    if (courseName.isNotBlank()) put("course_name", courseName)
+                }
+                val requestBody = JSONObject().apply {
+                    put("target", target)
+                    put("ops", ops)
+                }
+                val response = withHeaders(Jsoup.connect("$baseUrl/v1/course:preview"))
+                    .header("Content-Type", "application/json")
+                    .requestBody(requestBody.toString())
+                    .method(Connection.Method.POST)
+                    .timeout(60000)
+                    .execute()
+                val resObj = JSONObject(response.body())
+                if (response.statusCode() >= 400 || !resObj.optBoolean("ok", false)) {
+                    val error = resObj.optJSONObject("error")
+                    result.postValue(
+                        DataState(
+                            DataState.STATE.FETCH_FAILED,
+                            error?.optString("message", response.body()) ?: response.body(),
+                        )
+                    )
+                    return@Thread
+                }
+                val data = resObj.optJSONObject("data") ?: JSONObject()
+                val previewResult = data.optJSONObject("result") ?: JSONObject()
+                val summary = data.optJSONObject("summary") ?: JSONObject()
+                result.postValue(
+                    DataState(
+                        CoursePreviewData(
+                            markdown = previewResult.optString("readme_md"),
+                            changedFiles = jsonArrayToList(summary.optJSONArray("changed_files")),
+                            warnings = jsonArrayToList(summary.optJSONArray("warnings")),
+                        ),
+                        DataState.STATE.SUCCESS,
+                    )
+                )
             } catch (e: Exception) {
                 result.postValue(DataState(DataState.STATE.FETCH_FAILED, e.message))
             }
@@ -513,7 +567,7 @@ object HoaResourceSource {
                     return@Thread
                 }
 
-                val data = resObj.optJSONObject("data")
+                val data = resObj.optJSONObject("data") ?: JSONObject()
                 result.postValue(DataState(data, DataState.STATE.SUCCESS))
             } catch (e: Exception) {
                 result.postValue(DataState(DataState.STATE.FETCH_FAILED, e.message))

@@ -12,7 +12,7 @@ class WebSearchTool : ReActTool {
             }
             formatResults(result.results, query)
         } catch (e: Exception) {
-            "Error: ${e.message}"
+            "搜索失败：${e.message ?: "未知错误"}"
         }
     }
 
@@ -22,9 +22,9 @@ class WebSearchTool : ReActTool {
     }
 
     private fun formatResults(results: List<Map<String, Any>>, query: String): String {
-        if (results.isEmpty()) return "No results found for: $query"
+        if (results.isEmpty()) return "未找到“$query”的网页搜索结果"
         return results.take(5).mapIndexed { index, r ->
-            val title = r["title"]?.toString() ?: "Result ${index + 1}"
+            val title = r["title"]?.toString() ?: "搜索结果 ${index + 1}"
             val url = r["url"]?.toString() ?: ""
             val desc = r["content"]?.toString()?.ifBlank { r["description"]?.toString() } ?: ""
             "$title\n$url\n$desc"

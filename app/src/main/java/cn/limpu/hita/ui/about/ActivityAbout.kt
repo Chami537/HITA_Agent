@@ -6,7 +6,6 @@ import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
-import android.text.Html
 import android.text.method.LinkMovementMethod
 import android.view.HapticFeedbackConstants
 import android.widget.TextView
@@ -70,6 +69,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.core.content.pm.PackageInfoCompat
+import androidx.core.text.HtmlCompat
 import com.limpu.component.data.DataState
 import cn.limpu.hita.BuildConfig
 import cn.limpu.hita.R
@@ -416,7 +417,7 @@ private fun HtmlText(
         },
         update = { textView ->
             textView.setTextColor(color.toArgbCompat())
-            textView.text = Html.fromHtml(html)
+            textView.text = HtmlCompat.fromHtml(html, HtmlCompat.FROM_HTML_MODE_LEGACY)
         }
     )
 }
@@ -578,11 +579,7 @@ private fun CheckUpdateButton(
 
 private fun currentVersionCode(context: android.content.Context): Long {
     val packageInfo = context.packageManager.getPackageInfo(context.packageName, 0)
-    return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-        packageInfo.longVersionCode
-    } else {
-        packageInfo.versionCode.toLong()
-    }
+    return PackageInfoCompat.getLongVersionCode(packageInfo)
 }
 
 private fun Color.toArgbCompat(): Int {

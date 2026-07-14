@@ -21,7 +21,7 @@ class TimetableAgentEngine(
         onTrace(
             AgentTraceEvent(
                 stage = "start",
-                message = "Running timetable agent",
+                message = "正在运行课表智能体",
                 payload = AgentTraceSanitizer.sanitizePayload("action=${input.action},timetableId=${input.timetableId.orEmpty()}"),
             )
         )
@@ -34,7 +34,7 @@ class TimetableAgentEngine(
 
         val tool = toolRegistry.get<TimetableAgentInput, TimetableAgentOutput>(toolName)
         if (tool == null) {
-            onResult(AgentToolResult.failure("tool $toolName not found"))
+            onResult(AgentToolResult.failure("未找到所需的课表工具"))
             return
         }
 
@@ -51,20 +51,20 @@ class TimetableAgentEngine(
             onTrace = onTrace,
         ) { result ->
             if (!result.ok) {
-                onResult(AgentToolResult.failure(result.error ?: "timetable agent tool failed"))
+                onResult(AgentToolResult.failure(result.error ?: "课表工具执行失败"))
                 return@execute
             }
 
             val output = result.data
             if (output == null) {
-                onResult(AgentToolResult.failure("timetable agent returned empty output"))
+                onResult(AgentToolResult.failure("课表工具返回为空"))
                 return@execute
             }
 
             onTrace(
                 AgentTraceEvent(
                     stage = "result",
-                    message = "Timetable agent finished",
+                    message = "课表智能体执行完成",
                     payload = AgentTraceSanitizer.sanitizePayload(
                         "action=${output.action},eventCount=${output.events.size},addedCount=${output.addedEventIds.size}"
                     ),

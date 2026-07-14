@@ -36,6 +36,12 @@ data class CourseReadmeData(
     var markdown: String = "",
 )
 
+data class CoursePreviewData(
+    var markdown: String = "",
+    var changedFiles: List<String> = emptyList(),
+    var warnings: List<String> = emptyList(),
+)
+
 data class ValidateReadmeResult(
     var ok: Boolean = false,
     var toml: String = "",

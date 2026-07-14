@@ -18,7 +18,7 @@
     <string name="date_format_pm">下午hh:mm</string>
     <string name="yesterday">昨天</string>
     <string name="the_day_before_yesterday">前天</string>
-    <string name="date_format_with_prefix">"%s %s"</string>
+    <string name="date_format_with_prefix">"%1$s %2$s"</string>
     <string name="hint_eas_username">统一身份认证账号</string>
     <string name="hint_eas_password">密码</string>
     <string name="hint_eas_login">请登录教务账号以继续</string>
@@ -187,6 +187,17 @@
     <string name="course_contribution_mode_course_review">子课程评价</string>
     <string name="course_contribution_mode_multi_teacher_review">子课程教师评价</string>
     <string name="course_contribution_mode_multi_section_append">子课程章节补充</string>
+    <string name="course_contribution_existing_course">已有课程</string>
+    <string name="course_contribution_new_course">新建课程</string>
+    <string name="course_contribution_new_course_name">子课程名称</string>
+    <string name="course_contribution_new_course_hint">填写子课程名称</string>
+    <string name="course_contribution_course_exists">该子课程已存在，请选择已有课程</string>
+    <string name="course_contribution_preview">预览 PR</string>
+    <string name="course_contribution_preview_title">确认课程改动</string>
+    <string name="course_contribution_preview_files">将修改：%s</string>
+    <string name="course_contribution_confirm_submit">确认提交</string>
+    <string name="course_contribution_preview_empty">后端未返回可确认的预览内容</string>
+    <string name="course_contribution_back">返回</string>
     <string name="score_summary_gpa">百分制学分绩</string>
     <string name="score_summary_rank">排名</string>
     <string name="score_cumulative_weighted_avg">累计学分绩</string>
@@ -404,7 +415,7 @@
     <string name="import_all_exams">导入全部考试</string>
     <string name="importing_exams">正在导入全部考试...</string>
     <string name="import_exams_success">已导入 %d 场考试</string>
-    <string name="import_exams_partial">已导入 %d/%d 场考试</string>
+    <string name="import_exams_partial">已导入 %1$d/%2$d 场考试</string>
     <string name="import_exams_failed">导入失败</string>
     <string name="no_exams_to_import">没有可导入的考试</string>
     <string name="all_exams_imported">所有考试已导入</string>
@@ -434,7 +445,7 @@
     <string name="score_reminder_title">成绩提醒</string>
     <string name="score_reminder_subtitle">有新成绩时提醒我</string>
     <string name="score_reminder_notification_title">有新成绩</string>
-    <string name="score_reminder_notification_more">%s 等%d门课程已出成绩</string>
+    <string name="score_reminder_notification_more">%1$s 等%2$d门课程已出成绩</string>
 
     <string name="navi_credit_stats">学分统计</string>
     <string name="credit_stats_title">学分统计</string>
@@ -448,7 +459,7 @@
     <string name="credit_expand_detail">查看领域分布</string>
     <string name="credit_collapse_detail">收起</string>
     <string name="credit_format">%.1f 学分</string>
-    <string name="credit_goal_progress_format">%.1f / %.1f</string>
+    <string name="credit_goal_progress_format">%1$.1f / %2$.1f</string>
     <string name="credit_type_required">必修</string>
     <string name="credit_type_required_check">必修（考查）</string>
     <string name="credit_type_limited">限选</string>
@@ -522,7 +533,7 @@
     <string name="dialog_message_bind_failed">验证失败！</string>
     <string name="button_try_again">再来一次</string>
     <string name="notif_migrate_data_failed">迁移数据失败</string>
-    <string name="dialog_title_already_bound_to">该学号已验证至%s(%s)</string>
+    <string name="dialog_title_already_bound_to">该学号已验证至%1$s(%2$s)</string>
     <string name="dialog_item_migrate_data">迁移该账号数据至本账号</string>
     <string name="login_success">登录成功</string>
     <string name="wrong_username">用户名不存在</string>
@@ -551,7 +562,7 @@
     <string name="delete_curriculum">删除课程表</string>
     <string name="tab_hitsz_website_info">哈工深官网</string>
     <string name="load_more">加载更多</string>
-    <string name="web_total_searched">共搜索到%d条结果(显示%d条)</string>
+    <string name="web_total_searched">共搜索到%1$d条结果(显示%2$d条)</string>
     <string name="nothing_found">没有搜索到结果</string>
     <string name="teacher_total_searched">共查找到%d位教师</string>
     <string name="tab_search_teacher">教师</string>
@@ -581,7 +592,7 @@
     <string name="teacher_temp_label">助手服务器暂存</string>
     <string name="tab_search_location">地点</string>
     <string name="location_total_searched">共找到%d个地点</string>
-    <string name="time_format_1">%d小时%d分钟</string>
+    <string name="time_format_1">%1$d小时%2$d分钟</string>
     <string name="time_format_2">%d分钟</string>
     <string name="time_format_2_simplified">%d分</string>
     <string name="time_format_3">%d小时</string>
@@ -865,7 +876,7 @@
     <string name="compress_failed">图片压缩失败</string>
     <string name="post_fail">发布失败！</string>
     <string name="uploading_pic">正在上传图片</string>
-    <string name="uploading_progress">正在上传第%d/%d个文件:%d%%</string>
+    <string name="uploading_progress">正在上传第%1$d/%2$d个文件:%3$d%%</string>
     <string name="uploade_done">上传完成</string>
     <string name="post_success">发布成功！</string>
     <string name="reply_post">回复帖子</string>
@@ -1054,8 +1065,8 @@
     <string name="guid_7p">主页下滑可以展开事件面板</string>
     <string name="guid_7s">待办事项 DDL管理</string>
     <string name="date_format_2_simplified">第%d周EEE</string>
-    <string name="date_format_2_wk_followed">第%d周（%s）EEEE</string>
-    <string name="date_format_2_simplified_wk_followed">第%d周（%s）EEE</string>
+    <string name="date_format_2_wk_followed">第%1$d周（%2$s）EEEE</string>
+    <string name="date_format_2_simplified_wk_followed">第%1$d周（%2$s）EEE</string>
     <string name="date_format_2_wk_replaced">%sEEEE</string>
     <string name="date_format_2_simplified_wk_replaced">%sEEE</string>
     <string name="date_format_4">YY年M月d日</string>
@@ -1123,7 +1134,7 @@
     <string name="week_title">第%d周</string>
     <string name="no_timetable">无课表</string>
     <string name="holiday">假期</string>
-    <string name="event_duration_text">%s-%s</string>
+    <string name="event_duration_text">%1$s-%2$s</string>
     <string name="title_subjects">科目</string>
     <string name="title_teachers">教师</string>
     <string name="male">男</string>

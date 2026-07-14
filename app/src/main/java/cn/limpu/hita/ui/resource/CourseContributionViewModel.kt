@@ -6,6 +6,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.switchMap
 import com.limpu.component.data.DataState
 import cn.limpu.hita.data.model.resource.CourseStructureSummary
+import cn.limpu.hita.data.model.resource.CoursePreviewData
 import cn.limpu.hita.data.repository.EASRepository
 import cn.limpu.hita.data.repository.HoaRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -29,12 +30,21 @@ class CourseContributionViewModel @Inject constructor(
         repository.submitOps(it.repoName, it.courseCode, it.courseName, it.repoType, it.ops, hoaCampus)
     }
 
+    private val previewRequestLiveData = MutableLiveData<SubmitRequest>()
+    val previewLiveData: LiveData<DataState<CoursePreviewData>> = previewRequestLiveData.switchMap {
+        repository.previewOps(it.repoName, it.courseCode, it.courseName, it.ops, hoaCampus)
+    }
+
     fun load(repoName: String) {
         repoNameLiveData.value = repoName
     }
 
     fun submit(repoName: String, courseCode: String, courseName: String, repoType: String, ops: JSONArray) {
         submitRequestLiveData.value = SubmitRequest(repoName, courseCode, courseName, repoType, ops)
+    }
+
+    fun preview(repoName: String, courseCode: String, courseName: String, repoType: String, ops: JSONArray) {
+        previewRequestLiveData.value = SubmitRequest(repoName, courseCode, courseName, repoType, ops)
     }
 
     data class SubmitRequest(

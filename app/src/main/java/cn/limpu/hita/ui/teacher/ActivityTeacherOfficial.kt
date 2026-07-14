@@ -1,7 +1,6 @@
 package cn.limpu.hita.ui.teacher
 
 import android.os.Bundle
-import android.text.Html
 import android.text.method.LinkMovementMethod
 import android.widget.ImageView
 import android.widget.TextView
@@ -58,6 +57,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.core.text.HtmlCompat
 import com.bumptech.glide.Glide
 import com.bumptech.glide.request.RequestOptions
 import com.limpu.component.data.DataState
@@ -389,6 +389,7 @@ private fun TeacherTabs(
 }
 
 @Composable
+@Suppress("DEPRECATION")
 private fun HtmlPage(
     html: String,
     modifier: Modifier = Modifier
@@ -408,7 +409,7 @@ private fun HtmlPage(
         },
         update = { textView ->
             textView.setTextColor(textColor.toArgbCompat())
-            textView.text = Html.fromHtml(html)
+            textView.text = HtmlCompat.fromHtml(html, HtmlCompat.FROM_HTML_MODE_LEGACY)
         }
     )
 }

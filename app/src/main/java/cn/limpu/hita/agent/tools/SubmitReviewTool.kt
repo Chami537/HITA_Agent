@@ -1,6 +1,7 @@
 package cn.limpu.hita.agent.tools
 
 import cn.limpu.hita.agent.remote.PrServerClient
+import cn.limpu.hita.data.model.resource.CourseContributionOps
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -27,32 +28,28 @@ class SubmitReviewTool : ReActTool {
         )
 
         val ops = when (reviewType) {
-            "course" -> {
+            "course", "new_course" -> {
                 if (courseName.isBlank()) {
                     return "提交评价失败：多项目课程评价需要 course_name"
                 }
-                listOf(
-                    mapOf(
-                        "op" to "add_section_item",
-                        "course_name" to courseName,
-                        "title" to title,
-                        "content" to content,
-                        "author" to author,
-                    )
+                CourseContributionOps.courseSection(
+                    courseName = courseName,
+                    sectionTitle = title,
+                    content = content,
+                    author = author,
+                    createCourse = reviewType == "new_course",
                 )
             }
             "course_teacher" -> {
                 if (courseName.isBlank() || teacherName.isBlank()) {
                     return "提交评价失败：课程教师评价需要 course_name 和 teacher_name"
                 }
-                listOf(
-                    mapOf(
-                        "op" to "add_course_teacher_review",
-                        "course_name" to courseName,
-                        "teacher_name" to teacherName,
-                        "content" to content,
-                        "author" to author,
-                    )
+                CourseContributionOps.courseTeacherReview(
+                    courseName = courseName,
+                    teacherName = teacherName,
+                    content = content,
+                    author = author,
+                    createCourse = false,
                 )
             }
             "section" -> {
@@ -83,6 +80,11 @@ class SubmitReviewTool : ReActTool {
             }
         }
 
+        val preview = PrServerClient.previewSync(courseCode, ops)
+        if (!preview.ok) {
+            return "评价预览失败：${preview.error?.message ?: "未知错误"}"
+        }
+
         val result = PrServerClient.submitSync(courseCode, ops)
         if (result.ok) {
             val prUrl = result.data?.pr?.url
@@ -95,4 +97,5 @@ class SubmitReviewTool : ReActTool {
             return "评价提交失败：${result.error?.message ?: "未知错误"}"
         }
     }
+
 }

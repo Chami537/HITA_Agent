@@ -6,10 +6,15 @@ import android.graphics.Rect
 import android.net.Uri
 import android.os.Bundle
 import android.provider.OpenableColumns
+import android.text.InputType
 import android.text.method.LinkMovementMethod
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import android.widget.EditText
+import android.widget.LinearLayout
+import android.widget.RadioButton
+import android.widget.RadioGroup
 import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
@@ -83,6 +88,9 @@ import cn.limpu.hita.agent.core.AgentSession
 import cn.limpu.hita.agent.timetable.TimetableAgentInput
 import cn.limpu.hita.agent.timetable.TimetableAgentOutput
 import cn.limpu.hita.agent.tools.SearchExternalResourceTool
+import cn.limpu.hita.data.repository.AiChatProvider
+import cn.limpu.hita.data.repository.AiSettings
+import cn.limpu.hita.data.repository.AiSettingsRepository
 import cn.limpu.hita.data.model.chat.ChatSession
 import cn.limpu.hita.data.model.resource.AgentResourceCard
 import cn.limpu.hita.ui.design.HitaComposeTheme
@@ -134,6 +142,7 @@ class AgentChatFragment : androidx.fragment.app.Fragment() {
                         onDeleteSession = ::showDeleteSessionDialog,
                         onSwitchSession = { viewModel.switchToSession(it.id) },
                         onOpenResourceCard = ::openResourceCard,
+                        onOpenAiSettings = ::showAiSettingsDialog,
                     )
                 }
             }
@@ -171,6 +180,95 @@ class AgentChatFragment : androidx.fragment.app.Fragment() {
             }
             .setNegativeButton("取消", null)
             .show()
+    }
+
+    private fun showAiSettingsDialog() {
+        val ctx = context ?: return
+        val repo = AiSettingsRepository(ctx)
+        val settings = repo.getSettings()
+        val padding = (16 * ctx.resources.displayMetrics.density).toInt()
+
+        val container = LinearLayout(ctx).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(padding, padding / 2, padding, 0)
+        }
+
+        container.addView(TextView(ctx).apply {
+            text = "AI 将由应用端直连模型服务。默认使用内置 DeepSeek；自定义 Key 只保存在本机。"
+            textSize = 13f
+        })
+
+        val builtInId = View.generateViewId()
+        val customId = View.generateViewId()
+        val providerGroup = RadioGroup(ctx).apply {
+            orientation = RadioGroup.VERTICAL
+            addView(RadioButton(ctx).apply {
+                id = builtInId
+                text = "内置 DeepSeek"
+            })
+            addView(RadioButton(ctx).apply {
+                id = customId
+                text = "自定义 DeepSeek Key"
+            })
+            check(
+                when (settings.chatProvider) {
+                    AiChatProvider.BUILTIN_DEEPSEEK -> builtInId
+                    AiChatProvider.CUSTOM_DEEPSEEK -> customId
+                }
+            )
+        }
+        container.addView(providerGroup)
+
+        val deepSeekInput = settingsEditText(
+            initialValue = settings.customDeepSeekApiKey,
+            hint = "自定义 DeepSeek API Key（sk-...）",
+            isSecret = true,
+        )
+        container.addView(deepSeekInput)
+
+        val zhipuInput = settingsEditText(
+            initialValue = settings.customZhipuApiKey,
+            hint = "自定义智谱 API Key（附件识别，可留空）",
+            isSecret = true,
+        )
+        container.addView(zhipuInput)
+
+        AlertDialog.Builder(ctx)
+            .setTitle("AI 设置")
+            .setView(container)
+            .setNegativeButton("取消", null)
+            .setPositiveButton("保存") { _, _ ->
+                val provider = when (providerGroup.checkedRadioButtonId) {
+                    customId -> AiChatProvider.CUSTOM_DEEPSEEK
+                    else -> AiChatProvider.BUILTIN_DEEPSEEK
+                }
+                repo.saveSettings(
+                    AiSettings(
+                        chatProvider = provider,
+                        customDeepSeekApiKey = deepSeekInput.text?.toString().orEmpty(),
+                        customZhipuApiKey = zhipuInput.text?.toString().orEmpty(),
+                    )
+                )
+                Toast.makeText(ctx, "AI 设置已保存", Toast.LENGTH_SHORT).show()
+            }
+            .show()
+    }
+
+    private fun settingsEditText(
+        initialValue: String,
+        hint: String,
+        isSecret: Boolean,
+    ): EditText {
+        return EditText(requireContext()).apply {
+            setText(initialValue)
+            this.hint = hint
+            setSingleLine(true)
+            inputType = if (isSecret) {
+                InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD
+            } else {
+                InputType.TYPE_CLASS_TEXT
+            }
+        }
     }
 
     private fun openFilePicker() {
@@ -223,6 +321,7 @@ private fun AgentChatScreen(
     onDeleteSession: (ChatSession) -> Unit,
     onSwitchSession: (ChatSession) -> Unit,
     onOpenResourceCard: (AgentResourceCard) -> Unit,
+    onOpenAiSettings: () -> Unit,
 ) {
     val tokens = HitaTheme.tokens
     val messages by viewModel.messages.observeAsState(emptyList())
@@ -390,6 +489,13 @@ private fun AgentChatScreen(
                     Icon(
                         painter = painterResource(R.drawable.ic_baseline_delete_24),
                         contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                IconButton(onClick = onOpenAiSettings) {
+                    Icon(
+                        painter = painterResource(R.drawable.ic_menu_settings),
+                        contentDescription = "AI 设置",
                         tint = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
@@ -759,5 +865,5 @@ private fun getFileName(context: android.content.Context, uri: Uri): String {
             }
         }
     }
-    return uri.lastPathSegment ?: "file"
+    return uri.lastPathSegment ?: "文件"
 }

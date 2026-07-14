@@ -13,9 +13,9 @@ object WidgetThemeUtils {
         val locationChipDrawableRes: Int,
         val clockDrawableRes: Int,
         val placeholderDrawableRes: Int,
-        @ColorInt val primaryTextColor: Int,
-        @ColorInt val secondaryTextColor: Int,
-        @ColorInt val accentColor: Int
+        @param:ColorInt val primaryTextColor: Int,
+        @param:ColorInt val secondaryTextColor: Int,
+        @param:ColorInt val accentColor: Int
     )
 
     fun useDarkPalette(mode: ThemeTools.MODE, systemNight: Boolean): Boolean {
