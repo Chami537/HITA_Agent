@@ -14,7 +14,7 @@ buildscript {
         maven { url = uri("https://repo.grails.org/grails/core") }
     }
     dependencies {
-        classpath 'com.android.tools.build:gradle:8.6.1'
+        classpath 'com.android.tools.build:gradle:8.10.1'
         classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:$kotlin_version"
         classpath "org.jetbrains.kotlin.plugin.compose:org.jetbrains.kotlin.plugin.compose.gradle.plugin:$kotlin_version"
         classpath 'com.google.dagger:hilt-android-gradle-plugin:2.57.2'
