@@ -1004,6 +1004,17 @@ private fun TimetableToolbarTitle(
     onAddEvent: () -> Unit,
 ) {
     var nameMenuExpanded by remember { mutableStateOf(false) }
+    val isAppleGlass = HitaTheme.preferenceStyle == ThemeTools.STYLE.APPLE_GLASS
+    val nameChipShape = RoundedCornerShape(12.dp)
+    val nameChipColor = if (isAppleGlass) {
+        if (HitaTheme.isDark) {
+            Color(0xFF182330).copy(alpha = 0.72f)
+        } else {
+            Color(0xFFF7FAFF).copy(alpha = 0.76f)
+        }
+    } else {
+        MaterialTheme.colorScheme.surface.copy(alpha = 0.8f)
+    }
     Row(
         modifier = Modifier.fillMaxWidth(),
         verticalAlignment = Alignment.CenterVertically
@@ -1031,8 +1042,21 @@ private fun TimetableToolbarTitle(
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier
                         .padding(start = HitaTheme.tokens.spacing.md)
-                        .clip(RoundedCornerShape(12.dp))
-                        .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.8f))
+                        .clip(nameChipShape)
+                        .background(nameChipColor)
+                        .then(
+                            if (isAppleGlass) {
+                                Modifier.border(
+                                    width = 0.5.dp,
+                                    color = Color.White.copy(
+                                        alpha = if (HitaTheme.isDark) 0.20f else 0.42f
+                                    ),
+                                    shape = nameChipShape
+                                )
+                            } else {
+                                Modifier
+                            }
+                        )
                         .clickable { nameMenuExpanded = true }
                         .padding(horizontal = 6.dp, vertical = 3.dp)
                 )

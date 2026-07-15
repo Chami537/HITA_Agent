@@ -6,9 +6,6 @@ import androidx.compose.material3.CardColors
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawWithCache
@@ -22,19 +19,8 @@ import androidx.compose.ui.graphics.drawOutline
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import dev.chrisbanes.haze.HazeState
-import dev.chrisbanes.haze.HazeStyle
-import dev.chrisbanes.haze.hazeChild
 import kotlin.math.max
 import kotlin.math.min
-
-private object HitaCourseHazeRegistry {
-    var hazeState by mutableStateOf<Any?>(null)
-}
-
-fun updateHitaCourseHazeState(hazeState: Any?) {
-    HitaCourseHazeRegistry.hazeState = hazeState
-}
 
 @Composable
 fun hitaIsAppleGlassSurface(): Boolean {
@@ -144,29 +130,15 @@ fun Modifier.hitaCourseCrystalGlassModifier(
     shape: Shape,
     tint: Color,
     isMuted: Boolean = false,
-    usesRealBackdrop: Boolean = true,
     gradientEnabled: Boolean = true,
     opacity: Float = 1f,
 ): Modifier {
     return if (hitaIsAppleGlassSurface()) {
-        val hazeState = HitaCourseHazeRegistry.hazeState as? HazeState
         val opacityScale = opacity.coerceIn(0.2f, 1f)
         val edgeHighlightOpacity = (if (isMuted) 0.36f else 0.62f) * opacityScale
         val edgeShadowOpacity = (if (isMuted) 0.10f else 0.16f) * opacityScale
         val motionHighlightOpacity = (if (isMuted) 0.08f else 0.16f) * opacityScale
-        val hazeStyle = HazeStyle(
-            tint = Color.White.copy(alpha = (if (isMuted) 0.16f else 0.22f) * opacityScale),
-            blurRadius = if (isMuted) 18.dp else 28.dp,
-            noiseFactor = 0.08f
-        )
         this
-            .then(
-                if (usesRealBackdrop && hazeState != null) {
-                    Modifier.hazeChild(state = hazeState, shape = shape, style = hazeStyle)
-                } else {
-                    Modifier
-                }
-            )
             .shadow(
                 elevation = if (isMuted) 1.dp else 2.dp,
                 shape = shape,
