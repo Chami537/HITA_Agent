@@ -497,7 +497,7 @@ private fun TimelineHeaderCard(
             },
         shape = cardShape,
         colors = if (isGlass) {
-            hitaGlassCardColors(MaterialTheme.colorScheme.primary, glassAlpha = 0.38f)
+            hitaGlassCardColors(MaterialTheme.colorScheme.primary, glassAlpha = 0.54f)
         } else {
             CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primary)
         },
@@ -511,9 +511,8 @@ private fun TimelineHeaderCard(
                     Brush.linearGradient(
                         colors = if (isGlass) {
                             listOf(
-                                MaterialTheme.colorScheme.primary.copy(alpha = 0.34f),
-                                Color.White.copy(alpha = 0.12f),
-                                MaterialTheme.colorScheme.secondary.copy(alpha = 0.22f)
+                                MaterialTheme.colorScheme.primary.copy(alpha = 0.48f),
+                                MaterialTheme.colorScheme.secondary.copy(alpha = 0.32f)
                             )
                         } else {
                             listOf(

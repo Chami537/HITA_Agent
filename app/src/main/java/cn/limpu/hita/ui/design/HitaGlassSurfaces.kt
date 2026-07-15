@@ -78,6 +78,7 @@ fun Modifier.hitaGlassCardModifier(
     elevation: Dp = 14.dp,
 ): Modifier {
     return if (hitaIsAppleGlassSurface()) {
+        val isDark = HitaTheme.isDark
         val shadowElevation = min(elevation.value * 0.30f, 5f).dp
         this
             .then(
@@ -98,18 +99,17 @@ fun Modifier.hitaGlassCardModifier(
                 val outline = shape.createOutline(size, layoutDirection, this)
                 val material = Brush.linearGradient(
                     colors = listOf(
-                        Color.White.copy(alpha = 0.38f),
-                        Color.White.copy(alpha = 0.19f),
-                        Color(0xFFDCEEFF).copy(alpha = 0.12f),
-                        Color.White.copy(alpha = 0.24f)
+                        Color.White.copy(alpha = if (isDark) 0.13f else 0.22f),
+                        Color.White.copy(alpha = if (isDark) 0.07f else 0.12f),
+                        Color(0xFFDCEEFF).copy(alpha = if (isDark) 0.05f else 0.08f)
                     ),
                     start = Offset(0f, 0f),
                     end = Offset(size.width, size.height)
                 )
                 val topEdge = Brush.linearGradient(
                     colors = listOf(
-                        Color.White.copy(alpha = 0.66f),
-                        Color.White.copy(alpha = 0.20f),
+                        Color.White.copy(alpha = if (isDark) 0.24f else 0.40f),
+                        Color.White.copy(alpha = if (isDark) 0.10f else 0.16f),
                         Color.Transparent
                     ),
                     start = Offset(0f, 0f),

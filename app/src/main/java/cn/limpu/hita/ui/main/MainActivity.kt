@@ -20,9 +20,12 @@ import androidx.activity.viewModels
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.FastOutLinearInEasing
+import androidx.compose.animation.core.LinearOutSlowInEasing
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -671,14 +674,26 @@ private fun MainScreen(
     val density = LocalDensity.current
     val drawerWidth = 260.dp
     val drawerWidthPx = with(density) { drawerWidth.toPx() }
+    val isAppleGlass = themeStyle == ThemeTools.STYLE.APPLE_GLASS
     val drawerProgress by animateFloatAsState(
         targetValue = if (drawerOpen) 1f else 0f,
-        animationSpec = spring(dampingRatio = 0.9f, stiffness = 300f),
+        animationSpec = if (isAppleGlass) {
+            tween(
+                durationMillis = if (drawerOpen) 240 else 200,
+                easing = if (drawerOpen) LinearOutSlowInEasing else FastOutLinearInEasing
+            )
+        } else {
+            spring(dampingRatio = 0.9f, stiffness = 300f)
+        },
         label = "drawer"
     )
-    val isAppleGlass = themeStyle == ThemeTools.STYLE.APPLE_GLASS
-    val contentScale = if (isAppleGlass) 1f else 1f - drawerProgress * 0.2f
-    val contentOffset = if (isAppleGlass) 0f else -drawerWidthPx * drawerProgress
+    val appleGlassContentOffsetPx = with(density) { 10.dp.toPx() }
+    val contentScale = if (isAppleGlass) 1f - drawerProgress * 0.008f else 1f - drawerProgress * 0.2f
+    val contentOffset = if (isAppleGlass) {
+        -appleGlassContentOffsetPx * drawerProgress
+    } else {
+        -drawerWidthPx * drawerProgress
+    }
     val imeVisible = WindowInsets.ime.getBottom(density) > 0
     val navBottomPx = WindowInsets.navigationBars.getBottom(density)
     val threeButtonThresholdPx = with(density) { 32.dp.toPx() }
@@ -809,7 +824,11 @@ private fun MainScreen(
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .background(Color.Black.copy(alpha = 0.32f * drawerProgress))
+                    .background(
+                        Color.Black.copy(
+                            alpha = (if (isAppleGlass) 0.22f else 0.32f) * drawerProgress
+                        )
+                    )
                     .pointerInput(drawerOpen) {
                         detectTapGestures { onCloseDrawer() }
                     }
@@ -820,7 +839,6 @@ private fun MainScreen(
             drawerState = drawerState,
             themeStyle = themeStyle,
             hazeState = if (useGlobalHaze) hazeState else null,
-            liquidGlassBackdrop = if (isAppleGlass) liquidGlassBackdropHandle else null,
             onHeaderClick = onDrawerHeader,
             onAvatarClick = onDrawerAvatarClick,
             onThemeStyle = onThemeStyle,
@@ -833,6 +851,9 @@ private fun MainScreen(
                 .width(drawerWidth)
                 .fillMaxHeight()
                 .offset { IntOffset(((1f - drawerProgress) * drawerWidthPx).roundToInt(), 0) }
+                .graphicsLayer {
+                    alpha = if (isAppleGlass) 0.88f + 0.12f * drawerProgress else 1f
+                }
         )
     }
 }
@@ -1355,7 +1376,6 @@ private fun MainDrawer(
     drawerState: DrawerUserState,
     themeStyle: ThemeTools.STYLE,
     hazeState: HazeState?,
-    liquidGlassBackdrop: LiquidGlassBackdropHandle?,
     onHeaderClick: () -> Unit,
     onAvatarClick: () -> Unit,
     onThemeStyle: () -> Unit,
@@ -1371,25 +1391,16 @@ private fun MainDrawer(
         bottomStart = if (isAppleGlass) 32.dp else 24.dp
     )
     val drawerHazeStyle = HazeStyle(
-        tint = Color.White.copy(alpha = 0.22f),
-        blurRadius = 30.dp,
-        noiseFactor = 0.06f
+        tint = if (HitaTheme.isDark) {
+            Color(0xFF111820).copy(alpha = 0.28f)
+        } else {
+            Color.White.copy(alpha = 0.60f)
+        },
+        blurRadius = 20.dp,
+        noiseFactor = 0.03f
     )
     Surface(
         modifier = modifier
-            .then(
-                if (isAppleGlass && liquidGlassBackdrop != null) {
-                    Modifier.liquidGlassSurface(
-                        backdropHandle = liquidGlassBackdrop,
-                        shape = drawerShape,
-                        blurRadius = 34f,
-                        refractionHeight = 34f,
-                        refractionAmount = 54f
-                    )
-                } else {
-                    Modifier
-                }
-            )
             .then(
                 if (isAppleGlass && hazeState != null) {
                     Modifier.hazeChild(state = hazeState, shape = drawerShape, style = drawerHazeStyle)
@@ -1400,8 +1411,8 @@ private fun MainDrawer(
             .then(
                 if (isAppleGlass) {
                     Modifier.border(
-                        width = 1.dp,
-                        color = Color.White.copy(alpha = 0.72f),
+                        width = 0.5.dp,
+                        color = Color.White.copy(alpha = if (HitaTheme.isDark) 0.20f else 0.38f),
                         shape = drawerShape
                     )
                 } else {
@@ -1409,29 +1420,18 @@ private fun MainDrawer(
                 }
             ),
         shape = drawerShape,
-        shadowElevation = if (isAppleGlass) 28.dp else 16.dp,
+        shadowElevation = if (isAppleGlass) 12.dp else 16.dp,
         color = if (isAppleGlass) {
-            MaterialTheme.colorScheme.surface.copy(alpha = 0.30f)
+            if (HitaTheme.isDark) {
+                Color(0xFF121923).copy(alpha = 0.84f)
+            } else {
+                Color(0xFFF7FAFF).copy(alpha = 0.84f)
+            }
         } else {
             MaterialTheme.colorScheme.surface
         }
     ) {
         Box(modifier = Modifier.fillMaxSize()) {
-            if (isAppleGlass) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .background(
-                            Brush.verticalGradient(
-                                colors = listOf(
-                                    Color.White.copy(alpha = 0.42f),
-                                    Color.Transparent,
-                                    MaterialTheme.colorScheme.primary.copy(alpha = 0.08f)
-                                )
-                            )
-                        )
-                )
-            }
             Column(
                 modifier = Modifier
                     .statusBarsPadding()
@@ -1450,25 +1450,6 @@ private fun MainDrawer(
                     "${stringResource(R.string.main_drawer_menu_theme_style)} · ${themeStyle.displayName()}",
                     onThemeStyle
                 )
-                if (isAppleGlass) {
-                    Text(
-                        text = stringResource(R.string.theme_style_apple_glass_marker),
-                        color = MaterialTheme.colorScheme.primary,
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.Bold,
-                        modifier = Modifier
-                            .padding(horizontal = 32.dp)
-                            .clip(RoundedCornerShape(14.dp))
-                            .border(
-                                width = 1.dp,
-                                color = Color.White.copy(alpha = 0.72f),
-                                shape = RoundedCornerShape(14.dp)
-                            )
-                            .background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.58f))
-                            .padding(horizontal = 12.dp, vertical = 6.dp)
-                    )
-                    Spacer(Modifier.height(8.dp))
-                }
                 DrawerItem(R.drawable.ic_info, stringResource(R.string.name_ua_and_pp), onAgreement)
                 DrawerItem(R.drawable.logo, stringResource(R.string.main_drawer_menu_about), onAbout)
                 Spacer(Modifier.weight(1f))
