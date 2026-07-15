@@ -5,6 +5,7 @@ import android.os.Handler
 import javax.inject.Inject
 import javax.inject.Singleton
 import android.os.Looper
+import android.webkit.CookieManager
 import androidx.annotation.WorkerThread
 import androidx.lifecycle.LiveData
 import androidx.lifecycle.MediatorLiveData
@@ -1003,6 +1004,48 @@ class EASRepository @Inject constructor(
         return campus == EASToken.Campus.SHENZHEN
     }
 
+    fun hasShenzhenWebSession(): Boolean {
+        return easPreferenceSource.getEasToken().hasShenzhenWebSession()
+    }
+
+    fun getShenzhenWebTerms(): LiveData<DataState<List<TermItem>>> {
+        return shenzhenService.getShenzhenWebTerms(easPreferenceSource.getEasToken())
+    }
+
+    fun queryShenzhenAvailableCourses(
+        term: TermItem,
+        pool: ShenzhenSelectionPool,
+        keyword: String,
+        page: Int,
+        pageSize: Int = 20
+    ): LiveData<DataState<ShenzhenCourseCatalogPage>> {
+        return shenzhenService.queryShenzhenAvailableCourses(
+            easPreferenceSource.getEasToken(),
+            term,
+            pool,
+            keyword,
+            page,
+            pageSize
+        )
+    }
+
+    fun queryShenzhenSchoolCourses(
+        term: TermItem,
+        studentType: String,
+        keyword: String,
+        page: Int,
+        pageSize: Int = 20
+    ): LiveData<DataState<ShenzhenCourseCatalogPage>> {
+        return shenzhenService.queryShenzhenSchoolCourses(
+            easPreferenceSource.getEasToken(),
+            term,
+            studentType,
+            keyword,
+            page,
+            pageSize
+        )
+    }
+
     fun getHoaCampus(@Suppress("UNUSED_PARAMETER") campus: EASToken.Campus = easPreferenceSource.getEasToken().campus): String {
         return "shenzhen"
     }
@@ -1065,6 +1108,11 @@ class EASRepository @Inject constructor(
             mergedCookies.putAll(token.cookies)
             token.cookies = mergedCookies
         }
+        if (stored.webCookies.isNotEmpty()) {
+            val mergedWebCookies = HashMap(stored.webCookies)
+            mergedWebCookies.putAll(token.webCookies)
+            token.webCookies = mergedWebCookies
+        }
         return token
     }
 
@@ -1074,7 +1122,26 @@ class EASRepository @Inject constructor(
     }
 
     fun logout() {
+        clearShenzhenWebViewCookies(easPreferenceSource.getEasToken())
         clearEasToken()
+    }
+
+    private fun clearShenzhenWebViewCookies(token: EASToken) {
+        if (token.campus != EASToken.Campus.SHENZHEN || token.webCookies.isEmpty()) return
+        Handler(Looper.getMainLooper()).post {
+            val manager = CookieManager.getInstance()
+            val urls = listOf(
+                "https://jw.hitsz.edu.cn/",
+                "https://ids.hit.edu.cn/"
+            )
+            val cookieNames = token.webCookies.keys + setOf("JSESSIONID", "route")
+            urls.forEach { url ->
+                cookieNames.forEach { name ->
+                    manager.setCookie(url, "$name=; Max-Age=0; Path=/; Secure")
+                }
+            }
+            manager.flush()
+        }
     }
 
 

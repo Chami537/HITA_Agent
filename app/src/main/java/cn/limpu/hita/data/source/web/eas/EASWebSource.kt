@@ -13,6 +13,9 @@ import cn.limpu.hita.data.model.eas.ExamItem
 import cn.limpu.hita.data.model.eas.ScoreQueryResult
 import cn.limpu.hita.data.model.eas.ScoreSummary
 import cn.limpu.hita.data.model.eas.ScoreSummaryScope
+import cn.limpu.hita.data.model.eas.ShenzhenCourseCatalogPage
+import cn.limpu.hita.data.model.eas.ShenzhenCourseCatalogSource
+import cn.limpu.hita.data.model.eas.ShenzhenSelectionPool
 import cn.limpu.hita.data.model.eas.TermItem
 import cn.limpu.hita.data.model.timetable.TermSubject
 import cn.limpu.hita.data.model.timetable.TimeInDay
@@ -175,47 +178,82 @@ class EASWebSource internal constructor(
     private fun jwFormPost(
         token: EASToken,
         path: String,
-        data: Map<String, String> = emptyMap()
+        data: Map<String, String> = emptyMap(),
+        refererPath: String = "/authentication/main"
     ): Connection.Response {
-        warmupJwSession(token)
-        val req = Jsoup.newSession()
-            .url("$jwHostName$path")
-            .header("Accept", "*/*")
-            .header("Accept-Language", "zh-CN,zh;q=0.9")
-            .header("X-Requested-With", "XMLHttpRequest")
-            .header("Referer", "$jwHostName/authentication/main")
-            .header("Content-Type", "application/x-www-form-urlencoded; charset=UTF-8")
-            .userAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36")
-            .cookies(token.cookies)
-            .timeout(timeout)
-            .ignoreContentType(true)
-            .ignoreHttpErrors(true)
-            .method(Connection.Method.POST)
-        data.forEach { (k, v) -> req.data(k, v) }
-        var resp = req.execute()
-        token.cookies.putAll(resp.cookies())
-
-        // jw 会话可能独立过期：检测 401 后尝试静默重登一次并重试同一请求
-        if (resp.statusCode() == 401 && tryRelogin(token)) {
+        val cookieJar = token.webCookies.takeIf { it.isNotEmpty() } ?: token.cookies
+        if (token.webCookies.isEmpty()) {
             warmupJwSession(token)
-            val retryReq = Jsoup.newSession()
+        }
+
+        fun executeOnce(): Connection.Response {
+            val req = Jsoup.newSession()
                 .url("$jwHostName$path")
                 .header("Accept", "*/*")
                 .header("Accept-Language", "zh-CN,zh;q=0.9")
+                .header("RoleCode", "01")
                 .header("X-Requested-With", "XMLHttpRequest")
-                .header("Referer", "$jwHostName/authentication/main")
+                .header("Referer", "$jwHostName$refererPath")
                 .header("Content-Type", "application/x-www-form-urlencoded; charset=UTF-8")
                 .userAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36")
-                .cookies(token.cookies)
+                .cookies(cookieJar)
                 .timeout(timeout)
                 .ignoreContentType(true)
                 .ignoreHttpErrors(true)
                 .method(Connection.Method.POST)
-            data.forEach { (k, v) -> retryReq.data(k, v) }
-            resp = retryReq.execute()
-            token.cookies.putAll(resp.cookies())
+            data.forEach { (k, v) -> req.data(k, v) }
+            return req.execute().also { response -> cookieJar.putAll(response.cookies()) }
         }
+
+        var resp = executeOnce()
+
+        // jw 会话可能独立过期：检测 401 后尝试静默重登一次并重试同一请求
+        if (token.webCookies.isEmpty() && resp.statusCode() == 401 && tryRelogin(token)) {
+            warmupJwSession(token)
+            resp = executeOnce()
+        }
+        onTokenRefreshed?.invoke(token)
         return resp
+    }
+
+    private fun jwJsonPost(
+        token: EASToken,
+        path: String,
+        body: String,
+        refererPath: String = "/authentication/main"
+    ): Connection.Response {
+        val cookieJar = token.webCookies.takeIf { it.isNotEmpty() } ?: token.cookies
+        if (token.webCookies.isEmpty()) {
+            warmupJwSession(token)
+        }
+
+        fun executeOnce(): Connection.Response {
+            return Jsoup.newSession()
+                .url("$jwHostName$path")
+                .header("Accept", "*/*")
+                .header("Accept-Language", "zh-CN,zh;q=0.9")
+                .header("RoleCode", "01")
+                .header("X-Requested-With", "XMLHttpRequest")
+                .header("Referer", "$jwHostName$refererPath")
+                .header("Content-Type", "application/json;charset=UTF-8")
+                .userAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36")
+                .cookies(cookieJar)
+                .requestBody(body)
+                .timeout(timeout)
+                .ignoreContentType(true)
+                .ignoreHttpErrors(true)
+                .method(Connection.Method.POST)
+                .execute()
+                .also { response -> cookieJar.putAll(response.cookies()) }
+        }
+
+        var response = executeOnce()
+        if (token.webCookies.isEmpty() && response.statusCode() == 401 && tryRelogin(token)) {
+            warmupJwSession(token)
+            response = executeOnce()
+        }
+        onTokenRefreshed?.invoke(token)
+        return response
     }
 
     private fun isAuthExpiredResponse(resp: Connection.Response): Boolean {
@@ -247,6 +285,15 @@ class EASWebSource internal constructor(
             LogUtils.w("isAuthExpiredResponse: auth expired by JSON message: '$msg', body=${body.take(200)}")
         }
         return expired
+    }
+
+    private fun isJwAuthenticationExpired(resp: Connection.Response): Boolean {
+        if (isAuthExpiredResponse(resp)) return true
+        val host = runCatching { resp.url().host.lowercase(Locale.ROOT) }.getOrDefault("")
+        val body = resp.body().lowercase(Locale.ROOT)
+        return host == "ids.hit.edu.cn" ||
+            body.contains("/authserver/login") ||
+            body.contains("统一身份认证") && body.contains("password")
     }
 
     private fun isAuthExpiredJson(jo: JSONObject?): Boolean {
@@ -294,19 +341,20 @@ class EASWebSource internal constructor(
     }
 
     private fun warmupJwSession(token: EASToken) {
+        val cookieJar = token.webCookies.takeIf { it.isNotEmpty() } ?: token.cookies
         try {
             val resp = Jsoup.newSession()
                 .url("$jwHostName/authentication/main")
                 .header("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
                 .header("Accept-Language", "zh-CN,zh;q=0.9")
                 .userAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36")
-                .cookies(token.cookies)
+                .cookies(cookieJar)
                 .timeout(timeout)
                 .followRedirects(true)
                 .ignoreHttpErrors(true)
                 .method(Connection.Method.GET)
                 .execute()
-            token.cookies.putAll(resp.cookies())
+            cookieJar.putAll(resp.cookies())
         } catch (_: Exception) {
         }
     }
@@ -410,6 +458,20 @@ class EASWebSource internal constructor(
         val res = MutableLiveData<DataState<EASToken>>()
         Thread {
             try {
+                if (username.trim().startsWith("{")) {
+                    val webCookies = JsonUtils.jsonStringToMap(username)
+                    val webToken = EASToken().apply {
+                        campus = EASToken.Campus.SHENZHEN
+                        this.webCookies.putAll(webCookies)
+                    }
+                    val enriched = fetchShenzhenWebPersonalInfo(webToken)
+                    if (enriched == null) {
+                        res.postValue(DataState(DataState.STATE.FETCH_FAILED, "深圳 Web 会话验证失败"))
+                    } else {
+                        res.postValue(DataState(enriched, DataState.STATE.SUCCESS))
+                    }
+                    return@Thread
+                }
                 val token = loginCore(username, password)
                 if (token == null) {
                     res.postValue(DataState(DataState.STATE.FETCH_FAILED, "登录失败"))
@@ -499,6 +561,11 @@ class EASWebSource internal constructor(
         val res = MutableLiveData<DataState<Pair<Boolean, EASToken>>>()
         Thread {
             try {
+                if (token.accessToken.isNullOrBlank() && token.hasShenzhenWebSession()) {
+                    val enriched = fetchShenzhenWebPersonalInfo(token)
+                    res.postValue(DataState(Pair(enriched != null, enriched ?: token)))
+                    return@Thread
+                }
                 val resp = authedFormPost(token, "/app/commapp/queryxnxqlist")
                 val jo = JsonUtils.getJsonObject(resp.body())
                 val valid = jo?.optInt("code", -1) == 200
@@ -512,6 +579,9 @@ class EASWebSource internal constructor(
 
     // ================================================================ 学年学期列表
     override fun getAllTerms(token: EASToken): LiveData<DataState<List<TermItem>>> {
+        if (token.accessToken.isNullOrBlank() && token.hasShenzhenWebSession()) {
+            return getShenzhenWebTerms(token)
+        }
         val res = MutableLiveData<DataState<List<TermItem>>>()
         Thread {
             val terms = arrayListOf<TermItem>()
@@ -544,9 +614,206 @@ class EASWebSource internal constructor(
         return res
     }
 
+    fun getShenzhenWebTerms(token: EASToken): LiveData<DataState<List<TermItem>>> {
+        val result = MutableLiveData<DataState<List<TermItem>>>()
+        Thread {
+            if (!token.hasShenzhenWebSession()) {
+                result.postValue(DataState(DataState.STATE.NOT_LOGGED_IN, "请先连接深圳 Web 教务"))
+                return@Thread
+            }
+            try {
+                val response = jwFormPost(token, "/component/queryxnxqdata")
+                if (isJwAuthenticationExpired(response)) {
+                    result.postValue(DataState(DataState.STATE.NOT_LOGGED_IN, "深圳 Web 会话已失效"))
+                    return@Thread
+                }
+                val terms = ShenzhenCourseCatalogParser.parseTerms(response.body())
+                if (response.statusCode() != 200 || terms == null) {
+                    result.postValue(DataState(DataState.STATE.FETCH_FAILED, "学期列表解析失败"))
+                } else {
+                    val selectionResponse = jwFormPost(
+                        token,
+                        "/Xsxk/queryXkdqXnxq",
+                        mapOf("p_pylx" to token.getStudentType()),
+                        "/Xsxk/query/1"
+                    )
+                    val selectionTermId = if (isJwAuthenticationExpired(selectionResponse)) {
+                        null
+                    } else {
+                        ShenzhenCourseCatalogParser.parseSelectionTermId(selectionResponse.body())
+                    }
+                    if (selectionTermId != null && terms.any { it.id == selectionTermId }) {
+                        terms.forEach { it.isCurrent = it.id == selectionTermId }
+                    }
+                    result.postValue(DataState(terms, DataState.STATE.SUCCESS))
+                }
+            } catch (error: Exception) {
+                result.postValue(DataState(DataState.STATE.FETCH_FAILED, error.message))
+            }
+        }.start()
+        return result
+    }
+
+    fun queryShenzhenAvailableCourses(
+        token: EASToken,
+        term: TermItem,
+        pool: ShenzhenSelectionPool,
+        keyword: String,
+        page: Int,
+        pageSize: Int
+    ): LiveData<DataState<ShenzhenCourseCatalogPage>> {
+        val form = linkedMapOf(
+            "cxsfmt" to "0",
+            "p_pylx" to token.getStudentType(),
+            "mxpylx" to token.getStudentType(),
+            "p_sfgldjr" to "0",
+            "p_sfredis" to "0",
+            "p_sfsyxkgwc" to "0",
+            "p_xktjz" to "",
+            "p_chaxunxh" to "",
+            "p_gjz" to keyword,
+            "p_skjs" to "",
+            "p_xn" to term.yearCode,
+            "p_xq" to term.termCode,
+            "p_xnxq" to term.getCode(),
+            "p_dqxn" to term.yearCode,
+            "p_dqxq" to term.termCode,
+            "p_dqxnxq" to term.getCode(),
+            "p_xkfsdm" to pool.code,
+            "p_xiaoqu" to "",
+            "p_kkyx" to "",
+            "p_kclb" to "",
+            "p_xkxs" to "",
+            "p_dyc" to "",
+            "p_kkxnxq" to "",
+            "p_id" to "",
+            "p_sfhlctkc" to "0",
+            "p_sfhllrlkc" to "0",
+            "p_kxsj_xqj" to "",
+            "p_kxsj_ksjc" to "",
+            "p_kxsj_jsjc" to "",
+            "p_kcdm_js" to "",
+            "p_kcdm_cxrw" to "",
+            "p_kcdm_cxrw_zckc" to "",
+            "p_kc_gjz" to keyword,
+            "p_xzcxtjz_nj" to "",
+            "p_xzcxtjz_yx" to "",
+            "p_xzcxtjz_zy" to "",
+            "p_xzcxtjz_zyfx" to "",
+            "p_xzcxtjz_bj" to "",
+            "p_sfxsgwckb" to "1",
+            "p_skyy" to "",
+            "p_sfmxzj" to "0",
+            "p_chaxunxkfsdm" to "",
+            "pageNum" to page.toString(),
+            "pageSize" to pageSize.toString()
+        )
+        return queryShenzhenCourseCatalog(
+            token = token,
+            path = "/Xsxk/queryKxrw?sf_request_type=ajax",
+            refererPath = "/Xsxk/query/1",
+            form = form,
+            source = ShenzhenCourseCatalogSource.AVAILABLE,
+            selectionPoolName = pool.name
+        )
+    }
+
+    fun queryShenzhenSchoolCourses(
+        token: EASToken,
+        term: TermItem,
+        studentType: String,
+        keyword: String,
+        page: Int,
+        pageSize: Int
+    ): LiveData<DataState<ShenzhenCourseCatalogPage>> {
+        val form = linkedMapOf(
+            "p_chapylx" to "",
+            "ordertext_0" to "",
+            "p_xn" to term.yearCode,
+            "p_xq" to term.termCode,
+            "p_xnxq" to term.getCode(),
+            "p_gjz" to keyword,
+            "p_xiaoqu" to "",
+            "p_kkyx" to "",
+            "p_rwlx" to "",
+            "p_kclb" to "",
+            "p_kcxz" to "",
+            "p_chaxungjz" to keyword,
+            "p_chaxunxiaoqu" to "",
+            "p_chaxunkkyx" to "",
+            "p_chaxunnj" to "",
+            "p_chaxunglyx" to "",
+            "p_chaxunzy" to "",
+            "p_chaxunxdm" to "",
+            "p_chaxunpylx" to studentType,
+            "mxpylx" to studentType,
+            "p_zc" to "",
+            "p_xqj" to "",
+            "p_ksjc" to "",
+            "p_jsjc" to "",
+            "p_skjs" to "",
+            "p_ids" to "",
+            "p_id" to "",
+            "p_sfhltsxx" to "0",
+            "file" to "",
+            "pageNum" to page.toString(),
+            "pageSize" to pageSize.toString()
+        )
+        return queryShenzhenCourseCatalog(
+            token = token,
+            path = "/Xsxktz/queryRwxxcxList?sf_request_type=ajax",
+            refererPath = "/Xsxktz/queryRwxxcx",
+            form = form,
+            source = ShenzhenCourseCatalogSource.SCHOOL,
+            studentType = studentType
+        )
+    }
+
+    private fun queryShenzhenCourseCatalog(
+        token: EASToken,
+        path: String,
+        refererPath: String,
+        form: Map<String, String>,
+        source: ShenzhenCourseCatalogSource,
+        studentType: String = token.getStudentType(),
+        selectionPoolName: String = ""
+    ): LiveData<DataState<ShenzhenCourseCatalogPage>> {
+        val result = MutableLiveData<DataState<ShenzhenCourseCatalogPage>>()
+        Thread {
+            if (!token.hasShenzhenWebSession()) {
+                result.postValue(DataState(DataState.STATE.NOT_LOGGED_IN, "请先连接深圳 Web 教务"))
+                return@Thread
+            }
+            try {
+                val response = jwFormPost(token, path, form, refererPath)
+                if (isJwAuthenticationExpired(response)) {
+                    result.postValue(DataState(DataState.STATE.NOT_LOGGED_IN, "深圳 Web 会话已失效"))
+                    return@Thread
+                }
+                val page = ShenzhenCourseCatalogParser.parsePage(
+                    response.body(),
+                    source,
+                    studentType,
+                    selectionPoolName
+                )
+                if (response.statusCode() != 200 || page == null) {
+                    result.postValue(DataState(DataState.STATE.FETCH_FAILED, "课程数据解析失败"))
+                } else {
+                    result.postValue(DataState(page, DataState.STATE.SUCCESS))
+                }
+            } catch (error: Exception) {
+                result.postValue(DataState(DataState.STATE.FETCH_FAILED, error.message))
+            }
+        }.start()
+        return result
+    }
+
     // ================================================================ 学期开始日期
     @SuppressLint("SimpleDateFormat")
     override fun getStartDate(token: EASToken, term: TermItem): LiveData<DataState<Calendar>> {
+        if (token.accessToken.isNullOrBlank() && token.hasShenzhenWebSession()) {
+            return getShenzhenWebStartDate(token, term)
+        }
         val res = MutableLiveData<DataState<Calendar>>()
         Thread {
             try {
@@ -580,11 +847,48 @@ class EASWebSource internal constructor(
         return res
     }
 
+    private fun getShenzhenWebStartDate(
+        token: EASToken,
+        term: TermItem
+    ): LiveData<DataState<Calendar>> {
+        val result = MutableLiveData<DataState<Calendar>>()
+        Thread {
+            try {
+                val response = jwFormPost(
+                    token,
+                    "/component/queryRlZcSj",
+                    mapOf("xn" to term.yearCode, "xq" to term.termCode, "djz" to "1")
+                )
+                if (isJwAuthenticationExpired(response)) {
+                    result.postValue(DataState(DataState.STATE.NOT_LOGGED_IN, "深圳 Web 会话已失效"))
+                    return@Thread
+                }
+                val date = ShenzhenWebAcademicParser.parseStartDate(response.body())
+                if (response.statusCode() != 200 || date == null) {
+                    result.postValue(DataState(DataState.STATE.FETCH_FAILED, "未获取到第一教学周日期"))
+                    return@Thread
+                }
+                val calendar = Calendar.getInstance().apply {
+                    clear()
+                    firstDayOfWeek = Calendar.MONDAY
+                    set(date.year, date.monthValue - 1, date.dayOfMonth)
+                }
+                result.postValue(DataState(calendar, DataState.STATE.SUCCESS))
+            } catch (error: Exception) {
+                result.postValue(DataState(DataState.STATE.FETCH_FAILED, error.message))
+            }
+        }.start()
+        return result
+    }
+
     // ================================================================ 已选课程
     override fun getSubjectsOfTerm(
         token: EASToken,
         term: TermItem
     ): LiveData<DataState<MutableList<TermSubject>>> {
+        if (token.accessToken.isNullOrBlank() && token.hasShenzhenWebSession()) {
+            return getShenzhenWebSubjects(token, term)
+        }
         val res = MutableLiveData<DataState<MutableList<TermSubject>>>()
         Thread {
             val result: MutableList<TermSubject> = ArrayList()
@@ -663,11 +967,57 @@ class EASWebSource internal constructor(
         return res
     }
 
+    private fun getShenzhenWebSubjects(
+        token: EASToken,
+        term: TermItem
+    ): LiveData<DataState<MutableList<TermSubject>>> {
+        val result = MutableLiveData<DataState<MutableList<TermSubject>>>()
+        Thread {
+            try {
+                val response = requestShenzhenWebSelectedSubjects(token, term)
+                if (isJwAuthenticationExpired(response)) {
+                    result.postValue(DataState(DataState.STATE.NOT_LOGGED_IN, "深圳 Web 会话已失效"))
+                    return@Thread
+                }
+                val subjects = ShenzhenWebAcademicParser.parseSelectedSubjects(response.body())
+                if (response.statusCode() != 200 || subjects == null) {
+                    result.postValue(DataState(DataState.STATE.FETCH_FAILED, "已选课程解析失败"))
+                } else {
+                    result.postValue(DataState(subjects, DataState.STATE.SUCCESS))
+                }
+            } catch (error: Exception) {
+                result.postValue(DataState(DataState.STATE.FETCH_FAILED, error.message))
+            }
+        }.start()
+        return result
+    }
+
+    private fun requestShenzhenWebSelectedSubjects(
+        token: EASToken,
+        term: TermItem
+    ): Connection.Response = jwFormPost(
+        token,
+        "/Xsxk/queryYxkc",
+        mapOf(
+            "p_pylx" to token.getStudentType(),
+            "p_xn" to term.yearCode,
+            "p_xq" to term.termCode,
+            "p_xnxq" to term.getCode(),
+            "p_xkfsdm" to "yixuan",
+            "pageNum" to "1",
+            "pageSize" to "500"
+        ),
+        "/Xsxk/query/1"
+    )
+
     // ================================================================ 周课表（按周矩阵：/app/Kbcx/query）
     override fun getTimetableOfTerm(
         term: TermItem,
         token: EASToken
     ): LiveData<DataState<List<CourseItem>>> {
+        if (token.accessToken.isNullOrBlank() && token.hasShenzhenWebSession()) {
+            return getShenzhenWebTimetable(token, term)
+        }
         val res = MutableLiveData<DataState<List<CourseItem>>>()
         Thread {
             try {
@@ -829,6 +1179,42 @@ class EASWebSource internal constructor(
             }
         }.start()
         return res
+    }
+
+    private fun getShenzhenWebTimetable(
+        token: EASToken,
+        term: TermItem
+    ): LiveData<DataState<List<CourseItem>>> {
+        val result = MutableLiveData<DataState<List<CourseItem>>>()
+        Thread {
+            try {
+                val timetableResponse = jwFormPost(
+                    token,
+                    "/xszykb/queryxszykbzong",
+                    mapOf("xn" to term.yearCode, "xq" to term.termCode),
+                    "/xszykb/queryxszykb"
+                )
+                if (isJwAuthenticationExpired(timetableResponse)) {
+                    result.postValue(DataState(DataState.STATE.NOT_LOGGED_IN, "深圳 Web 会话已失效"))
+                    return@Thread
+                }
+                val subjectResponse = requestShenzhenWebSelectedSubjects(token, term)
+                val subjects = if (isJwAuthenticationExpired(subjectResponse)) {
+                    emptyList()
+                } else {
+                    ShenzhenWebAcademicParser.parseSelectedSubjects(subjectResponse.body()).orEmpty()
+                }
+                val courses = ShenzhenWebAcademicParser.parseTimetable(timetableResponse.body(), subjects)
+                if (timetableResponse.statusCode() != 200 || courses == null) {
+                    result.postValue(DataState(DataState.STATE.FETCH_FAILED, "个人课表解析失败"))
+                } else {
+                    result.postValue(DataState(courses, DataState.STATE.SUCCESS))
+                }
+            } catch (error: Exception) {
+                result.postValue(DataState(DataState.STATE.FETCH_FAILED, error.message))
+            }
+        }.start()
+        return result
     }
 
     private fun extractKcxxListFromKbcxContent(contentArr: org.json.JSONArray): org.json.JSONArray {
@@ -1551,6 +1937,9 @@ class EASWebSource internal constructor(
         isUndergraduate: Boolean?,
         token: EASToken
     ): LiveData<DataState<MutableList<TimePeriodInDay>>> {
+        if (token.accessToken.isNullOrBlank() && token.hasShenzhenWebSession()) {
+            return getShenzhenWebScheduleStructure(token, term)
+        }
         val res = MutableLiveData<DataState<MutableList<TimePeriodInDay>>>()
         Thread {
             try {
@@ -1630,6 +2019,39 @@ class EASWebSource internal constructor(
         return res
     }
 
+    private fun getShenzhenWebScheduleStructure(
+        token: EASToken,
+        term: TermItem
+    ): LiveData<DataState<MutableList<TimePeriodInDay>>> {
+        val result = MutableLiveData<DataState<MutableList<TimePeriodInDay>>>()
+        Thread {
+            try {
+                val response = jwFormPost(
+                    token,
+                    "/component/queryKbjg",
+                    mapOf(
+                        "xn" to term.yearCode,
+                        "xq" to term.termCode,
+                        "pylx" to token.getStudentType()
+                    )
+                )
+                if (isJwAuthenticationExpired(response)) {
+                    result.postValue(DataState(DataState.STATE.NOT_LOGGED_IN, "深圳 Web 会话已失效"))
+                    return@Thread
+                }
+                val schedule = ShenzhenWebAcademicParser.parseScheduleStructure(response.body())
+                if (response.statusCode() != 200 || schedule == null) {
+                    result.postValue(DataState(DataState.STATE.FETCH_FAILED, "节次结构解析失败"))
+                } else {
+                    result.postValue(DataState(schedule, DataState.STATE.SUCCESS))
+                }
+            } catch (error: Exception) {
+                result.postValue(DataState(DataState.STATE.FETCH_FAILED, error.message))
+            }
+        }.start()
+        return result
+    }
+
     @SuppressLint("SimpleDateFormat")
     private fun defaultScheduleStructure(): MutableList<TimePeriodInDay> {
         val slots = listOf(
@@ -1654,6 +2076,9 @@ class EASWebSource internal constructor(
         token: EASToken,
         testType: EASService.TestType
     ): LiveData<DataState<List<CourseScoreItem>>> {
+        if (token.accessToken.isNullOrBlank() && token.hasShenzhenWebSession()) {
+            return getShenzhenWebPersonalScores(term, token, testType)
+        }
         val res = MutableLiveData<DataState<List<CourseScoreItem>>>()
         Thread {
             val result: MutableList<CourseScoreItem> = ArrayList()
@@ -1703,6 +2128,9 @@ class EASWebSource internal constructor(
         token: EASToken,
         testType: EASService.TestType
     ): LiveData<DataState<ScoreQueryResult>> {
+        if (token.accessToken.isNullOrBlank() && token.hasShenzhenWebSession()) {
+            return getShenzhenWebPersonalScoresWithSummary(term, token, testType)
+        }
         val res = MutableLiveData<DataState<ScoreQueryResult>>()
         Thread {
             val result: MutableList<CourseScoreItem> = ArrayList()
@@ -1756,17 +2184,113 @@ class EASWebSource internal constructor(
         return res
     }
 
+    private data class ShenzhenWebScoreResult(
+        val items: List<CourseScoreItem>,
+        val authExpired: Boolean = false
+    )
+
+    private fun getShenzhenWebPersonalScores(
+        term: TermItem,
+        token: EASToken,
+        testType: EASService.TestType
+    ): LiveData<DataState<List<CourseScoreItem>>> {
+        val result = MutableLiveData<DataState<List<CourseScoreItem>>>()
+        Thread {
+            try {
+                val fetched = fetchShenzhenWebScoreItems(term, token, testType)
+                if (fetched.authExpired) {
+                    result.postValue(DataState(DataState.STATE.NOT_LOGGED_IN, "深圳 Web 会话已失效"))
+                } else {
+                    result.postValue(DataState(fetched.items, DataState.STATE.SUCCESS))
+                }
+            } catch (error: Exception) {
+                result.postValue(DataState(DataState.STATE.FETCH_FAILED, error.message))
+            }
+        }.start()
+        return result
+    }
+
+    private fun getShenzhenWebPersonalScoresWithSummary(
+        term: TermItem,
+        token: EASToken,
+        testType: EASService.TestType
+    ): LiveData<DataState<ScoreQueryResult>> {
+        val result = MutableLiveData<DataState<ScoreQueryResult>>()
+        Thread {
+            try {
+                val fetched = fetchShenzhenWebScoreItems(term, token, testType)
+                if (fetched.authExpired) {
+                    result.postValue(DataState(DataState.STATE.NOT_LOGGED_IN, "深圳 Web 会话已失效"))
+                    return@Thread
+                }
+                result.postValue(DataState(ScoreQueryResult(fetched.items, null), DataState.STATE.SUCCESS))
+                fetchOfficialWebScoreSummary(term, token)?.let { summary ->
+                    result.postValue(
+                        DataState(ScoreQueryResult(fetched.items, summary), DataState.STATE.SUCCESS)
+                    )
+                }
+            } catch (error: Exception) {
+                result.postValue(DataState(DataState.STATE.FETCH_FAILED, error.message))
+            }
+        }.start()
+        return result
+    }
+
+    private fun fetchShenzhenWebScoreItems(
+        term: TermItem,
+        token: EASToken,
+        testType: EASService.TestType
+    ): ShenzhenWebScoreResult {
+        val isMidterm = testType == EASService.TestType.RESIT
+        val path = if (isMidterm) "/cjgl/grcjcx/qzcjcx" else "/cjgl/grcjcx/grcjcx"
+        val body = if (isMidterm) {
+            JSONObject()
+                .put("xn", term.yearCode)
+                .put("xq", term.termCode)
+                .put("kcmc", "")
+                .put("pylx", token.getStudentType())
+                .put("current", 1)
+                .put("pageSize", 1000)
+                .toString()
+        } else {
+            JSONObject()
+                .put("xn", term.yearCode)
+                .put("xq", term.termCode)
+                .put("kcmc", JSONObject.NULL)
+                .put("cxbj", "-1")
+                .put("pylx", token.getStudentType())
+                .put("current", 1)
+                .put("pageSize", 1000)
+                .put("xscjlb", JSONObject.NULL)
+                .put("sffx", JSONObject.NULL)
+                .toString()
+        }
+        val response = jwJsonPost(token, path, body, "/cjgl/grcjcx")
+        if (isJwAuthenticationExpired(response)) return ShenzhenWebScoreResult(emptyList(), authExpired = true)
+        if (response.statusCode() != 200) {
+            throw IllegalStateException("成绩接口 HTTP ${response.statusCode()}")
+        }
+        val parsed = ShenzhenWebScoreParser.parse(response.body(), term)
+            ?: throw IllegalStateException("成绩接口返回非 JSON 数据")
+        if (parsed.code != 0 && parsed.code != 200) {
+            throw IllegalStateException(parsed.message.ifBlank { "成绩查询失败" })
+        }
+        return ShenzhenWebScoreResult(parsed.items)
+    }
+
     /** 深圳 Web 教务的官方 GPA / 平均学分绩汇总，参数与当前所选学期一致。 */
     private fun fetchOfficialWebScoreSummary(term: TermItem, token: EASToken): ScoreSummary? {
         return try {
-            val resp = jwFormPost(
+            val body = JSONObject()
+                .put("xn", term.yearCode)
+                .put("xq", term.termCode)
+                .put("pylx", token.getStudentType())
+                .toString()
+            val resp = jwJsonPost(
                 token = token,
                 path = "/cjgl/grcjcx/getgpa",
-                data = mapOf(
-                    "xn" to term.yearCode,
-                    "xq" to term.termCode,
-                    "pylx" to token.getStudentType()
-                )
+                body = body,
+                refererPath = "/cjgl/grcjcx"
             )
             if (resp.statusCode() != 200) return null
             val jo = JsonUtils.getJsonObject(resp.body()) ?: return null
@@ -1843,6 +2367,9 @@ class EASWebSource internal constructor(
 
     // ================================================================ 教学楼列表
     override fun getTeachingBuildings(token: EASToken): LiveData<DataState<List<BuildingItem>>> {
+        if (token.accessToken.isNullOrBlank() && token.hasShenzhenWebSession()) {
+            return getShenzhenWebTeachingBuildings(token)
+        }
         val result = MutableLiveData<DataState<List<BuildingItem>>>()
         Thread {
             val res = mutableListOf<BuildingItem>()
@@ -1865,6 +2392,38 @@ class EASWebSource internal constructor(
         return result
     }
 
+    private fun getShenzhenWebTeachingBuildings(
+        token: EASToken
+    ): LiveData<DataState<List<BuildingItem>>> {
+        val result = MutableLiveData<DataState<List<BuildingItem>>>()
+        Thread {
+            try {
+                initializeShenzhenWebClassroomContext(token)
+                val response = jwFormPost(token, "/pksd/queryjxlList", refererPath = "/cdkb/querycdzy")
+                if (isJwAuthenticationExpired(response)) {
+                    result.postValue(DataState(DataState.STATE.NOT_LOGGED_IN, "深圳 Web 会话已失效"))
+                    return@Thread
+                }
+                val buildings = ShenzhenWebAcademicParser.parseBuildings(response.body())
+                if (response.statusCode() != 200 || buildings == null) {
+                    result.postValue(DataState(DataState.STATE.FETCH_FAILED, "教学楼列表解析失败"))
+                } else {
+                    result.postValue(DataState(buildings, DataState.STATE.SUCCESS))
+                }
+            } catch (error: Exception) {
+                result.postValue(DataState(DataState.STATE.FETCH_FAILED, error.message))
+            }
+        }.start()
+        return result
+    }
+
+    private fun initializeShenzhenWebClassroomContext(token: EASToken) {
+        listOf("/pksd/queryxiaoquList", "/pksd/querycdlbList", "/kbfbsz/querydqxnxq").forEach { path ->
+            val response = jwFormPost(token, path, refererPath = "/cdkb/querycdzy")
+            if (isJwAuthenticationExpired(response)) return
+        }
+    }
+
     // ================================================================ 空教室查询（按天）
     override fun queryEmptyClassroom(
         token: EASToken,
@@ -1872,6 +2431,9 @@ class EASWebSource internal constructor(
         building: BuildingItem,
         weeks: List<String>
     ): LiveData<DataState<List<ClassroomItem>>> {
+        if (token.accessToken.isNullOrBlank() && token.hasShenzhenWebSession()) {
+            return queryShenzhenWebEmptyClassroom(token, term, building, weeks)
+        }
         val result = MutableLiveData<DataState<List<ClassroomItem>>>()
         Thread {
             val resMap = linkedMapOf<String, ClassroomItem>()
@@ -1919,6 +2481,70 @@ class EASWebSource internal constructor(
             } catch (e: Exception) {
                 LogUtils.e("queryEmptyClassroom: failed, error=${e.message}", e)
                 result.postValue(DataState(DataState.STATE.FETCH_FAILED))
+            }
+        }.start()
+        return result
+    }
+
+    private fun queryShenzhenWebEmptyClassroom(
+        token: EASToken,
+        term: TermItem,
+        building: BuildingItem,
+        weeks: List<String>
+    ): LiveData<DataState<List<ClassroomItem>>> {
+        val result = MutableLiveData<DataState<List<ClassroomItem>>>()
+        Thread {
+            try {
+                val week = weeks.firstOrNull()?.toIntOrNull()?.coerceIn(1, 34) ?: 1
+                val weekMask = buildString(34) {
+                    repeat(34) { index -> append(if (index == week - 1) '1' else '0') }
+                }
+                val form = linkedMapOf(
+                    "pxn" to term.yearCode,
+                    "pxq" to term.termCode,
+                    "dmmc" to "",
+                    "xiaoqu" to "",
+                    "jxl" to building.id,
+                    "cdlb" to "",
+                    "zc" to weekMask,
+                    "wpksfxs" to "0",
+                    "qsjsz" to "16",
+                    "kjs" to "0",
+                    "xsbkycd" to "0",
+                    "zws" to "",
+                    "lc" to ""
+                )
+                val leftResponse = jwFormPost(
+                    token,
+                    "/cdkb/querycdzyleftzhou?sf_request_type=ajax",
+                    form + mapOf("pageNum" to "1", "pageSize" to "500"),
+                    "/cdkb/querycdzy"
+                )
+                if (isJwAuthenticationExpired(leftResponse)) {
+                    result.postValue(DataState(DataState.STATE.NOT_LOGGED_IN, "深圳 Web 会话已失效"))
+                    return@Thread
+                }
+                val rightResponse = jwFormPost(
+                    token,
+                    "/cdkb/querycdzyrightzhou?sf_request_type=ajax",
+                    form,
+                    "/cdkb/querycdzy"
+                )
+                if (isJwAuthenticationExpired(rightResponse)) {
+                    result.postValue(DataState(DataState.STATE.NOT_LOGGED_IN, "深圳 Web 会话已失效"))
+                    return@Thread
+                }
+                val classrooms = ShenzhenWebAcademicParser.parseClassrooms(
+                    leftResponse.body(),
+                    rightResponse.body()
+                )
+                if (leftResponse.statusCode() != 200 || rightResponse.statusCode() != 200 || classrooms == null) {
+                    result.postValue(DataState(DataState.STATE.FETCH_FAILED, "空教室数据解析失败"))
+                } else {
+                    result.postValue(DataState(classrooms, DataState.STATE.SUCCESS))
+                }
+            } catch (error: Exception) {
+                result.postValue(DataState(DataState.STATE.FETCH_FAILED, error.message))
             }
         }.start()
         return result
@@ -1999,6 +2625,9 @@ class EASWebSource internal constructor(
 
     // ================================================================ 考试信息（深圳校区新接口）
     override fun getExamItems(token: EASToken, term: TermItem?): LiveData<DataState<List<ExamItem>>> {
+        if (token.accessToken.isNullOrBlank() && token.hasShenzhenWebSession()) {
+            return getShenzhenWebExamItems(token, term)
+        }
         val res = MutableLiveData<DataState<List<ExamItem>>>()
         Thread {
             try {
@@ -2111,8 +2740,87 @@ class EASWebSource internal constructor(
         return res
     }
 
+    private fun getShenzhenWebExamItems(
+        token: EASToken,
+        term: TermItem?
+    ): LiveData<DataState<List<ExamItem>>> {
+        val result = MutableLiveData<DataState<List<ExamItem>>>()
+        Thread {
+            if (term == null) {
+                result.postValue(DataState(DataState.STATE.FETCH_FAILED, "请选择学期后再查询考试安排"))
+                return@Thread
+            }
+            try {
+                val response = jwFormPost(
+                    token,
+                    "/kscxtj/queryXsksByxhList",
+                    mapOf(
+                        "pxn" to term.yearCode,
+                        "pxq" to term.termCode,
+                        "pageNum" to "1",
+                        "pageSize" to "500"
+                    ),
+                    "/kscxtj/queryXsksByxh"
+                )
+                if (isJwAuthenticationExpired(response)) {
+                    result.postValue(DataState(DataState.STATE.NOT_LOGGED_IN, "深圳 Web 会话已失效"))
+                    return@Thread
+                }
+                val exams = ShenzhenWebAcademicParser.parseExams(response.body(), term)
+                if (response.statusCode() != 200 || exams == null) {
+                    result.postValue(DataState(DataState.STATE.FETCH_FAILED, "考试数据解析失败"))
+                } else {
+                    result.postValue(DataState(exams, DataState.STATE.SUCCESS))
+                }
+            } catch (error: Exception) {
+                result.postValue(DataState(DataState.STATE.FETCH_FAILED, error.message))
+            }
+        }.start()
+        return result
+    }
+
     override fun getSafePersonalInfo(token: EASToken): LiveData<DataState<EASToken>> {
-        return MutableLiveData(DataState(token, DataState.STATE.SUCCESS))
+        if (!token.hasShenzhenWebSession()) {
+            return MutableLiveData(DataState(token, DataState.STATE.SUCCESS))
+        }
+        val result = MutableLiveData<DataState<EASToken>>()
+        Thread {
+            val enriched = fetchShenzhenWebPersonalInfo(token)
+            if (enriched == null) {
+                result.postValue(DataState(DataState.STATE.NOT_LOGGED_IN, "深圳 Web 会话已失效"))
+            } else {
+                result.postValue(DataState(enriched, DataState.STATE.SUCCESS))
+            }
+        }.start()
+        return result
+    }
+
+    private fun fetchShenzhenWebPersonalInfo(token: EASToken): EASToken? {
+        return try {
+            val response = jwFormPost(token, "/user/me")
+            if (response.statusCode() != 200) return null
+            val payload = JsonUtils.getJsonObject(response.body()) ?: return null
+            val studentId = payload.optString("yhdm", payload.optString("username", "")).trim()
+            val name = payload.optString("xm", "").trim()
+            if (studentId.isBlank() && name.isBlank()) return null
+
+            token.campus = EASToken.Campus.SHENZHEN
+            token.username = studentId.takeIf { it.isNotBlank() } ?: token.username
+            token.stuId = studentId.takeIf { it.isNotBlank() } ?: token.stuId
+            token.name = name.takeIf { it.isNotBlank() } ?: token.name
+            token.id = payload.optString("id", "").trim().takeIf { it.isNotBlank() } ?: token.id
+            token.school = payload.optString("bmmc", "").trim().takeIf { it.isNotBlank() } ?: token.school
+            token.phone = payload.optString("lxdh", "").trim().takeIf { it.isNotBlank() } ?: token.phone
+            val studentType = payload.optString("pylx", payload.optString("pyccm", "")).trim()
+            if (studentType.isNotBlank()) {
+                token.stutype = if (studentType == "1") EASToken.TYPE.UNDERGRAD else EASToken.TYPE.GRAD
+            }
+            onTokenRefreshed?.invoke(token)
+            token
+        } catch (error: Exception) {
+            LogUtils.e("fetchShenzhenWebPersonalInfo: failed, error=${error.message}", error)
+            null
+        }
     }
 
     // ================================================================ 课程名合成（iOS 策略移植）

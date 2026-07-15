@@ -30,6 +30,7 @@ import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CheckboxDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.RadioButtonDefaults
@@ -126,6 +127,9 @@ class PopUpLoginEAS : BottomSheetDialogFragment() {
                         onLogin = { campus, username, password ->
                             performLogin(campus, username, password, webViewLauncher)
                         },
+                        onWebLogin = { campus ->
+                            launchCampusWebLogin(campus, silentMode = false, webViewLauncher)
+                        },
                         onAutoLaunch = { campus ->
                             if (!autoLaunchTriggered && autoLaunchWebLogin &&
                                 campus == EASToken.Campus.BENBU && isUserAgreementAccepted()
@@ -205,7 +209,7 @@ class PopUpLoginEAS : BottomSheetDialogFragment() {
         pendingWebViewCampus = null
         silentWebLoginTried = false
 
-        if (cookiesJson != null && (campus == EASToken.Campus.BENBU || campus == EASToken.Campus.WEIHAI)) {
+        if (cookiesJson != null && campus != null) {
             try {
                 val cookiesJsonObj = JSONObject(cookiesJson)
                 val cookiesMap = HashMap<String, String>()
@@ -278,6 +282,7 @@ private fun LoginEASScreen(
     onMarkAgreementAccepted: () -> Unit,
     initialCampus: EASToken.Campus,
     onLogin: (EASToken.Campus, String, String) -> Unit,
+    onWebLogin: (EASToken.Campus) -> Unit,
     onAutoLaunch: (EASToken.Campus) -> Unit,
     onSuccess: () -> Unit,
     onFailed: () -> Unit,
@@ -398,7 +403,11 @@ private fun LoginEASScreen(
                     )
                 } else {
                     Text(
-                        text = stringResource(R.string.log_in),
+                        text = if (selectedCampus == EASToken.Campus.SHENZHEN) {
+                            stringResource(R.string.eas_login_app_api)
+                        } else {
+                            stringResource(R.string.eas_login_web)
+                        },
                         fontSize = 18.sp,
                         color = MaterialTheme.colorScheme.onPrimary
                     )
@@ -463,6 +472,34 @@ private fun LoginEASScreen(
                     keyboardType = KeyboardType.Password,
                     imeAction = ImeAction.Done
                 )
+            )
+            OutlinedButton(
+                onClick = {
+                    view.performHapticFeedback(HapticFeedbackConstants.CONTEXT_CLICK)
+                    if (!agreementChecked && !isAgreementAccepted) {
+                        Toast.makeText(
+                            view.context,
+                            R.string.user_agreement_required,
+                            Toast.LENGTH_SHORT
+                        ).show()
+                        return@OutlinedButton
+                    }
+                    onMarkAgreementAccepted()
+                    onWebLogin(EASToken.Campus.SHENZHEN)
+                },
+                enabled = !isLoading,
+                shape = RoundedCornerShape(16.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = tokens.spacing.sm)
+            ) {
+                Text(stringResource(R.string.eas_login_shenzhen_web))
+            }
+            Text(
+                text = stringResource(R.string.eas_login_shenzhen_web_hint),
+                fontSize = 12.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(top = tokens.spacing.xs)
             )
         }
 

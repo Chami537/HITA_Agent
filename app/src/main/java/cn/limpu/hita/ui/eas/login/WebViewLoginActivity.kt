@@ -128,6 +128,15 @@ class WebViewLoginActivity : AppCompatActivity() {
                 "$WEIHAI_BASE/"
             )
 
+            const val SHENZHEN_LOGIN =
+                "https://ids.hit.edu.cn/authserver/login?service=http%3A%2F%2Fjw.hitsz.edu.cn%2FcasLogin"
+            const val SHENZHEN_JWTS = "https://jw.hitsz.edu.cn/authentication/main"
+            val SHENZHEN_PROBE_URLS = listOf(
+                SHENZHEN_JWTS,
+                "https://jw.hitsz.edu.cn/student_index",
+                "https://jw.hitsz.edu.cn/user/me"
+            )
+
             const val EELABINFO_URL = "http://eelabinfo-hit-edu-cn.ivpn.hit.edu.cn:1080"
         }
 
@@ -138,6 +147,7 @@ class WebViewLoginActivity : AppCompatActivity() {
         private const val MFA_DETECTION_RETRY_DELAY_MS = 700L
         private const val MFA_DETECTION_MAX_RETRIES = 4
         private val BENBU_REQUIRED_COOKIES = setOf("JSESSIONID", "HIT")
+        private val SHENZHEN_REQUIRED_COOKIES = setOf("JSESSIONID", "route")
         private const val WEIHAI_TICKET_COOKIE_PREFIX = "wengine_vpn_ticket"
         private val WEIHAI_EAS_SESSION_COOKIE_HINTS = listOf("JSESSIONID", "HIT", "TWFID")
     }
@@ -253,7 +263,12 @@ class WebViewLoginActivity : AppCompatActivity() {
                 jwtsUrl = CampusUrls.WEIHAI_JWTS,
                 cookieProbeUrls = CampusUrls.WEIHAI_PROBE_URLS
             )
-            EASToken.Campus.SHENZHEN -> configFor(EASToken.Campus.BENBU)
+            EASToken.Campus.SHENZHEN -> CampusWebConfig(
+                campus = campus,
+                loginUrl = CampusUrls.SHENZHEN_LOGIN,
+                jwtsUrl = CampusUrls.SHENZHEN_JWTS,
+                cookieProbeUrls = CampusUrls.SHENZHEN_PROBE_URLS
+            )
         }
     }
 
@@ -989,7 +1004,13 @@ class WebViewLoginActivity : AppCompatActivity() {
                                    path.contains("index")
                 isLoginCasPage || isFunctionPage
             }
-            EASToken.Campus.SHENZHEN -> false
+            EASToken.Campus.SHENZHEN -> {
+                host == "jw.hitsz.edu.cn" &&
+                    (path.contains("authentication/main") ||
+                        path.contains("student_index") ||
+                        path.contains("user/me")) &&
+                    hasRequiredCookies(collectCookies(), url)
+            }
         }
     }
 
@@ -1191,11 +1212,13 @@ class WebViewLoginActivity : AppCompatActivity() {
 
     private fun hasRequiredCookies(cookies: Map<String, String>, currentUrl: String): Boolean {
         return when (config.campus) {
-            EASToken.Campus.BENBU, EASToken.Campus.SHENZHEN -> {
+            EASToken.Campus.BENBU -> {
                 val hasJsession = cookies.containsKey("JSESSIONID") || hasUrlJsession(currentUrl)
                 val hasHit = cookies.containsKey("HIT")
                 hasJsession && hasHit
             }
+            EASToken.Campus.SHENZHEN ->
+                SHENZHEN_REQUIRED_COOKIES.all { cookies[it].orEmpty().isNotBlank() }
             EASToken.Campus.WEIHAI -> {
                 // 威海校区：需要 VPN ticket + JSESSIONID
                 val hasVpnTicket = hasWeihaiVpnTicket(cookies)
@@ -1347,8 +1370,14 @@ class WebViewLoginActivity : AppCompatActivity() {
 
     private fun fingerprintSummary(cookies: Map<String, String>): String {
         return when (config.campus) {
-            EASToken.Campus.BENBU, EASToken.Campus.SHENZHEN -> {
+            EASToken.Campus.BENBU -> {
                 BENBU_REQUIRED_COOKIES.sorted().joinToString(prefix = "[", postfix = "]") { key ->
+                    val value = cookies[key]
+                    "$key=${value?.take(8) ?: "-"}"
+                }
+            }
+            EASToken.Campus.SHENZHEN -> {
+                SHENZHEN_REQUIRED_COOKIES.sorted().joinToString(prefix = "[", postfix = "]") { key ->
                     val value = cookies[key]
                     "$key=${value?.take(8) ?: "-"}"
                 }

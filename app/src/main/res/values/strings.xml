@@ -24,6 +24,10 @@
     <string name="hint_eas_login">请登录教务账号以继续</string>
     <string name="eas_verify_title">教务认证</string>
     <string name="eas_campus_shenzhen">深圳</string>
+    <string name="eas_login_app_api">API 登录</string>
+    <string name="eas_login_web">网页登录</string>
+    <string name="eas_login_shenzhen_web">使用统一身份认证网页登录</string>
+    <string name="eas_login_shenzhen_web_hint">补充深圳 Web 会话后可浏览可选课程、全校课表等只读信息；已有 API 会话会继续保留。</string>
     <string name="eas_campus_benbu">本部</string>
     <string name="eas_campus_weihai">威海</string>
     <string name="webview_login">浏览器登录</string>

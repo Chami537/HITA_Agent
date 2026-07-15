@@ -69,6 +69,7 @@ class EasPreferenceSource(context: Context) {
             .putString("username", token.username)
             .putString("password", token.password)
             .putString("cookies", Gson().toJson(token.cookies))
+            .putString("webCookies", Gson().toJson(token.webCookies))
             .putString("name", token.name)
             .putString("stutype", token.getStudentType())
             .putString("picture", token.picture)
@@ -93,6 +94,7 @@ class EasPreferenceSource(context: Context) {
             .putString("password", null)
             .putString("electronicExpToken", null)
             .putString("cookies", null)
+            .putString("webCookies", null)
             .apply()
     }
 
@@ -130,6 +132,18 @@ class EasPreferenceSource(context: Context) {
             val value = e.value?.toString().orEmpty()
             if (key.isNotBlank()) {
                 result.cookies[key] = value
+            }
+        }
+        val webMap = runCatching {
+            Gson().fromJson(preference.getString("webCookies", "{}"), HashMap::class.java)
+        }.getOrNull() ?: HashMap<Any, Any>()
+        for (e in webMap.entries) {
+            @Suppress("UNNECESSARY_SAFE_CALL")
+            val key = e.key?.toString().orEmpty()
+            @Suppress("UNNECESSARY_SAFE_CALL")
+            val value = e.value?.toString().orEmpty()
+            if (key.isNotBlank()) {
+                result.webCookies[key] = value
             }
         }
         return result

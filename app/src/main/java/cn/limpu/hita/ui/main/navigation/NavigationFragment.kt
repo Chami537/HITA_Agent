@@ -71,6 +71,7 @@ import cn.limpu.hita.ui.design.hitaGlassCardColors
 import cn.limpu.hita.ui.design.hitaGlassCardModifier
 import cn.limpu.hita.ui.design.hitaIsAppleGlassSurface
 import cn.limpu.hita.ui.eas.classroom.EmptyClassroomActivity
+import cn.limpu.hita.ui.eas.catalog.ShenzhenCourseCatalogActivity
 import cn.limpu.hita.ui.eas.exam.ExamActivity
 import cn.limpu.hita.ui.eas.imp.ImportTimetableActivity
 import cn.limpu.hita.ui.eas.login.PopUpLoginEAS
@@ -148,6 +149,9 @@ class NavigationFragment : androidx.fragment.app.Fragment() {
                         onScores = { ActivityUtils.startActivity(requireContext(), ScoreInquiryActivity::class.java) },
                         onEmptyClassroom = { ActivityUtils.startActivity(requireContext(), EmptyClassroomActivity::class.java) },
                         onCreditStats = { ActivityUtils.startActivity(requireContext(), CreditStatsActivity::class.java) },
+                        onCourseCatalog = {
+                            ActivityUtils.startActivity(requireContext(), ShenzhenCourseCatalogActivity::class.java)
+                        },
                         onCourseLookup = {
                             ActivityUtils.startCourseResourceSearchActivity(requireContext(), mode = CourseResourceMode.VIEW)
                         },
@@ -330,6 +334,7 @@ private fun NavigationScreen(
     onScores: () -> Unit,
     onEmptyClassroom: () -> Unit,
     onCreditStats: () -> Unit,
+    onCourseCatalog: () -> Unit,
     onCourseLookup: () -> Unit,
     onCourseSubmit: () -> Unit,
     onToggleReminder: () -> Unit,
@@ -395,6 +400,12 @@ private fun NavigationScreen(
             NavigationRow(icon = R.drawable.ic_baseline_format_list_bulleted_24, title = stringResource(R.string.jw_tabs_cj), onClick = onScores)
             NavigationRow(icon = R.drawable.ic_baseline_location_city_24, title = stringResource(R.string.shortcut_empty_classroom_short), onClick = onEmptyClassroom)
             NavigationRow(icon = R.drawable.ic_baseline_format_list_bulleted_24, title = stringResource(R.string.navi_credit_stats), onClick = onCreditStats)
+            NavigationRow(
+                icon = R.drawable.ic_baseline_search_24,
+                title = "深圳课程浏览",
+                subtitle = "可选课程 · 全校课表（需 Web 登录）",
+                onClick = onCourseCatalog
+            )
         }
         NavigationGroup(title = stringResource(R.string.navi_course_resource_title)) {
             NavigationRow(icon = R.drawable.ic_baseline_search_24, title = stringResource(R.string.navi_course_lookup), subtitle = stringResource(R.string.navi_course_lookup_sub), onClick = onCourseLookup)

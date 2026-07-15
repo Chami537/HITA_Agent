@@ -98,6 +98,7 @@
             </intent-filter>
         </activity>
         <activity android:name=".ui.eas.score.ScoreInquiryActivity" />
+        <activity android:name=".ui.eas.catalog.ShenzhenCourseCatalogActivity" />
         <activity
             android:name=".ui.eas.login.WebViewLoginActivity"
             android:theme="@style/Theme.HITA.WebViewLogin" />
