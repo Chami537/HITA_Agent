@@ -33,7 +33,11 @@ fun hitaGlassContainerColor(
     alpha: Float = 0.58f,
 ): Color {
     return if (hitaIsAppleGlassSurface()) {
-        base.copy(alpha = minOf(base.alpha, alpha))
+        if (HitaTheme.isDark) {
+            base.copy(alpha = minOf(base.alpha, alpha))
+        } else {
+            base.copy(alpha = alpha.coerceIn(0.32f, 0.72f))
+        }
     } else {
         base
     }
@@ -52,7 +56,14 @@ fun hitaGlassCardColors(
 @Composable
 fun hitaGlassCardBorder(alpha: Float = 0.34f): BorderStroke? {
     return if (hitaIsAppleGlassSurface()) {
-        BorderStroke(0.5.dp, Color.White.copy(alpha = alpha))
+        BorderStroke(
+            0.5.dp,
+            if (HitaTheme.isDark) {
+                Color.White.copy(alpha = alpha)
+            } else {
+                Color(0xFF6F8EAC).copy(alpha = alpha.coerceAtLeast(0.22f))
+            }
+        )
     } else {
         null
     }
@@ -65,7 +76,7 @@ fun Modifier.hitaGlassCardModifier(
 ): Modifier {
     return if (hitaIsAppleGlassSurface()) {
         val isDark = HitaTheme.isDark
-        val shadowElevation = min(elevation.value * 0.30f, 5f).dp
+        val shadowElevation = min(elevation.value * if (isDark) 0.30f else 0.38f, 6f).dp
         this
             .then(
                 if (shadowElevation > 0.dp) {
@@ -73,8 +84,8 @@ fun Modifier.hitaGlassCardModifier(
                         elevation = shadowElevation,
                         shape = shape,
                         clip = false,
-                        ambientColor = Color.Black.copy(alpha = 0.035f),
-                        spotColor = Color.Black.copy(alpha = 0.050f)
+                        ambientColor = Color.Black.copy(alpha = if (isDark) 0.035f else 0.050f),
+                        spotColor = Color.Black.copy(alpha = if (isDark) 0.050f else 0.080f)
                     )
                 } else {
                     Modifier
@@ -84,20 +95,36 @@ fun Modifier.hitaGlassCardModifier(
             .drawWithCache {
                 val outline = shape.createOutline(size, layoutDirection, this)
                 val material = Brush.linearGradient(
-                    colors = listOf(
-                        Color.White.copy(alpha = if (isDark) 0.13f else 0.22f),
-                        Color.White.copy(alpha = if (isDark) 0.07f else 0.12f),
-                        Color(0xFFDCEEFF).copy(alpha = if (isDark) 0.05f else 0.08f)
-                    ),
+                    colors = if (isDark) {
+                        listOf(
+                            Color.White.copy(alpha = 0.13f),
+                            Color.White.copy(alpha = 0.07f),
+                            Color(0xFFDCEEFF).copy(alpha = 0.05f)
+                        )
+                    } else {
+                        listOf(
+                            Color.White.copy(alpha = 0.30f),
+                            Color(0xFFDCEEFF).copy(alpha = 0.20f),
+                            Color(0xFFBFDFFF).copy(alpha = 0.12f)
+                        )
+                    },
                     start = Offset(0f, 0f),
                     end = Offset(size.width, size.height)
                 )
                 val topEdge = Brush.linearGradient(
-                    colors = listOf(
-                        Color.White.copy(alpha = if (isDark) 0.24f else 0.40f),
-                        Color.White.copy(alpha = if (isDark) 0.10f else 0.16f),
-                        Color.Transparent
-                    ),
+                    colors = if (isDark) {
+                        listOf(
+                            Color.White.copy(alpha = 0.24f),
+                            Color.White.copy(alpha = 0.10f),
+                            Color.Transparent
+                        )
+                    } else {
+                        listOf(
+                            Color.White.copy(alpha = 0.52f),
+                            Color(0xFF9CC8F2).copy(alpha = 0.20f),
+                            Color.Transparent
+                        )
+                    },
                     start = Offset(0f, 0f),
                     end = Offset(size.width, size.height)
                 )
