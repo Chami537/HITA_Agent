@@ -18,6 +18,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -41,7 +42,9 @@ import java.sql.Timestamp
 import java.util.UUID
 
 class ExamDetailFragment(
-    private val exam: ExamItem
+    private val exam: ExamItem,
+    private val onEdit: ((ExamItem) -> Unit)? = null,
+    private val onDelete: ((ExamItem) -> Unit)? = null
 ) : BottomSheetDialogFragment() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -59,7 +62,19 @@ class ExamDetailFragment(
                 HitaComposeTheme() {
                     ExamDetailSheet(
                         exam = exam,
-                        onImport = { importExamToTimetable() }
+                        onImport = { importExamToTimetable() },
+                        onEdit = onEdit?.let { callback ->
+                            {
+                                dismiss()
+                                callback(exam)
+                            }
+                        },
+                        onDelete = onDelete?.let { callback ->
+                            {
+                                dismiss()
+                                callback(exam)
+                            }
+                        }
                     )
                 }
             }
@@ -157,7 +172,9 @@ class ExamDetailFragment(
 @Composable
 private fun ExamDetailSheet(
     exam: ExamItem,
-    onImport: () -> Unit
+    onImport: () -> Unit,
+    onEdit: (() -> Unit)?,
+    onDelete: (() -> Unit)?
 ) {
     val tokens = HitaTheme.tokens
     Surface(
@@ -226,6 +243,21 @@ private fun ExamDetailSheet(
                 )
             ) {
                 Text(text = "导入到课表", fontSize = 14.sp)
+            }
+            if (exam.isMemo() && onEdit != null && onDelete != null) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = tokens.spacing.xl, vertical = tokens.spacing.sm),
+                    horizontalArrangement = Arrangement.spacedBy(tokens.spacing.sm)
+                ) {
+                    TextButton(onClick = onEdit, modifier = Modifier.weight(1f)) {
+                        Text("编辑")
+                    }
+                    TextButton(onClick = onDelete, modifier = Modifier.weight(1f)) {
+                        Text("删除", color = MaterialTheme.colorScheme.error)
+                    }
+                }
             }
             Spacer(modifier = Modifier.height(tokens.spacing.xl))
         }
