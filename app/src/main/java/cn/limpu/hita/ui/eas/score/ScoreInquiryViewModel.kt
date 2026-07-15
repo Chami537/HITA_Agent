@@ -1,13 +1,10 @@
 package cn.limpu.hita.ui.eas.score
 
-import android.os.Handler
-import android.os.Looper
 import androidx.lifecycle.LiveData
 import androidx.lifecycle.MutableLiveData
-import androidx.lifecycle.Observer
+import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.map
 import androidx.lifecycle.switchMap
-import androidx.lifecycle.viewModelScope
 import com.limpu.component.data.DataState
 import com.limpu.component.data.MTransformations
 import com.limpu.component.data.Trigger
@@ -19,15 +16,18 @@ import cn.limpu.hita.data.source.web.service.EASService
 import cn.limpu.hita.ui.eas.EASViewModel
 import cn.limpu.hita.utils.WeightedScoreCalculator
 import dagger.hilt.android.lifecycle.HiltViewModel
-import kotlinx.coroutines.CompletableDeferred
-import kotlinx.coroutines.async
-import kotlinx.coroutines.awaitAll
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.withTimeout
 import javax.inject.Inject
 
 @HiltViewModel
-class ScoreInquiryViewModel @Inject constructor(easRepo: EASRepository) : EASViewModel(easRepo) {
+class ScoreInquiryViewModel @Inject constructor(
+    easRepo: EASRepository,
+    private val savedStateHandle: SavedStateHandle
+) : EASViewModel(easRepo) {
+
+    companion object {
+        private const val STATE_SELECTED_TERM_ID = "score_selected_term_id"
+        private const val STATE_SELECTED_TEST_TYPE = "score_selected_test_type"
+    }
 
     /**
      * LiveData区
@@ -54,6 +54,12 @@ class ScoreInquiryViewModel @Inject constructor(easRepo: EASRepository) : EASVie
     val selectedTermLiveData: MutableLiveData<TermItem> = MutableLiveData()
     val selectedTestTypeLiveData: MutableLiveData<EASService.TestType> = MutableLiveData()
 
+    init {
+        savedStateHandle.get<String>(STATE_SELECTED_TEST_TYPE)
+            ?.let { saved -> runCatching { EASService.TestType.valueOf(saved) }.getOrNull() }
+            ?.let { selectedTestTypeLiveData.value = it }
+    }
+
     private val scoresWithSummaryLiveData =
         MTransformations.switchMap(selectedTermLiveData, selectedTestTypeLiveData) {
             return@switchMap easRepo.getPersonalScoresWithSummary(it.first, it.second)
@@ -67,23 +73,47 @@ class ScoreInquiryViewModel @Inject constructor(easRepo: EASRepository) : EASVie
     val scoreSummaryLiveData: LiveData<ScoreSummary?> =
         scoresWithSummaryLiveData.map { it.data?.summary }
 
-    /** 当前学期的本地计算 GPA / CGPA / 学分绩 */
+    /** 当前筛选结果中，仅使用可解析数字成绩得到的本页估算。 */
     val localScoreLiveData: LiveData<WeightedScoreCalculator.ScoreResult> =
         scoresLiveData.map { state ->
             WeightedScoreCalculator.calculate(state.data ?: emptyList())
         }
-
-    /** 全部学期累计 CGPA / 学分绩 */
-    val cumulativeScoreLiveData: MutableLiveData<WeightedScoreCalculator.ScoreResult> =
-        MutableLiveData()
-
-    private var cumulativeLoaded = false
 
     /**
      * 方法区
      */
     fun startRefresh() {
         pageController.value = Trigger.actioning
+    }
+
+    fun reconcileTerms(terms: List<TermItem>) {
+        val selectedId = selectedTermLiveData.value?.id
+            ?: savedStateHandle[STATE_SELECTED_TERM_ID]
+        val selected = chooseScoreTerm(terms, selectedId) ?: return
+        if (selectedTermLiveData.value?.id != selected.id) {
+            selectedTermLiveData.value = selected
+        }
+        savedStateHandle[STATE_SELECTED_TERM_ID] = selected.id
+    }
+
+    fun selectTerm(term: TermItem) {
+        savedStateHandle[STATE_SELECTED_TERM_ID] = term.id
+        if (selectedTermLiveData.value?.id != term.id) {
+            selectedTermLiveData.value = term
+        }
+    }
+
+    fun ensureDefaultTestType() {
+        if (selectedTestTypeLiveData.value == null) {
+            selectTestType(EASService.TestType.NORMAL)
+        }
+    }
+
+    fun selectTestType(testType: EASService.TestType) {
+        savedStateHandle[STATE_SELECTED_TEST_TYPE] = testType.name
+        if (selectedTestTypeLiveData.value != testType) {
+            selectedTestTypeLiveData.value = testType
+        }
     }
 
     fun retryCurrentQuery(): Boolean {
@@ -94,54 +124,16 @@ class ScoreInquiryViewModel @Inject constructor(easRepo: EASRepository) : EASVie
         return true
     }
 
-    fun loadCumulativeScores(terms: List<TermItem>) {
-        if (cumulativeLoaded) return
-        cumulativeLoaded = true
-        viewModelScope.launch {
-            val allSemesterItems = terms.map { term ->
-                async { fetchTermScores(term) }
-            }.awaitAll()
-            val result = WeightedScoreCalculator.calculateCumulative(allSemesterItems)
-            cumulativeScoreLiveData.value = result
-        }
-    }
-
-    private suspend fun fetchTermScores(term: TermItem): List<CourseScoreItem> {
-        return try {
-            withTimeout(15000L) {
-                val deferred = CompletableDeferred<List<CourseScoreItem>>()
-                val liveData = easRepo.getPersonalScores(term, EASService.TestType.NORMAL)
-                val observer = Observer<DataState<List<CourseScoreItem>>> { state ->
-                    when (state.state) {
-                        DataState.STATE.SUCCESS -> {
-                            deferred.complete(state.data ?: emptyList())
-                        }
-                        DataState.STATE.NOTHING -> {} // 加载中
-                        else -> {
-                            deferred.complete(emptyList())
-                        }
-                    }
-                }
-                Handler(Looper.getMainLooper()).post {
-                    liveData.observeForever(observer)
-                }
-                try {
-                    deferred.await()
-                } finally {
-                    Handler(Looper.getMainLooper()).post {
-                        liveData.removeObserver(observer)
-                    }
-                }
-            }
-        } catch (e: Exception) {
-            emptyList()
-        }
-    }
-
     private fun parseStartYear(raw: String?): Int? {
         if (raw.isNullOrBlank()) return null
         val match = Regex("(\\d{4})").find(raw) ?: return null
         return match.groupValues.getOrNull(1)?.toIntOrNull()
     }
 
+}
+
+internal fun chooseScoreTerm(terms: List<TermItem>, selectedId: String?): TermItem? {
+    return terms.firstOrNull { it.id == selectedId }
+        ?: terms.firstOrNull { it.isCurrent }
+        ?: terms.firstOrNull()
 }

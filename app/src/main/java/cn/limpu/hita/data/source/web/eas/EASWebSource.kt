@@ -12,6 +12,7 @@ import cn.limpu.hita.data.model.eas.EASToken
 import cn.limpu.hita.data.model.eas.ExamItem
 import cn.limpu.hita.data.model.eas.ScoreQueryResult
 import cn.limpu.hita.data.model.eas.ScoreSummary
+import cn.limpu.hita.data.model.eas.ScoreSummaryScope
 import cn.limpu.hita.data.model.eas.TermItem
 import cn.limpu.hita.data.model.timetable.TermSubject
 import cn.limpu.hita.data.model.timetable.TimeInDay
@@ -1734,8 +1735,16 @@ class EASWebSource internal constructor(
                         item.assessMethod = tp.optString("khfs", "")
                         result.add(item)
                     }
-                    val summary = fetchScoreSummary(token) ?: extractScoreSummary(jo)
-                    res.postValue(DataState(ScoreQueryResult(result, summary)))
+                    // 课程成绩先返回，汇总接口较慢或超时时不能阻塞列表展示。
+                    val embeddedSummary = extractScoreSummary(jo)
+                    res.postValue(DataState(ScoreQueryResult(result, embeddedSummary)))
+
+                    fetchLegacyCumulativeScoreSummary(token)?.let { cumulative ->
+                        res.postValue(DataState(ScoreQueryResult(result, cumulative)))
+                    }
+                    fetchOfficialWebScoreSummary(term, token)?.let { official ->
+                        res.postValue(DataState(ScoreQueryResult(result, official)))
+                    }
                 } ?: run {
                     res.postValue(DataState(DataState.STATE.FETCH_FAILED))
                 }
@@ -1747,7 +1756,31 @@ class EASWebSource internal constructor(
         return res
     }
 
-    private fun fetchScoreSummary(token: EASToken): ScoreSummary? {
+    /** 深圳 Web 教务的官方 GPA / 平均学分绩汇总，参数与当前所选学期一致。 */
+    private fun fetchOfficialWebScoreSummary(term: TermItem, token: EASToken): ScoreSummary? {
+        return try {
+            val resp = jwFormPost(
+                token = token,
+                path = "/cjgl/grcjcx/getgpa",
+                data = mapOf(
+                    "xn" to term.yearCode,
+                    "xq" to term.termCode,
+                    "pylx" to token.getStudentType()
+                )
+            )
+            if (resp.statusCode() != 200) return null
+            val jo = JsonUtils.getJsonObject(resp.body()) ?: return null
+            val values = ScoreSummaryParser.shenzhenKeys().associateWith { key ->
+                jo.optString(key, "")
+            }
+            ScoreSummaryParser.fromShenzhenGpa(values)
+        } catch (_: Exception) {
+            null
+        }
+    }
+
+    /** 旧 App API 只提供累计学分绩与排名，不包含可验证的 GPA。 */
+    private fun fetchLegacyCumulativeScoreSummary(token: EASToken): ScoreSummary? {
         return try {
             val body = """{"type":"json","ksxnxq":"-1-1","jsxnxq":"-1-1","pylx":"${token.getStudentType()}"}"""
             val resp = jsonPost(token, "/app/cjgl/xfj", body, rolecode = "06")
@@ -1756,11 +1789,16 @@ class EASWebSource internal constructor(
                 return null
             }
             val xfj = jo?.optJSONObject("content")?.optJSONObject("xfj") ?: return null
-            val gpa = xfj.optString("XFJ", "").trim()
+            val weightedAverage = xfj.optString("XFJ", "").trim()
             val rank = xfj.optString("RANK", "").trim()
             val total = xfj.optString("ZYZRS", "").trim()
-            if (gpa.isBlank() && rank.isBlank() && total.isBlank()) null
-            else ScoreSummary(gpa = gpa, rank = rank, total = total)
+            if (weightedAverage.isBlank() && rank.isBlank() && total.isBlank()) null
+            else ScoreSummary(
+                weightedAverage = weightedAverage,
+                rank = rank,
+                total = total,
+                scope = ScoreSummaryScope.CUMULATIVE
+            )
         } catch (_: Exception) {
             null
         }
@@ -1768,7 +1806,8 @@ class EASWebSource internal constructor(
 
     private fun extractScoreSummary(jo: JSONObject?): ScoreSummary? {
         if (jo == null) return null
-        val gpaKeys = listOf("xfjd", "pjxfjd", "avgxfjd", "gpa", "GPA", "xuefenji")
+        val weightedAverageKeys = listOf("xfjd", "pjxfjd", "avgxfjd", "xuefenji")
+        val gpaKeys = listOf("gpa", "GPA")
         val rankKeys = listOf("pm", "rank", "paiming", "pmj")
         val totalKeys = listOf("pmrs", "rank_total", "total", "zrs", "rs")
         val objects = buildList {
@@ -1778,11 +1817,20 @@ class EASWebSource internal constructor(
             jo.optJSONObject("data")?.let { add(it) }
             jo.optJSONObject("extra")?.let { add(it) }
         }
+        val weightedAverage = objects.firstNotNullOfOrNull {
+            findFirstString(it, weightedAverageKeys)
+        }.orEmpty()
         val gpa = objects.firstNotNullOfOrNull { findFirstString(it, gpaKeys) }.orEmpty()
         val rank = objects.firstNotNullOfOrNull { findFirstString(it, rankKeys) }.orEmpty()
         val total = objects.firstNotNullOfOrNull { findFirstString(it, totalKeys) }.orEmpty()
-        if (gpa.isBlank() && rank.isBlank() && total.isBlank()) return null
-        return ScoreSummary(gpa = gpa, rank = rank, total = total)
+        if (weightedAverage.isBlank() && gpa.isBlank() && rank.isBlank() && total.isBlank()) return null
+        return ScoreSummary(
+            weightedAverage = weightedAverage,
+            gpa = gpa,
+            rank = rank,
+            total = total,
+            scope = ScoreSummaryScope.UNKNOWN
+        )
     }
 
     private fun findFirstString(obj: JSONObject, keys: List<String>): String? {

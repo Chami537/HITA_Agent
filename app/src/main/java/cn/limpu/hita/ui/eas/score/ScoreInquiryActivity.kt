@@ -111,9 +111,7 @@ class ScoreInquiryActivity :
                 DataState.STATE.SUCCESS -> {
                     val terms = data.data.orEmpty()
                     if (terms.isNotEmpty()) {
-                        viewModel.selectedTermLiveData.value =
-                            terms.firstOrNull { it.isCurrent } ?: terms.first()
-                        viewModel.loadCumulativeScores(terms)
+                        viewModel.reconcileTerms(terms)
                     }
                 }
 
@@ -178,7 +176,7 @@ class ScoreInquiryActivity :
         bindLiveData()
         scoreReminderStore = ScoreReminderStore(applicationContext)
         scoreReminderEnabled = scoreReminderStore.isEnabled()
-        viewModel.selectedTestTypeLiveData.value = EASService.TestType.NORMAL
+        viewModel.ensureDefaultTestType()
         (binding.root as ComposeView).setContent {
             HitaComposeTheme() {
                 ScoreInquiryScreen(
@@ -214,7 +212,7 @@ class ScoreInquiryActivity :
                 .setOnConfirmListener(object : PopUpCheckableList.OnConfirmListener<TermItem> {
                     override fun OnConfirm(title: String?, key: TermItem) {
                         scoreQueryInFlight = true
-                        viewModel.selectedTermLiveData.value = key
+                        viewModel.selectTerm(key)
                     }
                 }).show(supportFragmentManager, "terms")
         }
@@ -235,7 +233,7 @@ class ScoreInquiryActivity :
             .setOnConfirmListener(object : PopUpCheckableList.OnConfirmListener<EASService.TestType> {
                 override fun OnConfirm(title: String?, key: EASService.TestType) {
                     scoreQueryInFlight = true
-                    viewModel.selectedTestTypeLiveData.value = key
+                    viewModel.selectTestType(key)
                 }
             }).show(supportFragmentManager, "types")
     }
@@ -307,7 +305,7 @@ private fun ScoreInquiryScreen(
     val selectedTestType by viewModel.selectedTestTypeLiveData.observeAsState()
     val scoresState by viewModel.scoresLiveData.observeAsState()
     val summary by viewModel.scoreSummaryLiveData.observeAsState()
-    val cumulative by viewModel.cumulativeScoreLiveData.observeAsState()
+    val localEstimate by viewModel.localScoreLiveData.observeAsState()
     val scores = scoresState?.data.orEmpty()
 
     Column(
@@ -368,7 +366,7 @@ private fun ScoreInquiryScreen(
                 contentPadding = PaddingValues(bottom = tokens.spacing.xl)
             ) {
                 item {
-                    ScoreSummaryCard(summary = summary, cumulative = cumulative)
+                    ScoreSummaryCard(summary = summary, localEstimate = localEstimate)
                 }
                 item {
                     ScoreReminderCard(
@@ -482,15 +480,26 @@ private fun SmallFilterText(
 @Composable
 private fun ScoreSummaryCard(
     summary: ScoreSummary?,
-    cumulative: WeightedScoreCalculator.ScoreResult?
+    localEstimate: WeightedScoreCalculator.ScoreResult?
 ) {
     val tokens = HitaTheme.tokens
+    val weightedAverageRaw = summary?.weightedAverage?.ifBlank { "-" } ?: "-"
+    val weightedAverage = weightedAverageRaw.toDoubleOrNull()
+        ?.let { String.format("%.2f", it) }
+        ?: weightedAverageRaw
     val gpaRaw = summary?.gpa?.ifBlank { "-" } ?: "-"
     val gpa = gpaRaw.toDoubleOrNull()?.let { String.format("%.2f", it) } ?: gpaRaw
     val rank = summary?.rank?.ifBlank { "-" } ?: "-"
     val total = summary?.total?.ifBlank { "" } ?: ""
     val rankText = if (total.isNotBlank() && rank.isNotBlank() && rank != "-") "$rank / $total" else rank
-    val hasCumulative = cumulative?.validCourses?.let { it > 0 } == true
+    val hasLocalEstimate = localEstimate?.validCourses?.let { it > 0 } == true
+    val officialSection = when (summary?.scope) {
+        cn.limpu.hita.data.model.eas.ScoreSummaryScope.SELECTED_TERM ->
+            stringResource(R.string.score_section_selected_term_official)
+        cn.limpu.hita.data.model.eas.ScoreSummaryScope.CUMULATIVE ->
+            stringResource(R.string.score_section_cumulative_official)
+        else -> stringResource(R.string.score_section_server)
+    }
 
     Card(
         modifier = Modifier
@@ -501,10 +510,16 @@ private fun ScoreSummaryCard(
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
     ) {
         Column(modifier = Modifier.padding(tokens.spacing.lg)) {
-            SectionLabel(text = stringResource(R.string.score_section_server))
+            SectionLabel(text = officialSection)
             Row(modifier = Modifier.fillMaxWidth()) {
                 SummaryMetric(
                     label = stringResource(R.string.score_summary_gpa),
+                    value = weightedAverage,
+                    primary = true,
+                    modifier = Modifier.weight(1f)
+                )
+                SummaryMetric(
+                    label = stringResource(R.string.score_summary_official_gpa),
                     value = gpa,
                     primary = false,
                     modifier = Modifier.weight(1f)
@@ -520,27 +535,37 @@ private fun ScoreSummaryCard(
                 modifier = Modifier.padding(vertical = tokens.spacing.md),
                 color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.2f)
             )
-            SectionLabel(text = stringResource(R.string.score_section_cumulative))
+            SectionLabel(text = stringResource(R.string.score_section_local_estimate))
             Row(modifier = Modifier.fillMaxWidth()) {
                 SummaryMetric(
-                    label = stringResource(R.string.score_cumulative_weighted_avg),
-                    value = if (hasCumulative) String.format("%.1f", cumulative?.weightedAverage) else "-",
+                    label = stringResource(R.string.score_local_estimated_average),
+                    value = if (hasLocalEstimate) {
+                        String.format("%.1f", localEstimate?.weightedAverage)
+                    } else "-",
                     primary = true,
                     modifier = Modifier.weight(1f)
                 )
                 SummaryMetric(
-                    label = stringResource(R.string.score_cumulative_gpa),
-                    value = if (hasCumulative) String.format("%.2f", cumulative?.gpa) else "-",
+                    label = stringResource(R.string.score_local_numeric_credits),
+                    value = if (hasLocalEstimate) {
+                        formatCredits(localEstimate?.totalCredits ?: 0f)
+                    } else "-",
                     primary = false,
                     modifier = Modifier.weight(1f)
                 )
                 SummaryMetric(
-                    label = stringResource(R.string.score_total_credits),
-                    value = if (hasCumulative) formatCredits(cumulative?.totalCredits ?: 0f) else "-",
+                    label = stringResource(R.string.score_local_numeric_courses),
+                    value = if (hasLocalEstimate) localEstimate?.validCourses.toString() else "-",
                     primary = false,
                     modifier = Modifier.weight(1f)
                 )
             }
+            Text(
+                text = stringResource(R.string.score_local_estimate_note),
+                modifier = Modifier.padding(top = tokens.spacing.sm),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                fontSize = 11.sp
+            )
         }
     }
 }

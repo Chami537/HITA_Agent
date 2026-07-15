@@ -1258,15 +1258,20 @@ class BenbuEASWebSource(
                 values[id] = value
             }
         }
-        val gpa = values["pjxfj"].orEmpty()
+        val weightedAverage = values["pjxfj"].orEmpty()
         val rankRaw = values["zrs"].orEmpty()
         val rankParts = rankRaw.split("/").map { it.trim() }.filter { it.isNotBlank() }
         val rank = rankParts.getOrNull(0).orEmpty()
         val total = rankParts.getOrNull(1).orEmpty()
-        if (gpa.isBlank() && rank.isBlank() && total.isBlank()) {
+        if (weightedAverage.isBlank() && rank.isBlank() && total.isBlank()) {
             return null
         }
-        return ScoreSummary(gpa = gpa, rank = rank, total = total)
+        return ScoreSummary(
+            weightedAverage = weightedAverage,
+            rank = rank,
+            total = total,
+            scope = ScoreSummaryScope.CUMULATIVE
+        )
     }
 
     private fun logScoreDebug(
