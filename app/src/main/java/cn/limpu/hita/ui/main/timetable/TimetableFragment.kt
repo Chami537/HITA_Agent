@@ -66,6 +66,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.input.pointer.pointerInput
@@ -325,10 +326,10 @@ private fun TimetableScreen(
     }
 
     val style = remember(windowEvents, startTime, periodLabel) {
-        (windowEvents?.style ?: TimetableStyleSheet()).also {
-            it.startTime = startTime
-            it.usePeriodLabel = periodLabel
-        }
+        (windowEvents?.style ?: TimetableStyleSheet()).copy(
+            startTime = startTime,
+            usePeriodLabel = periodLabel,
+        )
     }
     val events = windowEvents?.events.orEmpty()
 
@@ -1064,7 +1065,7 @@ private fun TimetableEventCard(
     } else {
         MaterialTheme.colorScheme.primary
     }
-    val baseAlpha = (120 - style.cardOpacity.coerceIn(20, 100)) / 100f
+    val baseAlpha = style.cardOpacity.coerceIn(20, 100) / 100f
     val backgroundAlpha = if (isAppleGlass) {
         if (isBottomCascadeCard) {
             0.04f
@@ -1075,6 +1076,16 @@ private fun TimetableEventCard(
         baseAlpha * if (isBottomCascadeCard) 0.5f else 1f
     }
     val background = courseTint.copy(alpha = backgroundAlpha)
+    val backgroundBrush = if (style.isFadeEnabled) {
+        Brush.linearGradient(
+            colors = listOf(
+                background.copy(alpha = background.alpha * 0.72f),
+                background,
+            )
+        )
+    } else {
+        SolidColor(background)
+    }
     val borderColor = if (isAppleGlass) {
         Color.Transparent
     } else {
@@ -1157,7 +1168,13 @@ private fun TimetableEventCard(
                 )
             }
             .clip(cardShape)
-            .background(if (isAppleGlass) Color.Transparent else background)
+            .then(
+                if (isAppleGlass) {
+                    Modifier.background(Color.Transparent)
+                } else {
+                    Modifier.background(backgroundBrush)
+                }
+            )
     ) {
         if (isAppleGlass) {
             Box(
@@ -1168,7 +1185,9 @@ private fun TimetableEventCard(
                         shape = cardShape,
                         tint = courseTint,
                         isMuted = isBottomCascadeCard,
-                        usesRealBackdrop = usesRealBackdrop
+                        usesRealBackdrop = usesRealBackdrop,
+                        gradientEnabled = style.isFadeEnabled,
+                        opacity = baseAlpha,
                     )
             )
         }

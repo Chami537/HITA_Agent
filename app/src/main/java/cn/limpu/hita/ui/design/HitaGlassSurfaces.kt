@@ -17,6 +17,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.drawOutline
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.unit.Dp
@@ -144,14 +145,17 @@ fun Modifier.hitaCourseCrystalGlassModifier(
     tint: Color,
     isMuted: Boolean = false,
     usesRealBackdrop: Boolean = true,
+    gradientEnabled: Boolean = true,
+    opacity: Float = 1f,
 ): Modifier {
     return if (hitaIsAppleGlassSurface()) {
         val hazeState = HitaCourseHazeRegistry.hazeState as? HazeState
-        val edgeHighlightOpacity = if (isMuted) 0.36f else 0.62f
-        val edgeShadowOpacity = if (isMuted) 0.10f else 0.16f
-        val motionHighlightOpacity = if (isMuted) 0.08f else 0.16f
+        val opacityScale = opacity.coerceIn(0.2f, 1f)
+        val edgeHighlightOpacity = (if (isMuted) 0.36f else 0.62f) * opacityScale
+        val edgeShadowOpacity = (if (isMuted) 0.10f else 0.16f) * opacityScale
+        val motionHighlightOpacity = (if (isMuted) 0.08f else 0.16f) * opacityScale
         val hazeStyle = HazeStyle(
-            tint = Color.White.copy(alpha = if (isMuted) 0.16f else 0.22f),
+            tint = Color.White.copy(alpha = (if (isMuted) 0.16f else 0.22f) * opacityScale),
             blurRadius = if (isMuted) 18.dp else 28.dp,
             noiseFactor = 0.08f
         )
@@ -173,15 +177,19 @@ fun Modifier.hitaCourseCrystalGlassModifier(
             .clip(shape)
             .drawWithCache {
                 val outline = shape.createOutline(size, layoutDirection, this)
-                val material = Brush.linearGradient(
-                    colors = listOf(
-                        Color.White.copy(alpha = if (isMuted) 0.16f else 0.30f),
-                        tint.copy(alpha = if (isMuted) 0.08f else 0.20f),
-                        Color.White.copy(alpha = if (isMuted) 0.08f else 0.16f)
-                    ),
-                    start = Offset(0f, 0f),
-                    end = Offset(size.width, size.height)
-                )
+                val material = if (gradientEnabled) {
+                    Brush.linearGradient(
+                        colors = listOf(
+                            Color.White.copy(alpha = (if (isMuted) 0.16f else 0.30f) * opacityScale),
+                            tint.copy(alpha = (if (isMuted) 0.08f else 0.20f) * opacityScale),
+                            Color.White.copy(alpha = (if (isMuted) 0.08f else 0.16f) * opacityScale)
+                        ),
+                        start = Offset(0f, 0f),
+                        end = Offset(size.width, size.height)
+                    )
+                } else {
+                    SolidColor(tint.copy(alpha = (if (isMuted) 0.10f else 0.24f) * opacityScale))
+                }
                 val edgeHighlight = Brush.linearGradient(
                     colors = listOf(
                         Color.White.copy(alpha = edgeHighlightOpacity),
@@ -214,11 +222,13 @@ fun Modifier.hitaCourseCrystalGlassModifier(
                 val shadowStroke = Stroke(width = 1.dp.toPx())
                 onDrawBehind {
                     drawOutline(outline = outline, brush = material)
-                    drawCircle(
-                        brush = motionHighlight,
-                        radius = highlightRadius,
-                        center = highlightCenter
-                    )
+                    if (gradientEnabled) {
+                        drawCircle(
+                            brush = motionHighlight,
+                            radius = highlightRadius,
+                            center = highlightCenter
+                        )
+                    }
                     drawOutline(outline = outline, brush = edgeHighlight, style = highlightStroke)
                     drawOutline(outline = outline, brush = edgeShadow, style = shadowStroke)
                 }

@@ -54,46 +54,22 @@ class TimetableStyleRepository @Inject constructor(application: Application) {
         val sheet = MediatorLiveData<TimetableStyleSheet>()
         sheet.value = TimetableStyleSheet()
         sheet.addSource(startTimeLiveData) { start ->
-            val ts = sheet.value
-            ts?.let {
-                it.startTime = start
-                sheet.value = it
-            }
+            sheet.value = sheet.value?.copy(startTime = start)
         }
         sheet.addSource(drawBGLinesLiveData) { draw ->
-            val ts = sheet.value
-            ts?.let {
-                it.drawBGLine = draw
-                sheet.value = it
-            }
+            sheet.value = sheet.value?.copy(drawBGLine = draw)
         }
         sheet.addSource(colorEnableLiveData) { draw ->
-            val ts = sheet.value
-            ts?.let {
-                it.isColorEnabled = draw
-                sheet.value = it
-            }
+            sheet.value = sheet.value?.copy(isColorEnabled = draw)
         }
         sheet.addSource(fadeEnableLiveData) { fade ->
-            val ts = sheet.value
-            ts?.let {
-                it.isFadeEnabled = fade
-                sheet.value = it
-            }
+            sheet.value = sheet.value?.copy(isFadeEnabled = fade)
         }
         sheet.addSource(periodLabelLiveData) { enabled ->
-            val ts = sheet.value
-            ts?.let {
-                it.usePeriodLabel = enabled
-                sheet.value = it
-            }
+            sheet.value = sheet.value?.copy(usePeriodLabel = enabled)
         }
         sheet.addSource(cardOpacityLiveData) { opacity ->
-            val ts = sheet.value
-            ts?.let {
-                it.cardOpacity = opacity
-                sheet.value = it
-            }
+            sheet.value = sheet.value?.withCardOpacity(opacity)
         }
         return sheet
     }

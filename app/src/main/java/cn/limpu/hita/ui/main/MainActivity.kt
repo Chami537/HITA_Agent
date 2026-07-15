@@ -115,7 +115,6 @@ import cn.limpu.hita.ui.base.ComposeViewBinding
 import cn.limpu.hita.ui.base.HiltBaseActivity
 import cn.limpu.hita.ui.design.HitaComposeTheme
 import cn.limpu.hita.ui.design.HitaTheme
-import cn.limpu.hita.ui.design.HitaThemeStyle
 import cn.limpu.hita.ui.eas.login.PopUpLoginEAS
 import cn.limpu.hita.ui.event.add.PopupAddEvent
 import cn.limpu.hita.ui.main.agent.AgentChatFragment
@@ -176,13 +175,11 @@ class MainActivity : HiltBaseActivity<ComposeViewBinding>(),
     private var timetableDisplayName by mutableStateOf("")
     private var showTimetableName by mutableStateOf(false)
     private var timetableOptionList by mutableStateOf<List<Timetable>>(emptyList())
-    private var themeIcon by mutableIntStateOf(R.drawable.ic_moon_auto)
     private var wallpaperBitmap by mutableStateOf<Bitmap?>(null)
     private var wallpaperVisible by mutableStateOf(false)
     private var wallpaperScrimOpacity by mutableIntStateOf(0)
     private var wallpaperTitleColor by mutableStateOf(AndroidColor.WHITE)
     private var wallpaperLabelColor by mutableStateOf(AndroidColor.WHITE)
-    private var themeStyle by mutableStateOf(ThemeTools.STYLE.CLASSIC)
 
     private val easTokenObserver = Observer<cn.limpu.hita.data.model.eas.EASToken> {
         refreshDrawerState()
@@ -244,9 +241,14 @@ class MainActivity : HiltBaseActivity<ComposeViewBinding>(),
 
     override fun initViews() {
         todayTitle = getString(R.string.maintab_today)
-        themeStyle = ThemeTools.getThemeStyle(this)
         (binding.root as ComposeView).setContent {
-            HitaComposeTheme(style = themeStyle.toHitaThemeStyle()) {
+            HitaComposeTheme {
+                val activeThemeStyle = HitaTheme.preferenceStyle
+                val activeThemeIcon = when (HitaTheme.mode) {
+                    ThemeTools.MODE.DARK -> R.drawable.ic_moon2
+                    ThemeTools.MODE.LIGHT -> R.drawable.ic_sun
+                    ThemeTools.MODE.FOLLOW -> R.drawable.ic_moon_auto
+                }
                 MainScreen(
                     selectedTab = selectedTab,
                     drawerOpen = drawerOpen,
@@ -256,13 +258,13 @@ class MainActivity : HiltBaseActivity<ComposeViewBinding>(),
                     showTimetableName = showTimetableName,
                     timetableOptions = timetableOptionList,
                     onTimetableSelected = ::onSemesterSelected,
-                    themeIcon = themeIcon,
+                    themeIcon = activeThemeIcon,
                     wallpaperBitmap = wallpaperBitmap,
                     wallpaperVisible = wallpaperVisible,
                     wallpaperScrimOpacity = wallpaperScrimOpacity,
                     wallpaperTitleColor = Color(wallpaperTitleColor),
                     wallpaperLabelColor = Color(wallpaperLabelColor),
-                    themeStyle = themeStyle,
+                    themeStyle = activeThemeStyle,
                     drawerState = drawerState,
                     onSelectTab = { selectedTab = it },
                     onOpenDrawer = { refreshDrawerState(); drawerOpen = true },
@@ -270,7 +272,6 @@ class MainActivity : HiltBaseActivity<ComposeViewBinding>(),
                     onTheme = {
                         ThemeTools.switchTheme(getThis())
                         WidgetUtils.sendRefreshToAll(this)
-                        refreshTheme()
                     },
                     onWallpaper = { pickWallpaperLauncher.launch("image/*") },
                     onWallpaperLongPress = { showWallpaperMenu() },
@@ -322,7 +323,6 @@ class MainActivity : HiltBaseActivity<ComposeViewBinding>(),
     override fun onStart() {
         super.onStart()
         viewModel.startRefreshUser()
-        refreshTheme()
         refreshDrawerState()
         easRepository.observeEasToken().observe(this, easTokenObserver)
         maybeAutoReimportTimetable()
@@ -363,14 +363,6 @@ class MainActivity : HiltBaseActivity<ComposeViewBinding>(),
         val isUndergrad = token.stutype == cn.limpu.hita.data.model.eas.EASToken.TYPE.UNDERGRAD
         easRepository.startAutoImportCurrentTimetable(isUndergrad) { success ->
             if (success) settings.setLastAutoReimportTs(System.currentTimeMillis())
-        }
-    }
-
-    private fun refreshTheme() {
-        themeIcon = when (ThemeTools.getThemeMode(this)) {
-            ThemeTools.MODE.DARK -> R.drawable.ic_moon2
-            ThemeTools.MODE.LIGHT -> R.drawable.ic_sun
-            else -> R.drawable.ic_moon_auto
         }
     }
 
@@ -473,13 +465,12 @@ class MainActivity : HiltBaseActivity<ComposeViewBinding>(),
             ThemeTools.STYLE.APPLE_GLASS
         )
         val labels = styles.map { it.displayName() }.toTypedArray()
-        val checked = styles.indexOf(themeStyle).coerceAtLeast(0)
+        val checked = styles.indexOf(ThemeTools.getThemeStyle(this)).coerceAtLeast(0)
         MaterialAlertDialogBuilder(this)
             .setTitle(R.string.main_drawer_menu_theme_style)
             .setSingleChoiceItems(labels, checked) { dialog, which ->
                 val selected = styles[which]
                 ThemeTools.setThemeStyle(this, selected)
-                themeStyle = selected
                 WidgetUtils.sendRefreshToAll(this)
                 Toast.makeText(
                     this,
@@ -617,16 +608,6 @@ class MainActivity : HiltBaseActivity<ComposeViewBinding>(),
 
     override fun setTimelineTitleText(string: String) {
         todayTitle = string
-    }
-}
-
-private fun ThemeTools.STYLE.toHitaThemeStyle(): HitaThemeStyle {
-    return when (this) {
-        ThemeTools.STYLE.CLASSIC -> HitaThemeStyle.Classic
-        ThemeTools.STYLE.FRESH -> HitaThemeStyle.Fresh
-        ThemeTools.STYLE.FOCUS -> HitaThemeStyle.Focus
-        ThemeTools.STYLE.HIGH_CONTRAST -> HitaThemeStyle.HighContrast
-        ThemeTools.STYLE.APPLE_GLASS -> HitaThemeStyle.AppleGlass
     }
 }
 
@@ -858,16 +839,25 @@ private fun MainScreen(
 
 @Composable
 private fun AppleGlassBackground() {
+    val colors = if (HitaTheme.isDark) {
+        listOf(
+            Color(0xFF080B10),
+            Color(0xFF111823),
+            Color(0xFF0C1017),
+        )
+    } else {
+        listOf(
+            Color(0xFFF8FBFF),
+            Color(0xFFEFF5FB),
+            Color(0xFFF7F8FA),
+        )
+    }
     Box(
         modifier = Modifier
             .fillMaxSize()
             .background(
                 Brush.verticalGradient(
-                    colors = listOf(
-                        Color(0xFFF8FBFF),
-                        Color(0xFFEFF5FB),
-                        Color(0xFFF7F8FA)
-                    )
+                    colors = colors
                 )
             )
     )
@@ -915,18 +905,17 @@ private fun MainTopBar(
 
     // Wallpaper tab: force light status bar icons on dark overlay; restore otherwise
     val view = LocalView.current
-    LaunchedEffect(isWallpaperTab) {
+    val isDarkTheme = HitaTheme.isDark
+    LaunchedEffect(isWallpaperTab, isDarkTheme) {
         val window = (view.context as android.app.Activity).window
         @Suppress("DEPRECATION")
         val ctrl = androidx.core.view.WindowInsetsControllerCompat(window, view)
         if (isWallpaperTab) {
             ctrl.isAppearanceLightStatusBars = false // light icons on dark overlay
         } else {
-            val isDark = (view.context.resources.configuration.uiMode
-                and android.content.res.Configuration.UI_MODE_NIGHT_MASK) ==
-                android.content.res.Configuration.UI_MODE_NIGHT_YES
-            ctrl.isAppearanceLightStatusBars = !isDark
+            ctrl.isAppearanceLightStatusBars = !isDarkTheme
         }
+        ctrl.isAppearanceLightNavigationBars = !isDarkTheme
     }
     Row(
         modifier = Modifier

@@ -2,35 +2,39 @@ package com.limpu.style
 
 import android.app.Activity
 import android.content.Context
+import android.content.SharedPreferences
 import androidx.appcompat.app.AppCompatDelegate
 
 object ThemeTools {
     enum class MODE { DARK, LIGHT, FOLLOW }
     enum class STYLE { CLASSIC, FRESH, FOCUS, HIGH_CONTRAST, APPLE_GLASS }
 
+    const val PREFERENCE_NAME = "theme"
+    const val KEY_MODE = "mode"
+    const val KEY_STYLE = "style"
+
+    fun getThemePreferences(context: Context): SharedPreferences =
+        context.applicationContext.getSharedPreferences(PREFERENCE_NAME, Context.MODE_PRIVATE)
 
     fun getThemeMode(context: Context): MODE {
-        val pr = context.getSharedPreferences("theme", Context.MODE_PRIVATE)
-        return when (pr.getString("mode", "follow")) {
+        return when (getThemePreferences(context).getString(KEY_MODE, "follow")) {
             "dark" -> MODE.DARK
             "light" -> MODE.LIGHT
             else -> MODE.FOLLOW
         }
     }
 
-    private fun setThemeMode(context: Context, mode: MODE) {
-        val pr = context.getSharedPreferences("theme", Context.MODE_PRIVATE)
+    fun setThemeMode(context: Context, mode: MODE) {
         val str = when (mode) {
             MODE.DARK -> "dark"
             MODE.LIGHT -> "light"
             else -> "follow"
         }
-        pr.edit().putString("mode", str).apply()
+        getThemePreferences(context).edit().putString(KEY_MODE, str).apply()
     }
 
     fun getThemeStyle(context: Context): STYLE {
-        val pr = context.getSharedPreferences("theme", Context.MODE_PRIVATE)
-        return when (pr.getString("style", "classic")) {
+        return when (getThemePreferences(context).getString(KEY_STYLE, "classic")) {
             "fresh" -> STYLE.FRESH
             "focus" -> STYLE.FOCUS
             "high_contrast" -> STYLE.HIGH_CONTRAST
@@ -47,9 +51,9 @@ object ThemeTools {
             STYLE.HIGH_CONTRAST -> "high_contrast"
             STYLE.APPLE_GLASS -> "apple_glass"
         }
-        context.getSharedPreferences("theme", Context.MODE_PRIVATE)
+        getThemePreferences(context)
             .edit()
-            .putString("style", str)
+            .putString(KEY_STYLE, str)
             .apply()
     }
 
