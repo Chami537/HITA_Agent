@@ -134,40 +134,85 @@ fun Modifier.hitaCourseCrystalGlassModifier(
     opacity: Float = 1f,
 ): Modifier {
     return if (hitaIsAppleGlassSurface()) {
+        val isDark = HitaTheme.isDark
         val opacityScale = opacity.coerceIn(0.2f, 1f)
-        val edgeHighlightOpacity = (if (isMuted) 0.36f else 0.62f) * opacityScale
-        val edgeShadowOpacity = (if (isMuted) 0.10f else 0.16f) * opacityScale
-        val motionHighlightOpacity = (if (isMuted) 0.08f else 0.16f) * opacityScale
+        val edgeHighlightOpacity = (
+            if (isDark) {
+                if (isMuted) 0.36f else 0.62f
+            } else {
+                if (isMuted) 0.30f else 0.48f
+            }
+        ) * opacityScale
+        val edgeShadowOpacity = (
+            if (isDark) {
+                if (isMuted) 0.10f else 0.16f
+            } else {
+                if (isMuted) 0.08f else 0.12f
+            }
+        ) * opacityScale
+        val motionHighlightOpacity = (
+            if (isDark) {
+                if (isMuted) 0.08f else 0.16f
+            } else {
+                if (isMuted) 0.06f else 0.11f
+            }
+        ) * opacityScale
         this
             .shadow(
-                elevation = if (isMuted) 1.dp else 2.dp,
+                elevation = if (isMuted) 1.dp else if (isDark) 2.dp else 3.dp,
                 shape = shape,
                 clip = false,
-                ambientColor = Color.Black.copy(alpha = 0.035f),
-                spotColor = Color.Black.copy(alpha = 0.055f)
+                ambientColor = Color.Black.copy(alpha = if (isDark) 0.035f else 0.055f),
+                spotColor = Color.Black.copy(alpha = if (isDark) 0.055f else 0.085f)
             )
             .clip(shape)
             .drawWithCache {
                 val outline = shape.createOutline(size, layoutDirection, this)
                 val material = if (gradientEnabled) {
                     Brush.linearGradient(
-                        colors = listOf(
-                            Color.White.copy(alpha = (if (isMuted) 0.16f else 0.30f) * opacityScale),
-                            tint.copy(alpha = (if (isMuted) 0.08f else 0.20f) * opacityScale),
-                            Color.White.copy(alpha = (if (isMuted) 0.08f else 0.16f) * opacityScale)
-                        ),
+                        colors = if (isDark) {
+                            listOf(
+                                Color.White.copy(alpha = (if (isMuted) 0.16f else 0.30f) * opacityScale),
+                                tint.copy(alpha = (if (isMuted) 0.08f else 0.20f) * opacityScale),
+                                Color.White.copy(alpha = (if (isMuted) 0.08f else 0.16f) * opacityScale)
+                            )
+                        } else {
+                            listOf(
+                                tint.copy(alpha = (if (isMuted) 0.10f else 0.18f) * opacityScale),
+                                tint.copy(alpha = (if (isMuted) 0.16f else 0.34f) * opacityScale),
+                                Color.White.copy(alpha = (if (isMuted) 0.08f else 0.12f) * opacityScale)
+                            )
+                        },
                         start = Offset(0f, 0f),
                         end = Offset(size.width, size.height)
                     )
                 } else {
-                    SolidColor(tint.copy(alpha = (if (isMuted) 0.10f else 0.24f) * opacityScale))
+                    SolidColor(
+                        tint.copy(
+                            alpha = (
+                                if (isDark) {
+                                    if (isMuted) 0.10f else 0.24f
+                                } else {
+                                    if (isMuted) 0.16f else 0.34f
+                                }
+                            ) * opacityScale
+                        )
+                    )
                 }
                 val edgeHighlight = Brush.linearGradient(
-                    colors = listOf(
-                        Color.White.copy(alpha = edgeHighlightOpacity),
-                        Color.White.copy(alpha = 0.08f),
-                        Color.Transparent
-                    ),
+                    colors = if (isDark) {
+                        listOf(
+                            Color.White.copy(alpha = edgeHighlightOpacity),
+                            Color.White.copy(alpha = 0.08f),
+                            Color.Transparent
+                        )
+                    } else {
+                        listOf(
+                            Color.White.copy(alpha = edgeHighlightOpacity),
+                            tint.copy(alpha = 0.30f * opacityScale),
+                            tint.copy(alpha = 0.16f * opacityScale)
+                        )
+                    },
                     start = Offset(0f, 0f),
                     end = Offset(size.width, size.height)
                 )

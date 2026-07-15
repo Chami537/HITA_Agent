@@ -624,6 +624,11 @@ private fun TimetableDowHeader(startDate: Long, monthColor: Color) {
         days.forEachIndexed { index, day ->
             val isToday = isAppleGlass && isCurrentWeek && index == todayDow - 1
             val dayShape = CircleShape
+            val inactiveDayBackground = if (isAppleGlass && !HitaTheme.isDark) {
+                Color(0xFFE4EEF8).copy(alpha = 0.78f)
+            } else {
+                MaterialTheme.colorScheme.surface
+            }
             Column(
                 modifier = Modifier.weight(1f),
                 horizontalAlignment = Alignment.CenterHorizontally
@@ -636,14 +641,18 @@ private fun TimetableDowHeader(startDate: Long, monthColor: Color) {
                             if (isToday) {
                                 MaterialTheme.colorScheme.primary.copy(alpha = 0.22f)
                             } else {
-                                MaterialTheme.colorScheme.surface
+                                inactiveDayBackground
                             }
                         )
                         .then(
-                            if (isToday) {
+                            if (isToday || (isAppleGlass && !HitaTheme.isDark)) {
                                 Modifier.border(
                                     width = 0.5.dp,
-                                    color = MaterialTheme.colorScheme.primary.copy(alpha = 0.72f),
+                                    color = if (isToday) {
+                                        MaterialTheme.colorScheme.primary.copy(alpha = 0.72f)
+                                    } else {
+                                        Color(0xFF7891AA).copy(alpha = 0.24f)
+                                    },
                                     shape = dayShape
                                 )
                             } else {
@@ -747,8 +756,17 @@ private fun TimetableGrid(
 ) {
     val density = LocalDensity.current
     val currentDow = TimeTools.currentDOW()
-    val lineColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.35f)
-    val halfLineColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.15f)
+    val isAppleGlass = hitaIsAppleGlassSurface()
+    val lineColor = if (isAppleGlass && !HitaTheme.isDark) {
+        Color(0xFF71869C).copy(alpha = 0.32f)
+    } else {
+        MaterialTheme.colorScheme.outline.copy(alpha = 0.35f)
+    }
+    val halfLineColor = if (isAppleGlass && !HitaTheme.isDark) {
+        Color(0xFF8EA1B5).copy(alpha = 0.16f)
+    } else {
+        MaterialTheme.colorScheme.outline.copy(alpha = 0.15f)
+    }
     val isCurrentWeek = remember(startDate) {
         val start = Calendar.getInstance().apply { timeInMillis = startDate }
         TimeTools.isSameWeekWithStartDate(start, System.currentTimeMillis())

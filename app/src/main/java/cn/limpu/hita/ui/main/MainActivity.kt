@@ -868,9 +868,22 @@ private fun AppleGlassBackground() {
         )
     } else {
         listOf(
-            Color(0xFFF8FBFF),
-            Color(0xFFEFF5FB),
-            Color(0xFFF7F8FA),
+            Color(0xFFF5F9FE),
+            Color(0xFFEAF3FC),
+            Color(0xFFEFF7FF),
+        )
+    }
+    val atmosphere = if (HitaTheme.isDark) {
+        listOf(
+            Color.White.copy(alpha = 0.42f),
+            Color.Transparent,
+            MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)
+        )
+    } else {
+        listOf(
+            Color.White.copy(alpha = 0.20f),
+            MaterialTheme.colorScheme.primary.copy(alpha = 0.045f),
+            Color(0xFF9CCBFA).copy(alpha = 0.16f)
         )
     }
     Box(
@@ -887,11 +900,7 @@ private fun AppleGlassBackground() {
             .fillMaxSize()
             .background(
                 Brush.linearGradient(
-                    colors = listOf(
-                        Color.White.copy(alpha = 0.42f),
-                        Color.Transparent,
-                        MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)
-                    )
+                    colors = atmosphere
                 )
             )
     )
@@ -1010,7 +1019,7 @@ private fun TimetableToolbarTitle(
         if (HitaTheme.isDark) {
             Color(0xFF182330).copy(alpha = 0.72f)
         } else {
-            Color(0xFFF7FAFF).copy(alpha = 0.76f)
+            Color(0xFFE5F1FC).copy(alpha = 0.88f)
         }
     } else {
         MaterialTheme.colorScheme.surface.copy(alpha = 0.8f)
@@ -1049,7 +1058,7 @@ private fun TimetableToolbarTitle(
                                 Modifier.border(
                                     width = 0.5.dp,
                                     color = Color.White.copy(
-                                        alpha = if (HitaTheme.isDark) 0.20f else 0.42f
+                                        alpha = if (HitaTheme.isDark) 0.20f else 0.72f
                                     ),
                                     shape = nameChipShape
                                 )
