@@ -380,7 +380,10 @@ class ImportTimetableActivity :
     }
 
     private fun showTermPicker(terms: List<TermItem>) {
-        val filteredTerms = cn.limpu.hita.utils.TermUtils.filterRecentTerms(terms)
+        val filteredTerms = cn.limpu.hita.utils.TermUtils.filterTermsForStudent(
+            terms,
+            easRepository.getEasToken().grade
+        )
         val names = filteredTerms.map { getDisplayTermName(it) }
         PopUpCheckableList<TermItem>()
             .setListData(names, filteredTerms)
@@ -393,7 +396,7 @@ class ImportTimetableActivity :
     }
 
     private fun getDisplayTermName(term: TermItem): String {
-        return TermNameFormatter.shortTermName(term.termName, term.name)
+        return TermNameFormatter.fullTermName(term)
     }
 }
 

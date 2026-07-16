@@ -1,12 +1,27 @@
 package cn.limpu.hita.data.source.web.eas
 
 import cn.limpu.hita.data.model.eas.ShenzhenCourseCatalogSource
+import cn.limpu.hita.data.model.eas.ShenzhenCourseAttachmentKind
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class ShenzhenCourseCatalogParserTest {
+    @Test
+    fun `selection pools come from current teaching response and are deduplicated`() {
+        val pools = ShenzhenCourseCatalogParser.parseSelectionPools(
+            """{"xkgzszList":[
+                {"xkfsdm":"xx-b-b","xkfsmc":"限选"},
+                {"XKFSDM":"xx-b-b","XKFSMC":"重复"},
+                {"xkfsdm":"shsj-b-b","xkfsmc":"社会实践"}
+            ]}"""
+        )
+
+        assertEquals(listOf("xx-b-b", "shsj-b-b"), pools.map { it.code })
+        assertEquals(listOf("限选", "社会实践"), pools.map { it.name })
+    }
+
     @Test
     fun `selection module current term overrides generic current term`() {
         val id = ShenzhenCourseCatalogParser.parseSelectionTermId(
@@ -39,9 +54,11 @@ class ShenzhenCourseCatalogParserTest {
                     "pageNum": 1,
                     "pageSize": 20,
                     "list": [{
-                        "rwh":"TASK-1","kcdm":"COMP1001","kcmc":"程序设计",
+                        "id":"RW-1","rwh":"TASK-1","kcid":"COURSE-1","kcdm":"COMP1001","kcmc":"程序设计",
                         "dgjsmc":"张老师","xf":"3.0","kkyxmc":"计算机学院",
-                        "pkjgmx":"周一 1-2节 教学楼I 101","bksrl":"40","bksyxrs":"38"
+                        "xkyq":"计算机轨道",
+                        "pkjgmx":"<div><p>周一 1-2节</p><p>教学楼I 101</p></div>",
+                        "bksrl":"40","bksyxrs":"38"
                     }]
                 }
             }""",
@@ -54,9 +71,14 @@ class ShenzhenCourseCatalogParserTest {
         assertEquals(21, page.total)
         assertTrue(page.hasNextPage)
         assertEquals("程序设计", page.items.single().courseName)
+        assertEquals("COURSE-1", page.items.single().courseId)
+        assertEquals("TASK-1", page.items.single().taskNumber)
+        assertEquals("RW-1", page.items.single().taskId)
         assertEquals(40, page.items.single().capacity)
         assertEquals(38, page.items.single().selectedCount)
         assertEquals("限选", page.items.single().selectionPoolName)
+        assertEquals("计算机轨道", page.items.single().selectionRequirement)
+        assertEquals("周一 1-2节 教学楼I 101", page.items.single().schedule)
     }
 
     @Test
@@ -68,7 +90,7 @@ class ShenzhenCourseCatalogParserTest {
                     "pageNum": 1,
                     "pageSize": 20,
                     "list": [{
-                        "rwh":"TASK-2","kcdm":"MATH5001","kcmc":"高等数学专题",
+                        "id":"RW-2","rwh":"TASK-2","kcdm":"MATH5001","kcmc":"高等数学专题",
                         "bksrl":"50","bksyxrs":"45","yjsrl":"12","yjsyxrs":"9"
                     }]
                 }
@@ -79,7 +101,102 @@ class ShenzhenCourseCatalogParserTest {
 
         requireNotNull(page)
         assertFalse(page.hasNextPage)
+        assertEquals("RW-2", page.items.single().taskId)
         assertEquals(12, page.items.single().capacity)
         assertEquals(9, page.items.single().selectedCount)
+    }
+
+    @Test
+    fun `selected course array and conflict fields are parsed`() {
+        val page = ShenzhenCourseCatalogParser.parsePage(
+            body = """{
+                "yxkcList":[{
+                    "id":"RW-3","rwh":"TASK-3","kcdm":"COMP2001","kcmc":"算法",
+                    "xf":"3","sfkct":"1","ctkcxx":"与 已选课程 冲突",
+                    "pkjgmx":"<p>1-16周,星期一第1-2节 T3401</p>"
+                }]
+            }""",
+            source = ShenzhenCourseCatalogSource.AVAILABLE,
+            studentType = "1"
+        )
+
+        requireNotNull(page)
+        assertEquals(1, page.items.size)
+        assertTrue(page.items.single().hasConflict)
+        assertEquals("与 已选课程 冲突", page.items.single().conflictDescription)
+        assertEquals("1-16周,星期一第1-2节 T3401", page.items.single().schedule)
+    }
+
+    @Test
+    fun `course detail maps description and bilingual syllabus attachments`() {
+        val attachments = ShenzhenCourseCatalogParser.parseAttachments(
+            body = """{
+                "code":200,
+                "content":{
+                    "kcxxbgbEntity":{
+                        "kcjjfname":"课程简介.docx",
+                        "kcjjsname":"/document/kcgl/kcjj/intro.docx"
+                    },
+                    "kcdgbentity":{
+                        "kczwdgwjm":"中文教学大纲.doc",
+                        "kczwdgurl":"/document/kcgl/kcdg/zh.doc",
+                        "kczwdgsize":"49152",
+                        "kcywdgwjm":"English syllabus.pdf",
+                        "kcywdgurl":"/document/kcgl/kcdg/en.pdf",
+                        "kcywdgsize":"2048"
+                    }
+                }
+            }""",
+            courseId = "COURSE-1"
+        ).orEmpty()
+
+        assertEquals(3, attachments.size)
+        assertEquals(
+            ShenzhenCourseAttachmentKind.COURSE_DESCRIPTION,
+            attachments[0].kind
+        )
+        assertEquals("/document/kcgl/kcjj/intro.docx", attachments[0].serverPath)
+        assertEquals(ShenzhenCourseAttachmentKind.CHINESE_SYLLABUS, attachments[1].kind)
+        assertEquals(49152L, attachments[1].sizeBytes)
+        assertEquals(ShenzhenCourseAttachmentKind.ENGLISH_SYLLABUS, attachments[2].kind)
+        assertEquals("COURSE-1", attachments[2].courseId)
+    }
+
+    @Test
+    fun `course detail without published files returns empty attachment list`() {
+        val attachments = ShenzhenCourseCatalogParser.parseAttachments(
+            body = """{
+                "code":200,
+                "content":{
+                    "kcxxbgbEntity":{"kcjjfname":null,"kcjjsname":null},
+                    "kcdgbentity":{
+                        "kczwdgwjm":null,
+                        "kczwdgurl":null,
+                        "kcywdgwjm":null,
+                        "kcywdgurl":null
+                    }
+                }
+            }""",
+            courseId = "COURSE-1"
+        )
+
+        requireNotNull(attachments)
+        assertTrue(attachments.isEmpty())
+    }
+
+    @Test
+    fun `course description requires both display name and server path`() {
+        val attachments = ShenzhenCourseCatalogParser.parseAttachments(
+            body = """{
+                "content":{
+                    "kcxxbgbEntity":{"kcjjfname":"简介.docx","kcjjsname":null},
+                    "kcdgbentity":{}
+                }
+            }""",
+            courseId = "COURSE-1"
+        )
+
+        requireNotNull(attachments)
+        assertTrue(attachments.isEmpty())
     }
 }

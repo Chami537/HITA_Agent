@@ -203,11 +203,10 @@ class ScoreInquiryActivity :
 
     private fun pickTerm() {
         viewModel.termsLiveData.value?.data?.let { terms ->
-            val filteredTerms = cn.limpu.hita.utils.TermUtils.filterRecentTerms(terms)
-            val names = filteredTerms.map { getDisplayTermName(it) }
+            val names = terms.map { getDisplayTermName(it) }
             if (names.isEmpty()) return
             PopUpCheckableList<TermItem>()
-                .setListData(names, filteredTerms)
+                .setListData(names, terms)
                 .setTitle(getString(R.string.pick_quety_term))
                 .setOnConfirmListener(object : PopUpCheckableList.OnConfirmListener<TermItem> {
                     override fun OnConfirm(title: String?, key: TermItem) {
@@ -248,7 +247,7 @@ class ScoreInquiryActivity :
     }
 
     private fun getDisplayTermName(term: TermItem): String {
-        return TermNameFormatter.shortTermName(term.termName, term.name)
+        return TermNameFormatter.fullTermName(term)
     }
 
     override fun refresh() {

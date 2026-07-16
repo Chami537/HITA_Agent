@@ -2,22 +2,36 @@ package cn.limpu.hita.ui.credit
 
 import androidx.lifecycle.LiveData
 import androidx.lifecycle.MutableLiveData
-import androidx.lifecycle.ViewModel
 import androidx.lifecycle.map
 import androidx.lifecycle.switchMap
+import cn.limpu.hita.data.model.eas.EASToken
+import cn.limpu.hita.data.model.eas.ShenzhenCreditProgress
 import cn.limpu.hita.data.model.timetable.TermSubject
+import cn.limpu.hita.data.repository.EASRepository
 import cn.limpu.hita.data.repository.SubjectRepository
 import cn.limpu.hita.data.source.preference.CreditGoalStore
+import cn.limpu.hita.ui.eas.EASViewModel
+import com.limpu.component.data.DataState
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
 
 @HiltViewModel
 class CreditStatsViewModel @Inject constructor(
     private val subjectRepository: SubjectRepository,
-    private val creditGoalStore: CreditGoalStore
-) : ViewModel() {
+    private val creditGoalStore: CreditGoalStore,
+    easRepository: EASRepository
+) : EASViewModel(easRepository) {
 
     private val refreshTrigger = MutableLiveData(true)
+    private val officialRefreshTrigger = MutableLiveData<Boolean>()
+
+    val officialSupported: Boolean
+        get() = easRepo.getEasToken().campus == EASToken.Campus.SHENZHEN
+
+    val shenzhenProgress: LiveData<DataState<ShenzhenCreditProgress>> =
+        officialRefreshTrigger.switchMap {
+            easRepo.getShenzhenCreditProgress()
+        }
 
     val creditStats: LiveData<CreditStatsState> = refreshTrigger.switchMap {
         subjectRepository.getAllSubjects().map { subjects ->
@@ -26,7 +40,17 @@ class CreditStatsViewModel @Inject constructor(
     }
 
     fun refresh() {
-        refreshTrigger.value = true
+        if (officialSupported) {
+            officialRefreshTrigger.value = true
+        } else {
+            refreshTrigger.value = true
+        }
+    }
+
+    fun retryOfficial(): Boolean {
+        if (!officialSupported) return false
+        officialRefreshTrigger.value = true
+        return true
     }
 
     fun setGoal(type: TermSubject.TYPE, credits: Float) {

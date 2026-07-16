@@ -1,8 +1,12 @@
 package cn.limpu.hita.ui.eas.catalog
 
+import android.Manifest
 import android.app.Activity
+import android.content.pm.PackageManager
+import android.os.Build
 import android.os.Bundle
 import android.widget.Toast
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -15,6 +19,7 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
@@ -24,6 +29,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -36,6 +42,7 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -54,6 +61,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.content.ContextCompat
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.limpu.component.data.DataState
 import com.limpu.style.widgets.PopUpCheckableList
@@ -61,6 +69,10 @@ import cn.limpu.hita.R
 import cn.limpu.hita.data.model.eas.EASToken
 import cn.limpu.hita.data.model.eas.ShenzhenCourseCatalogItem
 import cn.limpu.hita.data.model.eas.ShenzhenCourseCatalogSource
+import cn.limpu.hita.data.model.eas.ShenzhenCourseAttachment
+import cn.limpu.hita.data.model.eas.ShenzhenCourseAttachmentKind
+import cn.limpu.hita.data.model.eas.ShenzhenHistoricalFailureReport
+import cn.limpu.hita.data.model.eas.ShenzhenTeacherFailureRate
 import cn.limpu.hita.data.model.eas.ShenzhenSelectionPool
 import cn.limpu.hita.data.model.eas.TermItem
 import cn.limpu.hita.ui.base.ComposeViewBinding
@@ -70,9 +82,13 @@ import cn.limpu.hita.ui.design.hitaGlassCardBorder
 import cn.limpu.hita.ui.design.hitaGlassCardColors
 import cn.limpu.hita.ui.design.hitaGlassCardModifier
 import cn.limpu.hita.ui.eas.EASActivity
+import cn.limpu.hita.ui.eas.grade.ShenzhenGradeAnalysisActivity
 import cn.limpu.hita.ui.eas.login.PopUpLoginEAS
 import cn.limpu.hita.utils.ActivityUtils
+import cn.limpu.hita.utils.TermNameFormatter
+import cn.limpu.hita.utils.TermUtils
 import dagger.hilt.android.AndroidEntryPoint
+import java.util.Locale
 
 @AndroidEntryPoint
 class ShenzhenCourseCatalogActivity :
@@ -81,6 +97,20 @@ class ShenzhenCourseCatalogActivity :
     override val viewModel: ShenzhenCourseCatalogViewModel by viewModels()
     private var terms by mutableStateOf<List<TermItem>>(emptyList())
     private var uiState by mutableStateOf<CatalogUiState>(CatalogUiState.Loading)
+    private var attachmentDialog by mutableStateOf<CourseAttachmentDialogState?>(null)
+    private var historicalFailureDialog by mutableStateOf<HistoricalFailureDialogState?>(null)
+    private var pendingDownload: ShenzhenCourseAttachment? = null
+    private val storagePermissionLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        val attachment = pendingDownload
+        pendingDownload = null
+        if (granted && attachment != null) {
+            enqueueAttachmentDownload(attachment)
+        } else if (!granted) {
+            Toast.makeText(this, "需要存储权限才能保存到下载目录", Toast.LENGTH_LONG).show()
+        }
+    }
 
     override fun initViewBinding(): ComposeViewBinding = ComposeViewBinding(ComposeView(this))
 
@@ -101,7 +131,16 @@ class ShenzhenCourseCatalogActivity :
                     onConnectWeb = { connectWebSession() },
                     onSelectTerm = { showTermPicker() },
                     onSelectPool = { showPoolPicker() },
-                    onSelectStudentType = { showStudentTypePicker() }
+                    onSelectStudentType = { showStudentTypePicker() },
+                    onRecommend = { openCourseRecommendation() },
+                    attachmentDialog = attachmentDialog,
+                    historicalFailureDialog = historicalFailureDialog,
+                    onCourseClick = { showCourseActions(it) },
+                    onDismissAttachments = { attachmentDialog = null },
+                    onRetryAttachments = { retryCourseAttachments() },
+                    onDownloadAttachment = { downloadAttachment(it) },
+                    onDismissHistoricalFailure = { historicalFailureDialog = null },
+                    onRetryHistoricalFailure = { retryHistoricalFailureRates() }
                 )
             }
         }
@@ -111,7 +150,10 @@ class ShenzhenCourseCatalogActivity :
         viewModel.termsLiveData.observe(this) { state ->
             when (state.state) {
                 DataState.STATE.SUCCESS -> {
-                    terms = state.data.orEmpty()
+                    terms = TermUtils.filterTermsForStudent(
+                        state.data.orEmpty(),
+                        easRepository.getEasToken().grade
+                    )
                     uiState = CatalogUiState.Ready(refreshing = true)
                     viewModel.reconcileTerms(terms)
                 }
@@ -156,6 +198,85 @@ class ShenzhenCourseCatalogActivity :
                 )
             }
         }
+        viewModel.attachmentsLiveData.observe(this) { state ->
+            val dialog = attachmentDialog ?: return@observe
+            when (state.state) {
+                DataState.STATE.SUCCESS -> {
+                    attachmentDialog = dialog.copy(
+                        loading = false,
+                        attachments = state.data.orEmpty(),
+                        error = null
+                    )
+                    resetSessionRetryState()
+                }
+                DataState.STATE.NOT_LOGGED_IN -> {
+                    if (!handleSessionExpired {
+                            attachmentDialog = attachmentDialog?.copy(loading = true, error = null)
+                            viewModel.retryAttachments()
+                        }
+                    ) {
+                        attachmentDialog = dialog.copy(
+                            loading = false,
+                            error = state.message ?: "深圳 Web 会话已失效"
+                        )
+                    }
+                }
+                DataState.STATE.FETCH_FAILED -> {
+                    attachmentDialog = dialog.copy(
+                        loading = false,
+                        error = state.message ?: "课程附件加载失败"
+                    )
+                }
+                DataState.STATE.NOTHING -> Unit
+                else -> {
+                    attachmentDialog = dialog.copy(
+                        loading = false,
+                        error = state.message ?: "课程附件暂不可用"
+                    )
+                }
+            }
+        }
+        viewModel.historicalFailureLiveData.observe(this) { state ->
+            val dialog = historicalFailureDialog ?: return@observe
+            when (state.state) {
+                DataState.STATE.SUCCESS -> {
+                    historicalFailureDialog = dialog.copy(
+                        loading = false,
+                        report = state.data,
+                        error = null
+                    )
+                    resetSessionRetryState()
+                }
+                DataState.STATE.NOT_LOGGED_IN -> {
+                    if (!handleSessionExpired {
+                            historicalFailureDialog = historicalFailureDialog?.copy(
+                                loading = true,
+                                error = null
+                            )
+                            viewModel.retryHistoricalFailureRates()
+                        }
+                    ) {
+                        historicalFailureDialog = dialog.copy(
+                            loading = false,
+                            error = state.message ?: "深圳 Web 会话已失效"
+                        )
+                    }
+                }
+                DataState.STATE.FETCH_FAILED -> {
+                    historicalFailureDialog = dialog.copy(
+                        loading = false,
+                        error = state.message ?: "历史挂科率查询失败"
+                    )
+                }
+                DataState.STATE.NOTHING -> Unit
+                else -> {
+                    historicalFailureDialog = dialog.copy(
+                        loading = false,
+                        error = state.message ?: "历史挂科率暂不可用"
+                    )
+                }
+            }
+        }
     }
 
     override fun refresh() {
@@ -191,7 +312,7 @@ class ShenzhenCourseCatalogActivity :
         if (terms.isEmpty()) return
         PopUpCheckableList<TermItem>()
             .setTitle("选择学期")
-            .setListData(terms.map { it.name }, terms)
+            .setListData(terms.map(TermNameFormatter::fullTermName), terms)
             .setOnConfirmListener(object : PopUpCheckableList.OnConfirmListener<TermItem> {
                 override fun OnConfirm(title: String?, key: TermItem) {
                     viewModel.selectTerm(key)
@@ -224,6 +345,88 @@ class ShenzhenCourseCatalogActivity :
             }
             .show()
     }
+
+    private fun openCourseRecommendation() {
+        val term = viewModel.selectedTermLiveData.value ?: return
+        startActivity(ShenzhenCourseRecommendationActivity.intent(this, term))
+    }
+
+    private fun showCourseAttachments(course: ShenzhenCourseCatalogItem) {
+        attachmentDialog = CourseAttachmentDialogState(course = course, loading = true)
+        viewModel.loadAttachments(course)
+    }
+
+    private fun showCourseActions(course: ShenzhenCourseCatalogItem) {
+        MaterialAlertDialogBuilder(this)
+            .setTitle(course.courseName)
+            .setItems(
+                arrayOf("查看教学附件", "查看全班成绩与分布", "查看两年前各教师挂科率")
+            ) { _, which ->
+                when (which) {
+                    0 -> showCourseAttachments(course)
+                    1 -> if (course.taskId.isBlank()) {
+                        Toast.makeText(this, "该课程缺少教学任务标识", Toast.LENGTH_LONG).show()
+                    } else {
+                        startActivity(
+                            ShenzhenGradeAnalysisActivity.intent(
+                                this,
+                                course,
+                                viewModel.selectedTermLiveData.value
+                            )
+                        )
+                    }
+                    2 -> showHistoricalFailureRates(course)
+                }
+            }
+            .show()
+    }
+
+    private fun showHistoricalFailureRates(course: ShenzhenCourseCatalogItem) {
+        historicalFailureDialog = HistoricalFailureDialogState(course = course, loading = true)
+        if (!viewModel.loadHistoricalFailureRates(course)) {
+            historicalFailureDialog = historicalFailureDialog?.copy(
+                loading = false,
+                error = "请先选择课程所在学期"
+            )
+        }
+    }
+
+    private fun retryHistoricalFailureRates() {
+        historicalFailureDialog = historicalFailureDialog?.copy(loading = true, error = null)
+        viewModel.retryHistoricalFailureRates()
+    }
+
+    private fun retryCourseAttachments() {
+        attachmentDialog = attachmentDialog?.copy(loading = true, error = null)
+        viewModel.retryAttachments()
+    }
+
+    private fun downloadAttachment(attachment: ShenzhenCourseAttachment) {
+        if (
+            Build.VERSION.SDK_INT <= Build.VERSION_CODES.P &&
+            ContextCompat.checkSelfPermission(this, Manifest.permission.WRITE_EXTERNAL_STORAGE) !=
+            PackageManager.PERMISSION_GRANTED
+        ) {
+            pendingDownload = attachment
+            storagePermissionLauncher.launch(Manifest.permission.WRITE_EXTERNAL_STORAGE)
+            return
+        }
+        enqueueAttachmentDownload(attachment)
+    }
+
+    private fun enqueueAttachmentDownload(attachment: ShenzhenCourseAttachment) {
+        runCatching {
+            easRepository.downloadShenzhenCourseAttachment(attachment)
+        }.onSuccess {
+            Toast.makeText(this, "开始下载：${attachment.name}", Toast.LENGTH_SHORT).show()
+        }.onFailure { error ->
+            Toast.makeText(
+                this,
+                "下载失败：${error.message ?: "未知错误"}",
+                Toast.LENGTH_LONG
+            ).show()
+        }
+    }
 }
 
 private sealed interface CatalogUiState {
@@ -236,6 +439,20 @@ private sealed interface CatalogUiState {
     ) : CatalogUiState
 }
 
+private data class CourseAttachmentDialogState(
+    val course: ShenzhenCourseCatalogItem,
+    val loading: Boolean = false,
+    val attachments: List<ShenzhenCourseAttachment> = emptyList(),
+    val error: String? = null
+)
+
+private data class HistoricalFailureDialogState(
+    val course: ShenzhenCourseCatalogItem,
+    val loading: Boolean = false,
+    val report: ShenzhenHistoricalFailureReport? = null,
+    val error: String? = null
+)
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun ShenzhenCourseCatalogScreen(
@@ -246,7 +463,16 @@ private fun ShenzhenCourseCatalogScreen(
     onConnectWeb: () -> Unit,
     onSelectTerm: () -> Unit,
     onSelectPool: () -> Unit,
-    onSelectStudentType: () -> Unit
+    onSelectStudentType: () -> Unit,
+    onRecommend: () -> Unit,
+    attachmentDialog: CourseAttachmentDialogState?,
+    historicalFailureDialog: HistoricalFailureDialogState?,
+    onCourseClick: (ShenzhenCourseCatalogItem) -> Unit,
+    onDismissAttachments: () -> Unit,
+    onRetryAttachments: () -> Unit,
+    onDownloadAttachment: (ShenzhenCourseAttachment) -> Unit,
+    onDismissHistoricalFailure: () -> Unit,
+    onRetryHistoricalFailure: () -> Unit
 ) {
     val tokens = HitaTheme.tokens
     val source by viewModel.sourceLiveData.observeAsState(ShenzhenCourseCatalogSource.AVAILABLE)
@@ -265,6 +491,22 @@ private fun ShenzhenCourseCatalogScreen(
         CatalogUiState.Loading -> null
     }
     var keyword by remember(query?.keyword) { mutableStateOf(query?.keyword.orEmpty()) }
+
+    attachmentDialog?.let { state ->
+        CourseAttachmentDialog(
+            state = state,
+            onDismiss = onDismissAttachments,
+            onRetry = onRetryAttachments,
+            onDownload = onDownloadAttachment
+        )
+    }
+    historicalFailureDialog?.let { state ->
+        HistoricalFailureDialog(
+            state = state,
+            onDismiss = onDismissHistoricalFailure,
+            onRetry = onRetryHistoricalFailure
+        )
+    }
 
     Column(
         modifier = Modifier
@@ -332,7 +574,7 @@ private fun ShenzhenCourseCatalogScreen(
             FilterChip(
                 selected = source == ShenzhenCourseCatalogSource.AVAILABLE,
                 onClick = { viewModel.selectSource(ShenzhenCourseCatalogSource.AVAILABLE) },
-                label = { Text("可选课程") },
+                label = { Text("教务选课池") },
                 modifier = Modifier.weight(1f)
             )
             FilterChip(
@@ -343,14 +585,18 @@ private fun ShenzhenCourseCatalogScreen(
             )
         }
         Text(
-            text = "深圳 Web 教务 · 只读浏览，不会提交选课",
+            text = if (source == ShenzhenCourseCatalogSource.AVAILABLE) {
+                "学校选课任务池 · “必修”是课程性质，不代表你的个人必修"
+            } else {
+                "深圳 Web 教务 · 全校开课数据，只读浏览"
+            },
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             fontSize = 12.sp,
             modifier = Modifier.padding(horizontal = tokens.spacing.xl)
         )
 
         CatalogFilters(
-            termName = term?.name ?: "选择学期",
+            termName = term?.let(TermNameFormatter::fullTermName) ?: "选择学期",
             secondaryName = if (source == ShenzhenCourseCatalogSource.AVAILABLE) {
                 pool?.name ?: "选择课程类型"
             } else if (studentType == "2") {
@@ -369,6 +615,15 @@ private fun ShenzhenCourseCatalogScreen(
             },
             modifier = Modifier.padding(horizontal = tokens.spacing.lg, vertical = tokens.spacing.sm)
         )
+
+        Button(
+            onClick = onRecommend,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = tokens.spacing.lg, vertical = tokens.spacing.xs)
+        ) {
+            Text("智能选课推荐")
+        }
 
         if (errorMessage != null) {
             Text(
@@ -398,7 +653,7 @@ private fun ShenzhenCourseCatalogScreen(
                     )
                 }
                 items(page.items, key = { "${it.source}-${it.id}" }) { item ->
-                    CourseCatalogCard(item)
+                    CourseCatalogCard(item, onClick = { onCourseClick(item) })
                 }
                 item {
                     PaginationRow(
@@ -444,7 +699,7 @@ private fun WebLoginRequiredCard(
         Column(modifier = Modifier.padding(tokens.spacing.lg)) {
             Text("需要深圳 Web 会话", fontSize = 20.sp, fontWeight = FontWeight.SemiBold)
             Text(
-                text = message ?: "可选课程和全校课表属于 Web 教务独占接口，需要通过统一身份认证连接。",
+                text = message ?: "教务选课池和全校课表属于 Web 教务独占接口，需要通过统一身份认证连接。",
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(top = tokens.spacing.sm)
             )
@@ -563,13 +818,17 @@ private fun FilterValue(text: String, onClick: () -> Unit, modifier: Modifier = 
 }
 
 @Composable
-private fun CourseCatalogCard(item: ShenzhenCourseCatalogItem) {
+private fun CourseCatalogCard(
+    item: ShenzhenCourseCatalogItem,
+    onClick: () -> Unit
+) {
     val tokens = HitaTheme.tokens
     val shape = RoundedCornerShape(tokens.radius.lg)
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .hitaGlassCardModifier(shape),
+            .hitaGlassCardModifier(shape)
+            .clickable(onClick = onClick),
         shape = shape,
         colors = hitaGlassCardColors(),
         border = hitaGlassCardBorder(),
@@ -604,6 +863,14 @@ private fun CourseCatalogCard(item: ShenzhenCourseCatalogItem) {
                 Text(
                     metadata,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    fontSize = 13.sp,
+                    modifier = Modifier.padding(top = tokens.spacing.sm)
+                )
+            }
+            if (item.selectionRequirement.isNotBlank()) {
+                Text(
+                    text = "适用范围：${item.selectionRequirement}",
+                    color = MaterialTheme.colorScheme.primary,
                     fontSize = 13.sp,
                     modifier = Modifier.padding(top = tokens.spacing.sm)
                 )
@@ -647,8 +914,257 @@ private fun CourseCatalogCard(item: ShenzhenCourseCatalogItem) {
                     )
                 }
             }
+            Text(
+                text = "点击查看课程简介与教学大纲附件",
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                fontSize = 11.sp,
+                modifier = Modifier.padding(top = tokens.spacing.sm)
+            )
         }
     }
+}
+
+@Composable
+private fun CourseAttachmentDialog(
+    state: CourseAttachmentDialogState,
+    onDismiss: () -> Unit,
+    onRetry: () -> Unit,
+    onDownload: (ShenzhenCourseAttachment) -> Unit
+) {
+    val tokens = HitaTheme.tokens
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Column {
+                Text("教学附件")
+                Text(
+                    text = state.course.courseName,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Normal,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+        },
+        text = {
+            when {
+                state.loading -> Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(96.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    CircularProgressIndicator()
+                }
+                state.error != null -> Column {
+                    Text(state.error, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    TextButton(
+                        onClick = onRetry,
+                        modifier = Modifier.padding(top = tokens.spacing.sm)
+                    ) {
+                        Text("重试")
+                    }
+                }
+                state.attachments.isEmpty() -> Text(
+                    "该课程暂未发布可下载的课程简介或教学大纲。",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                else -> Column(verticalArrangement = Arrangement.spacedBy(tokens.spacing.sm)) {
+                    state.attachments.forEach { attachment ->
+                        AttachmentRow(attachment = attachment, onClick = { onDownload(attachment) })
+                    }
+                    Text(
+                        text = "点击附件后将保存到系统“下载”目录",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        fontSize = 11.sp
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) { Text("关闭") }
+        }
+    )
+}
+
+@Composable
+private fun AttachmentRow(
+    attachment: ShenzhenCourseAttachment,
+    onClick: () -> Unit
+) {
+    val label = when (attachment.kind) {
+        ShenzhenCourseAttachmentKind.COURSE_DESCRIPTION -> "课程简介"
+        ShenzhenCourseAttachmentKind.CHINESE_SYLLABUS -> "中文教学大纲"
+        ShenzhenCourseAttachmentKind.ENGLISH_SYLLABUS -> "英文教学大纲"
+    }
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick),
+        shape = RoundedCornerShape(14.dp),
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.58f)
+    ) {
+        Column(modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp)) {
+            Text(
+                text = attachment.name,
+                fontWeight = FontWeight.Medium,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis
+            )
+            val size = attachment.sizeBytes?.takeIf { it >= 0 }?.let(::formatFileSize)
+            Text(
+                text = listOfNotNull(label, size).joinToString(" · "),
+                color = MaterialTheme.colorScheme.primary,
+                fontSize = 12.sp,
+                modifier = Modifier.padding(top = 2.dp)
+            )
+        }
+    }
+}
+
+@Composable
+private fun HistoricalFailureDialog(
+    state: HistoricalFailureDialogState,
+    onDismiss: () -> Unit,
+    onRetry: () -> Unit
+) {
+    val report = state.report
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Column {
+                Text("两年前各教师挂科率")
+                Text(
+                    text = state.course.courseName,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Normal,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+        },
+        text = {
+            when {
+                state.loading -> Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(120.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    CircularProgressIndicator()
+                }
+                state.error != null -> Column {
+                    Text(state.error, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    TextButton(onClick = onRetry, modifier = Modifier.padding(top = 8.dp)) {
+                        Text("重试")
+                    }
+                }
+                report == null -> Text("尚未生成查询结果")
+                report.teacherRates.isEmpty() -> Column {
+                    Text(
+                        if (report.matchedClassCount == 0) {
+                            "${report.targetTerm.name} 没有找到对应的同课程教学班。"
+                        } else {
+                            "找到 ${report.matchedClassCount} 个教学班，但教务没有返回可分析的分项成绩。"
+                        },
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                else -> Column {
+                    Text(
+                        text = "${report.targetTerm.name} · ${report.analyzedClassCount} 个教学班",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        fontSize = 12.sp
+                    )
+                    LazyColumn(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(max = 360.dp)
+                            .padding(top = 8.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        items(report.teacherRates, key = { it.teacher }) { rate ->
+                            TeacherFailureRateRow(rate)
+                        }
+                    }
+                    if (report.skippedClassCount > 0) {
+                        Text(
+                            text = "另有 ${report.skippedClassCount} 个教学班未返回可分析成绩",
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            fontSize = 11.sp,
+                            modifier = Modifier.padding(top = 8.dp)
+                        )
+                    }
+                    Text(
+                        text = "按教务 seeFx 分项折算；含空白分项的学生按 0 分计入",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        fontSize = 11.sp,
+                        modifier = Modifier.padding(top = 8.dp)
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) { Text("关闭") }
+        }
+    )
+}
+
+@Composable
+private fun TeacherFailureRateRow(rate: ShenzhenTeacherFailureRate) {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(14.dp),
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.58f)
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(rate.teacher, fontWeight = FontWeight.Medium)
+                Text(
+                    text = "${rate.failCount} / ${rate.studentCount} 人未及格 · ${rate.classCount} 个教学班",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    fontSize = 11.sp,
+                    modifier = Modifier.padding(top = 2.dp)
+                )
+                Text(
+                    text = String.format(
+                        Locale.ROOT,
+                        "平均 %.2f · 前20%%平均 %.2f",
+                        rate.averageScore,
+                        rate.top20AverageScore
+                    ),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    fontSize = 11.sp,
+                    modifier = Modifier.padding(top = 2.dp)
+                )
+                if (rate.excludedIncompleteStudentCount > 0) {
+                    Text(
+                        text = "${rate.excludedIncompleteStudentCount} 人含空白分项，按 0 分计入",
+                        color = MaterialTheme.colorScheme.error,
+                        fontSize = 11.sp,
+                        modifier = Modifier.padding(top = 2.dp)
+                    )
+                }
+            }
+            Text(
+                text = String.format(Locale.ROOT, "%.2f%%", rate.failureRate),
+                color = MaterialTheme.colorScheme.primary,
+                fontSize = 17.sp,
+                fontWeight = FontWeight.SemiBold
+            )
+        }
+    }
+}
+
+private fun formatFileSize(bytes: Long): String = when {
+    bytes >= 1024L * 1024L -> "%.1f MB".format(bytes / (1024.0 * 1024.0))
+    bytes >= 1024L -> "%.1f KB".format(bytes / 1024.0)
+    else -> "$bytes B"
 }
 
 @Composable

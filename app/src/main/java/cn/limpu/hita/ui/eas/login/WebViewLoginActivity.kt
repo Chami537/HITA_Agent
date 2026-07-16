@@ -83,6 +83,7 @@ internal data class MfaOverlayState(
     val promptTitle: String = "",
     val promptText: String = "",
     val verifyMethod: String = "",
+    val verifyMethodType: String = "",
     val hasVisibleInput: Boolean = false,
     val inputId: String = "",
     val inputType: String = "text",
@@ -128,13 +129,14 @@ class WebViewLoginActivity : AppCompatActivity() {
                 "$WEIHAI_BASE/"
             )
 
-            const val SHENZHEN_LOGIN =
-                "https://ids.hit.edu.cn/authserver/login?service=http%3A%2F%2Fjw.hitsz.edu.cn%2FcasLogin"
-            const val SHENZHEN_JWTS = "https://jw.hitsz.edu.cn/authentication/main"
+            const val SHENZHEN_PROXY_BASE = "https://jw-hitsz-edu-cn.hitsz.edu.cn"
+            const val SHENZHEN_LOGIN = "$SHENZHEN_PROXY_BASE/"
+            const val SHENZHEN_JWTS = "$SHENZHEN_PROXY_BASE/authentication/main"
             val SHENZHEN_PROBE_URLS = listOf(
                 SHENZHEN_JWTS,
-                "https://jw.hitsz.edu.cn/student_index",
-                "https://jw.hitsz.edu.cn/user/me"
+                "$SHENZHEN_PROXY_BASE/student_index",
+                "$SHENZHEN_PROXY_BASE/user/me",
+                "$SHENZHEN_PROXY_BASE/"
             )
 
             const val EELABINFO_URL = "http://eelabinfo-hit-edu-cn.ivpn.hit.edu.cn:1080"
@@ -146,6 +148,13 @@ class WebViewLoginActivity : AppCompatActivity() {
         private const val MFA_DETECTION_INITIAL_DELAY_MS = 800L
         private const val MFA_DETECTION_RETRY_DELAY_MS = 700L
         private const val MFA_DETECTION_MAX_RETRIES = 4
+        private const val MFA_NATIVE_OVERLAY_ENABLED = false
+        private const val MFA_METHOD_SWITCH_POLL_DELAY_MS = 400L
+        private const val MFA_METHOD_SWITCH_MAX_POLLS = 75
+        private const val SHENZHEN_DESKTOP_USER_AGENT =
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) " +
+                "AppleWebKit/537.36 (KHTML, like Gecko) " +
+                "Chrome/134.0.0.0 Safari/537.36"
         private val BENBU_REQUIRED_COOKIES = setOf("JSESSIONID", "HIT")
         private val SHENZHEN_REQUIRED_COOKIES = setOf("JSESSIONID", "route")
         private const val WEIHAI_TICKET_COOKIE_PREFIX = "wengine_vpn_ticket"
@@ -177,6 +186,9 @@ class WebViewLoginActivity : AppCompatActivity() {
     private var mfaError by mutableStateOf<String?>(null)
     private var mfaInputValue by mutableStateOf("")
     private var mfaDetectionGeneration = 0
+    private var shenzhenMobileUserAgent = ""
+    private var shenzhenDesktopUserAgentApplied = false
+    private var shenzhenForceWebModeApplied = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         val campus = runCatching {
@@ -276,14 +288,19 @@ class WebViewLoginActivity : AppCompatActivity() {
     private fun setupWebView() {
         webView.apply {
             setBackgroundColor(Color.WHITE)
-            if (!silentMode && isAndroidEmulator()) {
-                setLayerType(View.LAYER_TYPE_SOFTWARE, null)
-                LogUtils.d("using software layer for emulator WebView rendering")
-            }
             settings.javaScriptEnabled = true
             settings.domStorageEnabled = true
             settings.loadWithOverviewMode = true
             settings.useWideViewPort = true
+            if (config.campus == EASToken.Campus.SHENZHEN) {
+                // The aTrust mobile route requires its native UEM client. Use its browser
+                // route here, then switch back to the mobile UA on the university CAS page.
+                shenzhenMobileUserAgent = settings.userAgentString
+                settings.userAgentString = SHENZHEN_DESKTOP_USER_AGENT
+                shenzhenDesktopUserAgentApplied = true
+                setLayerType(View.LAYER_TYPE_SOFTWARE, null)
+                LogUtils.d("using browser user agent and software layer for Shenzhen aTrust portal")
+            }
             settings.mixedContentMode = WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                 settings.forceDark = WebSettings.FORCE_DARK_OFF
@@ -303,6 +320,23 @@ class WebViewLoginActivity : AppCompatActivity() {
                         progressVisible = true
                         progressValue = newProgress
                     }
+                }
+
+                override fun onConsoleMessage(consoleMessage: android.webkit.ConsoleMessage?): Boolean {
+                    val level = consoleMessage?.messageLevel()
+                    if (isExpectedShenzhenBrowserConsoleMessage(consoleMessage?.message())) {
+                        return true
+                    }
+                    if (level == android.webkit.ConsoleMessage.MessageLevel.ERROR ||
+                        level == android.webkit.ConsoleMessage.MessageLevel.WARNING
+                    ) {
+                        LogUtils.w(
+                            "web console level=$level line=${consoleMessage?.lineNumber()} " +
+                                "source=${safeUrl(consoleMessage?.sourceId())} " +
+                                "message=${consoleMessage?.message()?.take(500).orEmpty()}"
+                        )
+                    }
+                    return true
                 }
 
                 override fun onCreateWindow(
@@ -346,6 +380,9 @@ class WebViewLoginActivity : AppCompatActivity() {
             webViewClient = object : WebViewClient() {
                 override fun onPageStarted(view: WebView?, url: String?, favicon: android.graphics.Bitmap?) {
                     super.onPageStarted(view, url, favicon)
+                    if (view != null && url != null && switchShenzhenUserAgentForNavigation(view, url)) {
+                        return
+                    }
                     mfaDetectionGeneration++
                     mfaState = MfaOverlayState()
                     mfaError = null
@@ -361,6 +398,13 @@ class WebViewLoginActivity : AppCompatActivity() {
                 override fun onPageCommitVisible(view: WebView, url: String) {
                     super.onPageCommitVisible(view, url)
                     logWebViewRenderMarker("page-commit-visible", view, url)
+                    if (isMfaPage(url)) {
+                        applyMfaViewportUnitWorkaround(view)
+                    } else if (isTrustPortalPage(url)) {
+                        applyTrustPortalViewportUnitWorkaround(view)
+                    } else if (isShenzhenProxyJwPage(url)) {
+                        applyShenzhenJwDesktopViewportWorkaround(view)
+                    }
                     scheduleMfaDetection(view, url)
                 }
 
@@ -389,9 +433,20 @@ class WebViewLoginActivity : AppCompatActivity() {
                     val uri = Uri.parse(url)
                     LogUtils.d("onPageFinished: host=${uri.host} path=${uri.path} autoOpeningJwts=$autoOpeningJwts")
                     logWebViewRenderMarker("page-finished", view, url)
+                    if (applyShenzhenForceWebMode(view, url)) {
+                        return
+                    }
                     schedulePageDiagnostics(view, url)
+                    if (ensureShenzhenDesktopUserAgentForProxy(view, url)) {
+                        return
+                    }
                     if (isMfaPage(url)) {
+                        applyMfaViewportUnitWorkaround(view)
                         scheduleMfaDetection(view, url)
+                    } else if (isTrustPortalPage(url)) {
+                        applyTrustPortalViewportUnitWorkaround(view)
+                    } else if (isShenzhenProxyJwPage(url)) {
+                        applyShenzhenJwDesktopViewportWorkaround(view)
                     }
 
                     when {
@@ -449,6 +504,9 @@ class WebViewLoginActivity : AppCompatActivity() {
                     if (request?.isForMainFrame == true) {
                         progressVisible = false
                     }
+                    if (isExpectedShenzhenClientProbe(request)) {
+                        return
+                    }
                     LogUtils.w( "onReceivedError url=${request?.url} code=${error?.errorCode} desc=${error?.description} campus=${config.campus}")
                 }
 
@@ -478,6 +536,226 @@ class WebViewLoginActivity : AppCompatActivity() {
                     )
                     return super.onRenderProcessGone(view, detail)
                 }
+            }
+        }
+    }
+
+    private fun applyMfaViewportUnitWorkaround(view: WebView) {
+        val script = """
+            (function() {
+              function applyHitaMfaViewportFix() {
+                var height = Math.round(window.innerHeight ||
+                  (document.documentElement && document.documentElement.clientHeight) || 0);
+                if (height <= 0) return {ok:false, error:'ZERO_VIEWPORT_HEIGHT'};
+                var style = document.getElementById('hita-mfa-viewport-fix');
+                if (!style) {
+                  style = document.createElement('style');
+                  style.id = 'hita-mfa-viewport-fix';
+                  (document.head || document.documentElement).appendChild(style);
+                }
+                var centerHeight = Math.max(0, height - 44);
+                var whiteBoxHeight = Math.max(0, height - 112);
+                style.textContent =
+                  'html,body{min-height:' + height + 'px!important;}' +
+                  '.mobile-page-center-box{height:' + centerHeight + 'px!important;}' +
+                  '.mobile-page-content-box{max-height:' + centerHeight + 'px!important;}' +
+                  '.mobile-page-white-box{min-height:' + whiteBoxHeight + 'px!important;}';
+                if (document.documentElement) document.documentElement.offsetHeight;
+                var center = document.querySelector('.mobile-page-center-box');
+                var rect = center ? center.getBoundingClientRect() : null;
+                return {
+                  ok: true,
+                  innerHeight: height,
+                  centerHeight: rect ? Math.round(rect.height) : -1
+                };
+              }
+              var result = applyHitaMfaViewportFix();
+              if (!window.__hitaMfaViewportFixInstalled) {
+                window.__hitaMfaViewportFixInstalled = true;
+                window.addEventListener('resize', applyHitaMfaViewportFix);
+                window.addEventListener('orientationchange', applyHitaMfaViewportFix);
+                if (window.visualViewport) {
+                  window.visualViewport.addEventListener('resize', applyHitaMfaViewportFix);
+                }
+              }
+              return JSON.stringify(result);
+            })();
+        """.trimIndent()
+        view.evaluateJavascript(script) { raw ->
+            try {
+                val json = parseJavascriptJson(raw)
+                if (json.optBoolean("ok", false)) {
+                    LogUtils.success(
+                        "MFA viewport fix applied: innerHeight=${json.optInt("innerHeight")} " +
+                            "centerHeight=${json.optInt("centerHeight")}"
+                    )
+                    view.invalidate()
+                } else {
+                    LogUtils.w("MFA viewport fix deferred: ${json.optString("error", "unknown")}")
+                }
+            } catch (e: Exception) {
+                LogUtils.e("MFA viewport fix parse error", e)
+            }
+        }
+    }
+
+    private fun applyTrustPortalViewportUnitWorkaround(view: WebView) {
+        val script = """
+            (function() {
+              function applyHitaTrustViewportFix() {
+                var height = Math.round(window.innerHeight ||
+                  (document.documentElement && document.documentElement.clientHeight) || 0);
+                if (height <= 0) return {ok:false, error:'ZERO_VIEWPORT_HEIGHT'};
+                var style = document.getElementById('hita-trust-viewport-fix');
+                if (!style) {
+                  style = document.createElement('style');
+                  style.id = 'hita-trust-viewport-fix';
+                  (document.head || document.documentElement).appendChild(style);
+                }
+                style.textContent =
+                  'html,body,#app{height:' + height + 'px!important;' +
+                  'min-height:' + height + 'px!important;}' +
+                  '.h-screen,.login{height:' + height + 'px!important;' +
+                  'min-height:' + height + 'px!important;}' +
+                  '.login{width:100%!important;min-width:0!important;' +
+                  'overflow-x:hidden!important;}' +
+                  '.login-head,.login-body{width:100%!important;}' +
+                  '.login-head__content{width:auto!important;}' +
+                  '.login-content{left:0!important;right:0!important;width:100%!important;' +
+                  'margin-left:0!important;margin-right:0!important;' +
+                  'justify-content:center!important;}' +
+                  '.login-notice{display:none!important;}' +
+                  '.login-panel{box-sizing:border-box!important;' +
+                  'max-width:calc(100vw - 24px)!important;}';
+                if (document.documentElement) document.documentElement.offsetHeight;
+                var login = document.querySelector('.login');
+                var rect = login ? login.getBoundingClientRect() : null;
+                return {
+                  ok: true,
+                  innerHeight: height,
+                  loginHeight: rect ? Math.round(rect.height) : -1
+                };
+              }
+              var result = applyHitaTrustViewportFix();
+              if (!window.__hitaTrustViewportFixInstalled) {
+                window.__hitaTrustViewportFixInstalled = true;
+                window.addEventListener('resize', applyHitaTrustViewportFix);
+                window.addEventListener('orientationchange', applyHitaTrustViewportFix);
+                if (window.visualViewport) {
+                  window.visualViewport.addEventListener('resize', applyHitaTrustViewportFix);
+                }
+              }
+              return JSON.stringify(result);
+            })();
+        """.trimIndent()
+        view.evaluateJavascript(script) { raw ->
+            if (raw.isNullOrBlank() || raw == "null") return@evaluateJavascript
+            try {
+                val json = parseJavascriptJson(raw)
+                if (json.optBoolean("ok", false)) {
+                    LogUtils.success(
+                        "trust viewport fix applied: innerHeight=${json.optInt("innerHeight")} " +
+                            "loginHeight=${json.optInt("loginHeight")}"
+                    )
+                    view.invalidate()
+                } else {
+                    LogUtils.w("trust viewport fix deferred: ${json.optString("error", "unknown")}")
+                }
+            } catch (e: Exception) {
+                LogUtils.e("trust viewport fix parse error", e)
+            }
+        }
+    }
+
+    private fun applyShenzhenJwDesktopViewportWorkaround(view: WebView) {
+        val script = """
+            (function() {
+              var desktopWidth = 1200;
+
+              function applyHitaShenzhenJwHeight() {
+                var height = Math.round(window.innerHeight ||
+                  (document.documentElement && document.documentElement.clientHeight) || 0);
+                if (height <= 0) return {ok:false, error:'ZERO_VIEWPORT_HEIGHT'};
+                var style = document.getElementById('hita-shenzhen-jw-viewport-fix');
+                if (!style) {
+                  style = document.createElement('style');
+                  style.id = 'hita-shenzhen-jw-viewport-fix';
+                  (document.head || document.documentElement).appendChild(style);
+                }
+                style.textContent =
+                  'html,body,#app,.towlg_body,.towlg_submain{' +
+                  'height:' + height + 'px!important;' +
+                  'min-height:' + height + 'px!important;}';
+                if (document.documentElement) document.documentElement.offsetHeight;
+                var main = document.querySelector('.towlg_main');
+                var rect = main ? main.getBoundingClientRect() : null;
+                return {
+                  ok: true,
+                  innerWidth: Math.round(window.innerWidth),
+                  innerHeight: height,
+                  mainX: rect ? Math.round(rect.x) : -1,
+                  mainY: rect ? Math.round(rect.y) : -1,
+                  mainWidth: rect ? Math.round(rect.width) : -1
+                };
+              }
+
+              function applyHitaShenzhenJwViewportFix() {
+                var deviceWidth = Math.round(
+                  (window.screen && (window.screen.availWidth || window.screen.width)) ||
+                  (window.visualViewport && window.visualViewport.width) ||
+                  window.innerWidth || desktopWidth
+                );
+                var initialScale = Math.min(1, Math.max(0.2, deviceWidth / desktopWidth));
+                var content = 'width=' + desktopWidth +
+                  ', initial-scale=' + initialScale.toFixed(4) +
+                  ', minimum-scale=0.2, maximum-scale=3.0, user-scalable=yes';
+                var viewport = document.querySelector('meta[name=viewport]');
+                if (!viewport) {
+                  viewport = document.createElement('meta');
+                  viewport.name = 'viewport';
+                  (document.head || document.documentElement).appendChild(viewport);
+                }
+                if (viewport.content !== content) viewport.content = content;
+
+                var result = applyHitaShenzhenJwHeight();
+                window.requestAnimationFrame(applyHitaShenzhenJwHeight);
+                window.setTimeout(applyHitaShenzhenJwHeight, 100);
+                result.initialScale = initialScale;
+                return result;
+              }
+
+              var result = applyHitaShenzhenJwViewportFix();
+              if (!window.__hitaShenzhenJwViewportFixInstalled) {
+                window.__hitaShenzhenJwViewportFixInstalled = true;
+                window.addEventListener('resize', applyHitaShenzhenJwViewportFix);
+                window.addEventListener('orientationchange', applyHitaShenzhenJwViewportFix);
+                if (window.visualViewport) {
+                  window.visualViewport.addEventListener('resize', applyHitaShenzhenJwHeight);
+                }
+              }
+              return JSON.stringify(result);
+            })();
+        """.trimIndent()
+        view.evaluateJavascript(script) { raw ->
+            try {
+                val json = parseJavascriptJson(raw)
+                if (json.optBoolean("ok", false)) {
+                    LogUtils.success(
+                        "Shenzhen JW desktop viewport fix applied: " +
+                            "inner=${json.optInt("innerWidth")}x${json.optInt("innerHeight")} " +
+                            "scale=${json.optDouble("initialScale")} " +
+                            "main=${json.optInt("mainX")},${json.optInt("mainY")}," +
+                            "${json.optInt("mainWidth")}"
+                    )
+                    view.invalidate()
+                } else {
+                    LogUtils.w(
+                        "Shenzhen JW desktop viewport fix deferred: " +
+                            json.optString("error", "unknown")
+                    )
+                }
+            } catch (e: Exception) {
+                LogUtils.e("Shenzhen JW desktop viewport fix parse error", e)
             }
         }
     }
@@ -535,7 +813,8 @@ class WebViewLoginActivity : AppCompatActivity() {
               var methodNames = {
                 '2':'统一身份认证密码', '7':'统一身份认证密码',
                 '3':'手机号验证码', '4':'企业微信验证码', '5':'HIT APP 验证码',
-                '11':'邮箱验证码', '12':'钉钉验证码', '13':'WeLink 验证码'
+                '10':'安全令牌C', '11':'邮箱验证码', '12':'钉钉验证码',
+                '13':'哈工大 APP 验证码'
               };
               var descriptionKey = reAuthType ? ('reAuthDec' + reAuthType) : '';
               var visiblePromptEl = Array.prototype.slice.call(
@@ -565,6 +844,7 @@ class WebViewLoginActivity : AppCompatActivity() {
               var result = {
                 mfa: true,
                 method: method,
+                methodType: effectiveType,
                 prompt: prompt,
                 inputs: [],
                 submitId: submitButton ? (submitButton.id || 'visible-submit') : '',
@@ -596,6 +876,17 @@ class WebViewLoginActivity : AppCompatActivity() {
                         }
                         return@evaluateJavascript
                     }
+                    if (!MFA_NATIVE_OVERLAY_ENABLED) {
+                        mfaState = MfaOverlayState()
+                        mfaError = null
+                        LogUtils.d(
+                            "MFA_RAW_DIAG native overlay disabled; showing school page directly " +
+                                "method=${json.optString("method", "")} " +
+                                "methodType=${json.optString("methodType", "")}"
+                        )
+                        scheduleRawMfaDiagnostics(view, url, generation)
+                        return@evaluateJavascript
+                    }
                     val method = json.optString("method", "")
                     val prompt = json.optString("prompt", "")
                     val inputsArr = json.optJSONArray("inputs")
@@ -618,6 +909,7 @@ class WebViewLoginActivity : AppCompatActivity() {
                         promptTitle = "多因子认证",
                         promptText = prompt,
                         verifyMethod = method,
+                        verifyMethodType = json.optString("methodType", ""),
                         hasVisibleInput = hasVisibleInput,
                         inputId = inputId,
                         inputType = inputType,
@@ -636,6 +928,112 @@ class WebViewLoginActivity : AppCompatActivity() {
                 }
             }
         }, if (attempt == 0) MFA_DETECTION_INITIAL_DELAY_MS else MFA_DETECTION_RETRY_DELAY_MS)
+    }
+
+    private fun scheduleRawMfaDiagnostics(view: WebView, url: String, generation: Int) {
+        listOf(0L to "detected", 800L to "after-800ms", 2500L to "after-2500ms").forEach {
+            (delayMs, marker) ->
+            view.postDelayed({
+                if (finished || generation != mfaDetectionGeneration || view.url != url) {
+                    return@postDelayed
+                }
+                logRawMfaNativeMetrics(view, marker)
+                evaluateRawMfaPageMetrics(view, marker)
+            }, delayMs)
+        }
+    }
+
+    @Suppress("DEPRECATION")
+    private fun logRawMfaNativeMetrics(view: WebView, marker: String) {
+        val metrics = resources.displayMetrics
+        val rect = Rect()
+        val hasGlobalRect = view.getGlobalVisibleRect(rect)
+        LogUtils.d(
+            "MFA_RAW_DIAG native marker=$marker " +
+                "size=${view.width}x${view.height} measured=${view.measuredWidth}x${view.measuredHeight} " +
+                "global=$hasGlobalRect:$rect density=${metrics.density} densityDpi=${metrics.densityDpi} " +
+                "screenPx=${metrics.widthPixels}x${metrics.heightPixels} scale=${view.scale} " +
+                "contentHeight=${view.contentHeight} scroll=${view.scrollX},${view.scrollY} " +
+                "layer=${layerName(view.layerType)} shown=${view.isShown} attached=${view.isAttachedToWindow}"
+        )
+    }
+
+    private fun evaluateRawMfaPageMetrics(view: WebView, marker: String) {
+        val script = """
+            (function() {
+              function number(value) {
+                return Math.round((Number(value) || 0) * 100) / 100;
+              }
+              function elementInfo(el) {
+                if (!el) return null;
+                var rect = el.getBoundingClientRect();
+                var style = window.getComputedStyle(el);
+                return {
+                  tag: el.tagName,
+                  id: el.id || '',
+                  cls: String(el.className || '').slice(0, 100),
+                  type: el.getAttribute('type') || '',
+                  rect: [number(rect.x), number(rect.y), number(rect.width), number(rect.height)],
+                  display: style.display,
+                  visibility: style.visibility,
+                  opacity: style.opacity,
+                  position: style.position,
+                  overflow: style.overflow + '/' + style.overflowY,
+                  transform: style.transform === 'none' ? '' : style.transform,
+                  zoom: style.zoom || ''
+                };
+              }
+              function uniqueElements(selectors, limit) {
+                var seen = [];
+                selectors.forEach(function(selector) {
+                  Array.prototype.slice.call(document.querySelectorAll(selector)).forEach(function(el) {
+                    if (seen.indexOf(el) < 0 && seen.length < limit) seen.push(el);
+                  });
+                });
+                return seen.map(elementInfo);
+              }
+              var viewportMeta = document.querySelector('meta[name=viewport]');
+              var center = document.elementFromPoint(
+                Math.floor(window.innerWidth / 2), Math.floor(window.innerHeight / 2)
+              );
+              var visual = window.visualViewport;
+              return JSON.stringify({
+                marker: ${JSONObject.quote(marker)},
+                ready: document.readyState,
+                viewportMeta: viewportMeta ? viewportMeta.content : '',
+                viewport: {
+                  inner: [window.innerWidth, window.innerHeight],
+                  outer: [window.outerWidth, window.outerHeight],
+                  dpr: window.devicePixelRatio,
+                  visual: visual ? [
+                    number(visual.width), number(visual.height), number(visual.scale),
+                    number(visual.offsetLeft), number(visual.offsetTop)
+                  ] : null
+                },
+                screen: [screen.width, screen.height, screen.availWidth, screen.availHeight],
+                document: [
+                  document.documentElement.clientWidth, document.documentElement.clientHeight,
+                  document.documentElement.scrollWidth, document.documentElement.scrollHeight
+                ],
+                body: elementInfo(document.body),
+                html: elementInfo(document.documentElement),
+                center: elementInfo(center),
+                styleSheets: document.styleSheets.length,
+                fonts: document.fonts ? document.fonts.status : 'unsupported',
+                roots: uniqueElements([
+                  'form', '.container', '.content-box', '.cotent-box', '.main',
+                  '[class*="reauth" i]', '[class*="auth" i]'
+                ], 10),
+                controls: uniqueElements([
+                  '#dynamicCode', '#reAuthSubmitBtn', '#changeReAuthTypeButton',
+                  '[id^=reAuthDec]', 'input:not([type=hidden])', 'button', '[role=button]'
+                ], 14)
+              });
+            })();
+        """.trimIndent()
+        view.evaluateJavascript(script) { result ->
+            LogUtils.d("MFA_RAW_DIAG page ${sanitizeJsResult(result)}")
+        }
     }
 
     /** Called from native Compose UI: find and click "send code" button in WebView. */
@@ -765,15 +1163,147 @@ class WebViewLoginActivity : AppCompatActivity() {
         }
     }
 
-    /** Called from native Compose UI: switch to next verification method. */
+    /** Called from native Compose UI: open the school's method picker and prefer SMS verification. */
     fun switchNativeMfaMethod() {
-        val script = "mobileChangeOtherType()"
-        webView.evaluateJavascript(script, null)
-        LogUtils.d("MFA method switch triggered")
+        val originalType = mfaState.verifyMethodType
+        val generation = ++mfaDetectionGeneration
+        val url = webView.url ?: return
         mfaState = mfaState.copy(visible = false)
+        mfaError = null
+        mfaInputValue = ""
+        val script = """
+            (function() {
+              try {
+                if (typeof mobileChangeOtherType !== 'function') {
+                  return JSON.stringify({ok:false, error:'METHOD_PICKER_NOT_FOUND'});
+                }
+                mobileChangeOtherType();
+                return JSON.stringify({ok:true});
+              } catch (e) {
+                return JSON.stringify({ok:false, error:String(e && e.message || e)});
+              }
+            })();
+        """.trimIndent()
+        webView.evaluateJavascript(script) { raw ->
+            if (generation != mfaDetectionGeneration) return@evaluateJavascript
+            try {
+                val json = parseJavascriptJson(raw)
+                if (!json.optBoolean("ok", false)) {
+                    LogUtils.w("MFA method picker failed: ${json.optString("error", "unknown")}")
+                    mfaError = "无法打开验证方式选择，请返回后重试"
+                    mfaState = mfaState.copy(visible = true)
+                    return@evaluateJavascript
+                }
+                LogUtils.d("MFA method picker opened, currentType=$originalType")
+                pollMfaMethodChange(url, originalType, generation, attempt = 0)
+            } catch (e: Exception) {
+                LogUtils.e("MFA method picker parse error", e)
+                mfaError = "无法打开验证方式选择，请返回后重试"
+                mfaState = mfaState.copy(visible = true)
+            }
+        }
+    }
+
+    private fun pollMfaMethodChange(
+        url: String,
+        originalType: String,
+        generation: Int,
+        attempt: Int,
+        phoneSelectionAttempted: Boolean = false
+    ) {
+        val originalTypeJson = JSONObject.quote(originalType)
+        val shouldSelectPhone = !phoneSelectionAttempted
+        val script = """
+            (function() {
+              function isVisible(el) {
+                if (!el || el.disabled) return false;
+                var style = window.getComputedStyle(el);
+                var rect = el.getBoundingClientRect();
+                return style.display !== 'none' && style.visibility !== 'hidden' &&
+                  style.opacity !== '0' && rect.width > 0 && rect.height > 0;
+              }
+              function textOf(el) {
+                return String(el && (el.textContent || el.innerText) || '').replace(/\s+/g, ' ').trim();
+              }
+              function effectiveType() {
+                var visiblePrompt = Array.prototype.slice.call(
+                  document.querySelectorAll('[id^=reAuthDec]')
+                ).find(isVisible);
+                var match = visiblePrompt && visiblePrompt.id
+                  ? visiblePrompt.id.match(/^reAuthDec(\d+)$/) : null;
+                var params = (typeof reAuthParams === 'object' && reAuthParams) ? reAuthParams : {};
+                return match ? match[1] : String(params.reAuthType || '');
+              }
+
+              var currentType = effectiveType();
+              var clickedPhone = false;
+              var clickedText = '';
+              if (currentType === $originalTypeJson && $shouldSelectPhone) {
+                var candidates = Array.prototype.slice.call(document.querySelectorAll(
+                  'button, a, label, li, [role=button], [onclick], div, span'
+                )).filter(function(el) {
+                  if (!isVisible(el) || /^reAuthDec\d+$/.test(el.id || '')) return false;
+                  var text = textOf(el);
+                  if (text.length === 0 || text.length > 40) return false;
+                  return /手机(?:号|短信)?(?:验证码|动态码)|短信(?:验证码|动态码)/.test(text);
+                }).sort(function(a, b) {
+                  function score(el) {
+                    var score = textOf(el).length;
+                    if (el.matches('button, a, label, [role=button], [onclick]')) score -= 100;
+                    return score;
+                  }
+                  return score(a) - score(b);
+                });
+                if (candidates.length) {
+                  var candidate = candidates[0];
+                  var target = candidate.closest('button, a, label, li, [role=button], [onclick]') || candidate;
+                  clickedText = textOf(candidate);
+                  target.click();
+                  clickedPhone = true;
+                  currentType = effectiveType();
+                }
+              }
+              return JSON.stringify({
+                type: currentType,
+                clickedPhone: clickedPhone,
+                clickedText: clickedText
+              });
+            })();
+        """.trimIndent()
         webView.postDelayed({
-            webView.url?.let { scheduleMfaDetection(webView, it) }
-        }, 1000)
+            if (finished || generation != mfaDetectionGeneration || webView.url != url) {
+                return@postDelayed
+            }
+            webView.evaluateJavascript(script) { raw ->
+                if (generation != mfaDetectionGeneration) return@evaluateJavascript
+                try {
+                    val json = parseJavascriptJson(raw)
+                    val currentType = json.optString("type", "")
+                    val clickedPhone = json.optBoolean("clickedPhone", false)
+                    if (clickedPhone) {
+                        LogUtils.d(
+                            "MFA phone method selected from web picker: ${json.optString("clickedText", "")}"
+                        )
+                    }
+                    if (currentType.isNotBlank() && currentType != originalType) {
+                        LogUtils.success("MFA method changed: $originalType -> $currentType")
+                        scheduleMfaDetection(webView, url)
+                    } else if (attempt < MFA_METHOD_SWITCH_MAX_POLLS) {
+                        pollMfaMethodChange(
+                            url = url,
+                            originalType = originalType,
+                            generation = generation,
+                            attempt = attempt + 1,
+                            phoneSelectionAttempted = phoneSelectionAttempted || clickedPhone
+                        )
+                    } else {
+                        LogUtils.w("MFA method picker left open: no method change detected")
+                    }
+                } catch (e: Exception) {
+                    LogUtils.e("MFA method switch poll error", e)
+                }
+            }
+        }, MFA_METHOD_SWITCH_POLL_DELAY_MS)
     }
 
     /** Called from native Compose UI: dismiss MFA overlay. */
@@ -951,6 +1481,144 @@ class WebViewLoginActivity : AppCompatActivity() {
         return Uri.parse(url).path.orEmpty().contains("/authserver/reAuthCheck/", ignoreCase = true)
     }
 
+    private fun isTrustPortalPage(url: String): Boolean {
+        val uri = Uri.parse(url)
+        return uri.host.equals("trust.hitsz.edu.cn", ignoreCase = true) &&
+            uri.path.orEmpty().startsWith("/portal", ignoreCase = true)
+    }
+
+    /**
+     * The aTrust shortcut page defaults to probing a locally installed Sangfor client.
+     * A normal Android WebView has no such client listening on localhost, so that path
+     * ends at the UEM authorization page instead of the browser authentication flow.
+     *
+     * aTrust's own web client checks this session-storage flag before probing localhost.
+     * Set it on the aTrust origin and reload the signed shortcut URL once so the original
+     * return URL and verification token remain intact.
+     */
+    private fun applyShenzhenForceWebMode(view: WebView, url: String): Boolean {
+        if (
+            config.campus != EASToken.Campus.SHENZHEN ||
+            shenzhenForceWebModeApplied
+        ) {
+            return false
+        }
+
+        val uri = Uri.parse(url)
+        if (
+            !uri.host.equals("trust.hitsz.edu.cn", ignoreCase = true) ||
+            !uri.path.orEmpty().equals("/portal/shortcut.html", ignoreCase = true)
+        ) {
+            return false
+        }
+
+        shenzhenForceWebModeApplied = true
+        val script = """
+            (function() {
+              try {
+                sessionStorage.setItem('forceWeb', 'true');
+                // Newer aTrust pages namespace session data per SDP address while
+                // shortcut.html still reads the legacy, unprefixed key.
+                var mapKey = '__Prefix_map__';
+                var prefixMap = JSON.parse(sessionStorage.getItem(mapKey) || '[]');
+                if (!Array.isArray(prefixMap)) prefixMap = [];
+                var origin = window.location.origin;
+                var entry = prefixMap.find(function(item) { return item && item.addr === origin; });
+                if (!entry) {
+                  var maxPrefix = prefixMap.reduce(function(max, item) {
+                    var match = item && String(item.pre || '').match(/^\[(\d+)\]$/);
+                    return match ? Math.max(max, Number(match[1])) : max;
+                  }, 0);
+                  entry = {pre: '[' + (maxPrefix + 1) + ']', addr: origin};
+                  prefixMap.unshift(entry);
+                }
+                sessionStorage.setItem(mapKey, JSON.stringify(prefixMap));
+                sessionStorage.setItem(entry.pre + 'forceWeb', 'true');
+                return true;
+              } catch (e) {
+                return false;
+              }
+            })();
+        """.trimIndent()
+        view.evaluateJavascript(script) { result ->
+            if (finished) return@evaluateJavascript
+            if (result == "true") {
+                LogUtils.success("enabled aTrust force-web mode; reloading shortcut")
+            } else {
+                LogUtils.w("could not confirm aTrust force-web mode; retrying shortcut once")
+            }
+            view.loadUrl(url)
+        }
+        return true
+    }
+
+    private fun isShenzhenProxyJwPage(url: String): Boolean {
+        return Uri.parse(url).host.equals(
+            Uri.parse(CampusUrls.SHENZHEN_PROXY_BASE).host,
+            ignoreCase = true
+        )
+    }
+
+    private fun switchShenzhenUserAgentForNavigation(view: WebView, url: String): Boolean {
+        if (config.campus != EASToken.Campus.SHENZHEN) return false
+        val host = Uri.parse(url).host.orEmpty()
+        val proxyHost = Uri.parse(CampusUrls.SHENZHEN_PROXY_BASE).host.orEmpty()
+        val needsDesktopUserAgent =
+            host.equals(proxyHost, ignoreCase = true) ||
+                host.equals("trust.hitsz.edu.cn", ignoreCase = true)
+
+        if (!needsDesktopUserAgent && shenzhenDesktopUserAgentApplied) {
+            shenzhenDesktopUserAgentApplied = false
+            view.settings.userAgentString = shenzhenMobileUserAgent
+            LogUtils.d("switching Shenzhen login navigation back to mobile user agent: host=$host")
+            view.stopLoading()
+            view.post { if (!finished) view.loadUrl(url) }
+            return true
+        }
+
+        if (needsDesktopUserAgent && !shenzhenDesktopUserAgentApplied) {
+            shenzhenDesktopUserAgentApplied = true
+            view.settings.userAgentString = SHENZHEN_DESKTOP_USER_AGENT
+            LogUtils.d("switching Shenzhen browser portal navigation to desktop user agent")
+            view.stopLoading()
+            view.post { if (!finished) view.loadUrl(url) }
+            return true
+        }
+        return false
+    }
+
+    private fun isExpectedShenzhenClientProbe(request: WebResourceRequest?): Boolean {
+        if (config.campus != EASToken.Campus.SHENZHEN || request?.isForMainFrame == true) {
+            return false
+        }
+        val uri = request?.url ?: return false
+        val host = uri.host.orEmpty()
+        return uri.path.orEmpty().equals("/v1/detect", ignoreCase = true) &&
+            (host == "127.0.0.1" || host.equals("localhost.sangfor.com.cn", ignoreCase = true))
+    }
+
+    private fun isExpectedShenzhenBrowserConsoleMessage(message: String?): Boolean {
+        if (config.campus != EASToken.Campus.SHENZHEN) return false
+        return message.orEmpty().let {
+            it.contains("UEM授权不足") || it.contains("clientInstallMode undefined")
+        }
+    }
+
+    private fun ensureShenzhenDesktopUserAgentForProxy(view: WebView, url: String): Boolean {
+        if (
+            config.campus != EASToken.Campus.SHENZHEN ||
+            !isShenzhenProxyJwPage(url) ||
+            shenzhenDesktopUserAgentApplied
+        ) {
+            return false
+        }
+        shenzhenDesktopUserAgentApplied = true
+        view.settings.userAgentString = SHENZHEN_DESKTOP_USER_AGENT
+        LogUtils.d("reloading Shenzhen proxy with desktop user agent")
+        view.post { if (!finished) view.reload() }
+        return true
+    }
+
     private fun parseJavascriptJson(raw: String): JSONObject {
         val trimmed = raw.trim()
         val decoded = if (trimmed.startsWith('"')) {
@@ -1005,30 +1673,13 @@ class WebViewLoginActivity : AppCompatActivity() {
                 isLoginCasPage || isFunctionPage
             }
             EASToken.Campus.SHENZHEN -> {
-                host == "jw.hitsz.edu.cn" &&
+                (host == "jw.hitsz.edu.cn" || host == Uri.parse(CampusUrls.SHENZHEN_PROXY_BASE).host) &&
                     (path.contains("authentication/main") ||
                         path.contains("student_index") ||
                         path.contains("user/me")) &&
                     hasRequiredCookies(collectCookies(), url)
             }
         }
-    }
-
-    private fun isAndroidEmulator(): Boolean {
-        val fingerprint = Build.FINGERPRINT.lowercase()
-        val model = Build.MODEL.lowercase()
-        val manufacturer = Build.MANUFACTURER.lowercase()
-        val brand = Build.BRAND.lowercase()
-        val device = Build.DEVICE.lowercase()
-        val product = Build.PRODUCT.lowercase()
-        return fingerprint.startsWith("generic") ||
-            fingerprint.contains("emulator") ||
-            model.contains("sdk") ||
-            model.contains("emulator") ||
-            manufacturer.contains("genymotion") ||
-            brand.startsWith("generic") && device.startsWith("generic") ||
-            product.contains("sdk_gphone") ||
-            product.contains("emulator")
     }
 
     private fun autoOpenJwts(webView: WebView) {
@@ -1401,6 +2052,9 @@ class WebViewLoginActivity : AppCompatActivity() {
         val cookiesJson = JSONObject(cookies as Map<*, *>).toString()
         val intent = Intent().apply {
             putExtra("cookies", cookiesJson)
+            if (config.campus == EASToken.Campus.SHENZHEN) {
+                putExtra("web_base_url", CampusUrls.SHENZHEN_PROXY_BASE)
+            }
             if (!eelabToken.isNullOrBlank()) {
                 putExtra("electronic_exp_token", eelabToken)
             }
@@ -1553,6 +2207,13 @@ private fun WebViewLoginScreen(
                                 style = MaterialTheme.typography.titleMedium,
                                 color = MaterialTheme.colorScheme.onSurface
                             )
+                            if (mfaState.verifyMethod.isNotBlank()) {
+                                Text(
+                                    text = "当前方式：${mfaState.verifyMethod}",
+                                    style = MaterialTheme.typography.labelLarge,
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+                            }
                             if (mfaState.promptText.isNotBlank()) {
                                 Text(
                                     text = mfaState.promptText,
@@ -1600,13 +2261,18 @@ private fun WebViewLoginScreen(
                                     style = MaterialTheme.typography.bodySmall
                                 )
                             }
+                            if (mfaState.verifyMethodType != "3") {
+                                TextButton(
+                                    onClick = onMfaSwitchMethod,
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Text("切换到手机验证码")
+                                }
+                            }
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
                                 horizontalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
-                                TextButton(onClick = onMfaSwitchMethod) {
-                                    Text("切换验证方式")
-                                }
                                 Spacer(Modifier.weight(1f))
                                 TextButton(onClick = onMfaDismiss) {
                                     Text("取消")

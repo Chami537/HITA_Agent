@@ -21,6 +21,10 @@ class EASToken {
     // --- 深圳 Web 教务 (jw.hitsz.edu.cn) 独立 Cookie 会话 ---
     // 与 mjw App API 的 JSESSIONID/route 同名但不同域，必须分开保存，禁止互相覆盖。
     var webCookies = HashMap<String, String>()
+    // 校外通过 hitsz.edu.cn 网页代理访问时记录代理根地址；旧会话为空时仍使用直连地址。
+    var webBaseUrl: String? = null
+    // Repository-managed generation used to reject responses from requests started before logout.
+    var sessionGeneration: Long = 0L
 
     // --- 本部电子实验中心 JWT token (用于 eelabinfo-hit-edu-cn.ivpn.hit.edu.cn) ---
     var electronicExpToken: String? = null

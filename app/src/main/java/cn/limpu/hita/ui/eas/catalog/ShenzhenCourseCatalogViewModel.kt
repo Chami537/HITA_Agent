@@ -7,8 +7,12 @@ import androidx.lifecycle.switchMap
 import com.limpu.component.data.DataState
 import com.limpu.component.data.Trigger
 import cn.limpu.hita.data.model.eas.ShenzhenCourseCatalogPage
+import cn.limpu.hita.data.model.eas.ShenzhenCourseCatalogItem
 import cn.limpu.hita.data.model.eas.ShenzhenCourseCatalogSource
+import cn.limpu.hita.data.model.eas.ShenzhenCourseAttachment
+import cn.limpu.hita.data.model.eas.ShenzhenHistoricalFailureReport
 import cn.limpu.hita.data.model.eas.ShenzhenSelectionPool
+import cn.limpu.hita.data.model.eas.ShenzhenSelectionPools
 import cn.limpu.hita.data.model.eas.TermItem
 import cn.limpu.hita.data.repository.EASRepository
 import cn.limpu.hita.ui.eas.EASViewModel
@@ -24,6 +28,12 @@ data class ShenzhenCourseCatalogQuery(
     val page: Int
 )
 
+data class ShenzhenHistoricalFailureRequest(
+    val course: ShenzhenCourseCatalogItem,
+    val term: TermItem,
+    val studentType: String
+)
+
 @HiltViewModel
 class ShenzhenCourseCatalogViewModel @Inject constructor(
     easRepo: EASRepository,
@@ -36,20 +46,7 @@ class ShenzhenCourseCatalogViewModel @Inject constructor(
         private const val STATE_STUDENT_TYPE = "shenzhen_catalog_student_type"
     }
 
-    val pools = listOf(
-        ShenzhenSelectionPool("bx-b-b", "必修"),
-        ShenzhenSelectionPool("xx-b-b", "限选"),
-        ShenzhenSelectionPool("cxcytx-b-b", "创新创业通选课"),
-        ShenzhenSelectionPool("shsj-b-b", "社会实践课"),
-        ShenzhenSelectionPool("jsrw-b-b", "竞赛指导类课程"),
-        ShenzhenSelectionPool("cxyx-b-b", "创新研修"),
-        ShenzhenSelectionPool("cxsy-b-b", "创新实验"),
-        ShenzhenSelectionPool("cx-b-b", "重修"),
-        ShenzhenSelectionPool("buxiu-bcyxfj-b-b", "补修"),
-        ShenzhenSelectionPool("sx-b-b", "跨专业课程体系"),
-        ShenzhenSelectionPool("tsk-b-b", "文理通识"),
-        ShenzhenSelectionPool("mooc-b-b", "MOOC")
-    )
+    val pools = ShenzhenSelectionPools.all
 
     private val refreshController = MutableLiveData<Trigger>()
     val termsLiveData: LiveData<DataState<List<TermItem>>> = refreshController.switchMap {
@@ -88,6 +85,21 @@ class ShenzhenCourseCatalogViewModel @Inject constructor(
             )
         }
     }
+    private val attachmentCourseLiveData = MutableLiveData<ShenzhenCourseCatalogItem>()
+    val attachmentsLiveData: LiveData<DataState<List<ShenzhenCourseAttachment>>> =
+        attachmentCourseLiveData.switchMap { course ->
+            easRepo.getShenzhenCourseAttachments(course)
+        }
+    private val historicalFailureRequestLiveData =
+        MutableLiveData<ShenzhenHistoricalFailureRequest>()
+    val historicalFailureLiveData: LiveData<DataState<ShenzhenHistoricalFailureReport>> =
+        historicalFailureRequestLiveData.switchMap { request ->
+            easRepo.getShenzhenHistoricalTeacherFailureRates(
+                request.term,
+                request.studentType,
+                request.course
+            )
+        }
 
     fun startRefresh() {
         refreshController.value = Trigger.actioning
@@ -144,6 +156,32 @@ class ShenzhenCourseCatalogViewModel @Inject constructor(
     fun retry(): Boolean {
         val query = queryLiveData.value ?: return false
         queryLiveData.value = query.copy()
+        return true
+    }
+
+    fun loadAttachments(course: ShenzhenCourseCatalogItem) {
+        attachmentCourseLiveData.value = course
+    }
+
+    fun retryAttachments(): Boolean {
+        val course = attachmentCourseLiveData.value ?: return false
+        attachmentCourseLiveData.value = course.copy()
+        return true
+    }
+
+    fun loadHistoricalFailureRates(course: ShenzhenCourseCatalogItem): Boolean {
+        val term = selectedTermLiveData.value ?: return false
+        historicalFailureRequestLiveData.value = ShenzhenHistoricalFailureRequest(
+            course = course,
+            term = term,
+            studentType = studentTypeLiveData.value ?: "1"
+        )
+        return true
+    }
+
+    fun retryHistoricalFailureRates(): Boolean {
+        val request = historicalFailureRequestLiveData.value ?: return false
+        historicalFailureRequestLiveData.value = request.copy()
         return true
     }
 

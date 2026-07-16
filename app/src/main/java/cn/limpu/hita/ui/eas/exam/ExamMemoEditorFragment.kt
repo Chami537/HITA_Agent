@@ -301,7 +301,7 @@ private fun ExamMemoEditorSheet(
 }
 
 private fun memoTermName(term: TermItem): String =
-    TermNameFormatter.shortTermName(term.termName, term.name)
+    TermNameFormatter.fullTermName(term)
 
 @Composable
 private fun TimeButton(

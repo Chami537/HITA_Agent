@@ -220,7 +220,8 @@ class PopUpLoginEAS : BottomSheetDialogFragment() {
                 }
 
                 val electronicExpToken = data.getStringExtra("electronic_exp_token")
-                startCookieLogin(campus, cookiesMap, electronicExpToken)
+                val webBaseUrl = data.getStringExtra("web_base_url")
+                startCookieLogin(campus, cookiesMap, electronicExpToken, webBaseUrl)
             } catch (e: Exception) {
                 loginInProgress = false
                 LogUtils.e("Failed to parse cookies: ${e.message}")
@@ -236,9 +237,15 @@ class PopUpLoginEAS : BottomSheetDialogFragment() {
         campus: EASToken.Campus,
         cookiesMap: HashMap<String, String>,
         electronicExpToken: String?,
+        webBaseUrl: String?,
     ) {
         val cookiesJson = JSONObject(cookiesMap as Map<*, *>).toString()
-        val loginSource = viewModel.easRepo.login(cookiesJson, electronicExpToken.orEmpty(), campus)
+        val loginMetadata = if (campus == EASToken.Campus.SHENZHEN) {
+            webBaseUrl.orEmpty()
+        } else {
+            electronicExpToken.orEmpty()
+        }
+        val loginSource = viewModel.easRepo.login(cookiesJson, loginMetadata, campus)
         val observer = object : Observer<DataState<Boolean>> {
             override fun onChanged(value: DataState<Boolean>) {
                 val state = value

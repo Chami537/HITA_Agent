@@ -73,6 +73,7 @@ import cn.limpu.hita.ui.design.hitaIsAppleGlassSurface
 import cn.limpu.hita.ui.eas.classroom.EmptyClassroomActivity
 import cn.limpu.hita.ui.eas.catalog.ShenzhenCourseCatalogActivity
 import cn.limpu.hita.ui.eas.exam.ExamActivity
+import cn.limpu.hita.ui.eas.grade.ShenzhenGradeAnalysisActivity
 import cn.limpu.hita.ui.eas.imp.ImportTimetableActivity
 import cn.limpu.hita.ui.eas.login.PopUpLoginEAS
 import cn.limpu.hita.ui.eas.score.ScoreInquiryActivity
@@ -147,6 +148,9 @@ class NavigationFragment : androidx.fragment.app.Fragment() {
                         onImportIcs = { selectIcsLauncher.launch(IcsImportUtils.pickerMimeTypes()) },
                         onExam = { openExam() },
                         onScores = { ActivityUtils.startActivity(requireContext(), ScoreInquiryActivity::class.java) },
+                        onGradeAnalysis = {
+                            ActivityUtils.startActivity(requireContext(), ShenzhenGradeAnalysisActivity::class.java)
+                        },
                         onEmptyClassroom = { ActivityUtils.startActivity(requireContext(), EmptyClassroomActivity::class.java) },
                         onCreditStats = { ActivityUtils.startActivity(requireContext(), CreditStatsActivity::class.java) },
                         onCourseCatalog = {
@@ -332,6 +336,7 @@ private fun NavigationScreen(
     onImportIcs: () -> Unit,
     onExam: () -> Unit,
     onScores: () -> Unit,
+    onGradeAnalysis: () -> Unit,
     onEmptyClassroom: () -> Unit,
     onCreditStats: () -> Unit,
     onCourseCatalog: () -> Unit,
@@ -398,12 +403,31 @@ private fun NavigationScreen(
         NavigationGroup(title = stringResource(R.string.navi_jw_title)) {
             NavigationRow(icon = R.drawable.ic_baseline_today_24, title = stringResource(R.string.ade_exam), onClick = onExam)
             NavigationRow(icon = R.drawable.ic_baseline_format_list_bulleted_24, title = stringResource(R.string.jw_tabs_cj), onClick = onScores)
+            if (easToken.campus == EASToken.Campus.SHENZHEN) {
+                NavigationRow(
+                    icon = R.drawable.ic_baseline_format_list_bulleted_24,
+                    title = "课程成绩分析",
+                    subtitle = "提前成绩 · 全班分布 · 匿名排名",
+                    onClick = onGradeAnalysis
+                )
+            }
             NavigationRow(icon = R.drawable.ic_baseline_location_city_24, title = stringResource(R.string.shortcut_empty_classroom_short), onClick = onEmptyClassroom)
-            NavigationRow(icon = R.drawable.ic_baseline_format_list_bulleted_24, title = stringResource(R.string.navi_credit_stats), onClick = onCreditStats)
+            NavigationRow(
+                icon = R.drawable.ic_baseline_format_list_bulleted_24,
+                title = if (easToken.campus == EASToken.Campus.SHENZHEN) {
+                    "培养方案"
+                } else {
+                    stringResource(R.string.navi_credit_stats)
+                },
+                subtitle = if (easToken.campus == EASToken.Campus.SHENZHEN) {
+                    "完成度 · 学分类别 · 培养课组"
+                } else "",
+                onClick = onCreditStats
+            )
             NavigationRow(
                 icon = R.drawable.ic_baseline_search_24,
                 title = "深圳课程浏览",
-                subtitle = "可选课程 · 全校课表（需 Web 登录）",
+                subtitle = "教务选课池 · 全校课表（需 Web 登录）",
                 onClick = onCourseCatalog
             )
         }

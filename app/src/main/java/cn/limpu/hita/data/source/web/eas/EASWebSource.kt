@@ -15,7 +15,20 @@ import cn.limpu.hita.data.model.eas.ScoreSummary
 import cn.limpu.hita.data.model.eas.ScoreSummaryScope
 import cn.limpu.hita.data.model.eas.ShenzhenCourseCatalogPage
 import cn.limpu.hita.data.model.eas.ShenzhenCourseCatalogSource
+import cn.limpu.hita.data.model.eas.ShenzhenCourseAttachment
+import cn.limpu.hita.data.model.eas.ShenzhenGradeAnalysis
+import cn.limpu.hita.data.model.eas.ShenzhenGradeCourse
+import cn.limpu.hita.data.model.eas.ShenzhenGradeStatus
+import cn.limpu.hita.data.model.eas.ShenzhenHistoricalFailureReport
+import cn.limpu.hita.data.model.eas.ShenzhenCourseCatalogItem
+import cn.limpu.hita.data.model.eas.ShenzhenCourseRecommendationResult
+import cn.limpu.hita.data.model.eas.ShenzhenCreditProgress
+import cn.limpu.hita.data.model.eas.ShenzhenRecommendationOptions
 import cn.limpu.hita.data.model.eas.ShenzhenSelectionPool
+import cn.limpu.hita.data.model.eas.ShenzhenTrainingPlan
+import cn.limpu.hita.data.model.eas.ShenzhenTrainingPlanCourse
+import cn.limpu.hita.data.model.eas.ShenzhenTrainingPlanDetail
+import cn.limpu.hita.data.model.eas.ShenzhenTrainingPlanLevel
 import cn.limpu.hita.data.model.eas.TermItem
 import cn.limpu.hita.data.model.timetable.TermSubject
 import cn.limpu.hita.data.model.timetable.TimeInDay
@@ -52,12 +65,16 @@ class EASWebSource internal constructor(
 ) : EASService {
 
     private val hostName = "https://mjw.hitsz.edu.cn/incoSpringBoot"
-    private val jwHostName = "https://jw.hitsz.edu.cn"
+    private val jwDirectHostName = "https://jw.hitsz.edu.cn"
+    private val jwProxyHostName = "https://jw-hitsz-edu-cn.hitsz.edu.cn"
     private val basicAuth = "Basic aW5jb246MTIzNDU="
     private val timeout = 15000
     private val DEBUG_WEEK = 6
     private val DEBUG_DOW = 1
     private val overviewTermDatesCache = ConcurrentHashMap<String, List<String>>()
+
+    private fun jwHostName(token: EASToken): String =
+        if (token.webBaseUrl?.trimEnd('/') == jwProxyHostName) jwProxyHostName else jwDirectHostName
 
     // ---------------------------------------------------------------- 公共头
     private fun baseHeaders(authorization: String, rolecode: String = "06"): Map<String, String> =
@@ -181,6 +198,7 @@ class EASWebSource internal constructor(
         data: Map<String, String> = emptyMap(),
         refererPath: String = "/authentication/main"
     ): Connection.Response {
+        val jwHostName = jwHostName(token)
         val cookieJar = token.webCookies.takeIf { it.isNotEmpty() } ?: token.cookies
         if (token.webCookies.isEmpty()) {
             warmupJwSession(token)
@@ -193,6 +211,7 @@ class EASWebSource internal constructor(
                 .header("Accept-Language", "zh-CN,zh;q=0.9")
                 .header("RoleCode", "01")
                 .header("X-Requested-With", "XMLHttpRequest")
+                .header("Origin", jwHostName)
                 .header("Referer", "$jwHostName$refererPath")
                 .header("Content-Type", "application/x-www-form-urlencoded; charset=UTF-8")
                 .userAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36")
@@ -222,6 +241,7 @@ class EASWebSource internal constructor(
         body: String,
         refererPath: String = "/authentication/main"
     ): Connection.Response {
+        val jwHostName = jwHostName(token)
         val cookieJar = token.webCookies.takeIf { it.isNotEmpty() } ?: token.cookies
         if (token.webCookies.isEmpty()) {
             warmupJwSession(token)
@@ -234,6 +254,7 @@ class EASWebSource internal constructor(
                 .header("Accept-Language", "zh-CN,zh;q=0.9")
                 .header("RoleCode", "01")
                 .header("X-Requested-With", "XMLHttpRequest")
+                .header("Origin", jwHostName)
                 .header("Referer", "$jwHostName$refererPath")
                 .header("Content-Type", "application/json;charset=UTF-8")
                 .userAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36")
@@ -341,6 +362,7 @@ class EASWebSource internal constructor(
     }
 
     private fun warmupJwSession(token: EASToken) {
+        val jwHostName = jwHostName(token)
         val cookieJar = token.webCookies.takeIf { it.isNotEmpty() } ?: token.cookies
         try {
             val resp = Jsoup.newSession()
@@ -463,6 +485,9 @@ class EASWebSource internal constructor(
                     val webToken = EASToken().apply {
                         campus = EASToken.Campus.SHENZHEN
                         this.webCookies.putAll(webCookies)
+                        webBaseUrl = password.trimEnd('/').takeIf {
+                            it == jwProxyHostName || it == jwDirectHostName
+                        }
                     }
                     val enriched = fetchShenzhenWebPersonalInfo(webToken)
                     if (enriched == null) {
@@ -726,7 +751,24 @@ class EASWebSource internal constructor(
         page: Int,
         pageSize: Int
     ): LiveData<DataState<ShenzhenCourseCatalogPage>> {
-        val form = linkedMapOf(
+        val form = shenzhenSchoolCourseForm(term, studentType, keyword, page, pageSize)
+        return queryShenzhenCourseCatalog(
+            token = token,
+            path = "/Xsxktz/queryRwxxcxList?sf_request_type=ajax",
+            refererPath = "/Xsxktz/queryRwxxcx",
+            form = form,
+            source = ShenzhenCourseCatalogSource.SCHOOL,
+            studentType = studentType
+        )
+    }
+
+    private fun shenzhenSchoolCourseForm(
+        term: TermItem,
+        studentType: String,
+        keyword: String,
+        page: Int,
+        pageSize: Int
+    ) = linkedMapOf(
             "p_chapylx" to "",
             "ordertext_0" to "",
             "p_xn" to term.yearCode,
@@ -759,15 +801,6 @@ class EASWebSource internal constructor(
             "pageNum" to page.toString(),
             "pageSize" to pageSize.toString()
         )
-        return queryShenzhenCourseCatalog(
-            token = token,
-            path = "/Xsxktz/queryRwxxcxList?sf_request_type=ajax",
-            refererPath = "/Xsxktz/queryRwxxcx",
-            form = form,
-            source = ShenzhenCourseCatalogSource.SCHOOL,
-            studentType = studentType
-        )
-    }
 
     private fun queryShenzhenCourseCatalog(
         token: EASToken,
@@ -800,6 +833,1063 @@ class EASWebSource internal constructor(
                     result.postValue(DataState(DataState.STATE.FETCH_FAILED, "课程数据解析失败"))
                 } else {
                     result.postValue(DataState(page, DataState.STATE.SUCCESS))
+                }
+            } catch (error: Exception) {
+                result.postValue(DataState(DataState.STATE.FETCH_FAILED, error.message))
+            }
+        }.start()
+        return result
+    }
+
+    fun getShenzhenCourseRecommendations(
+        token: EASToken,
+        term: TermItem,
+        pools: List<ShenzhenSelectionPool>,
+        options: ShenzhenRecommendationOptions
+    ): LiveData<DataState<ShenzhenCourseRecommendationResult>> {
+        val result = MutableLiveData(
+            DataState<ShenzhenCourseRecommendationResult>(DataState.STATE.NOTHING)
+        )
+        Thread {
+            if (!token.hasShenzhenWebSession()) {
+                result.postValue(DataState(DataState.STATE.NOT_LOGGED_IN, "请先连接深圳 Web 教务"))
+                return@Thread
+            }
+            try {
+                val selectedResponse = requestShenzhenWebSelectedSubjects(token, term)
+                if (isJwAuthenticationExpired(selectedResponse)) {
+                    result.postValue(DataState(DataState.STATE.NOT_LOGGED_IN, "深圳 Web 会话已失效"))
+                    return@Thread
+                }
+                val selectedPage = selectedResponse.takeIf { it.statusCode() == 200 }?.let {
+                    ShenzhenCourseCatalogParser.parsePage(
+                        it.body(),
+                        ShenzhenCourseCatalogSource.AVAILABLE,
+                        token.getStudentType()
+                    )
+                }
+                if (selectedPage == null) {
+                    result.postValue(DataState(DataState.STATE.FETCH_FAILED, "已选课程读取失败"))
+                    return@Thread
+                }
+                val selected = selectedPage.items
+                val effectivePools = ShenzhenCourseCatalogParser
+                    .parseSelectionPools(selectedResponse.body())
+                    .ifEmpty { pools }
+
+                val candidates = mutableListOf<ShenzhenCourseCatalogItem>()
+                effectivePools.forEach { pool ->
+                    var pageNumber = 1
+                    var hasNext: Boolean
+                    do {
+                        val response = jwFormPost(
+                            token = token,
+                            path = "/Xsxk/queryKxrw?sf_request_type=ajax",
+                            data = recommendationAvailableCourseForm(
+                                token = token,
+                                term = term,
+                                pool = pool,
+                                page = pageNumber,
+                                pageSize = 200
+                            ),
+                            refererPath = "/Xsxk/query/1"
+                        )
+                        if (isJwAuthenticationExpired(response)) {
+                            result.postValue(
+                                DataState(DataState.STATE.NOT_LOGGED_IN, "深圳 Web 会话已失效")
+                            )
+                            return@Thread
+                        }
+                        val page = if (response.statusCode() == 200) {
+                            ShenzhenCourseCatalogParser.parsePage(
+                                response.body(),
+                                ShenzhenCourseCatalogSource.AVAILABLE,
+                                token.getStudentType(),
+                                pool.name
+                            )
+                        } else null
+                        if (page == null) {
+                            result.postValue(
+                                DataState(
+                                    DataState.STATE.FETCH_FAILED,
+                                    "选课池“${pool.name}”读取失败"
+                                )
+                            )
+                            return@Thread
+                        }
+                        candidates += page.items
+                        hasNext = page.hasNextPage
+                        pageNumber++
+                    } while (hasNext)
+                }
+
+                val recommendation = ShenzhenCourseRecommendationEngine.recommend(
+                    selected = selected,
+                    candidates = candidates,
+                    options = options
+                )
+                result.postValue(DataState(recommendation, DataState.STATE.SUCCESS))
+            } catch (error: Exception) {
+                result.postValue(DataState(DataState.STATE.FETCH_FAILED, error.message))
+            }
+        }.start()
+        return result
+    }
+
+    private fun recommendationAvailableCourseForm(
+        token: EASToken,
+        term: TermItem,
+        pool: ShenzhenSelectionPool,
+        page: Int,
+        pageSize: Int
+    ) = linkedMapOf(
+        "cxsfmt" to "0",
+        "p_pylx" to token.getStudentType(),
+        "mxpylx" to token.getStudentType(),
+        "p_sfgldjr" to "0",
+        "p_sfredis" to "0",
+        "p_sfsyxkgwc" to "0",
+        "p_xktjz" to "",
+        "p_chaxunxh" to "",
+        "p_gjz" to "",
+        "p_skjs" to "",
+        "p_xn" to term.yearCode,
+        "p_xq" to term.termCode,
+        "p_xnxq" to term.getCode(),
+        "p_dqxn" to term.yearCode,
+        "p_dqxq" to term.termCode,
+        "p_dqxnxq" to term.getCode(),
+        "p_xkfsdm" to pool.code,
+        "p_xiaoqu" to "",
+        "p_kkyx" to "",
+        "p_kclb" to "",
+        "p_xkxs" to "",
+        "p_dyc" to "",
+        "p_kkxnxq" to "",
+        "p_id" to "",
+        "p_sfhlctkc" to "0",
+        "p_sfhllrlkc" to "0",
+        "p_kxsj_xqj" to "",
+        "p_kxsj_ksjc" to "",
+        "p_kxsj_jsjc" to "",
+        "p_kcdm_js" to "",
+        "p_kcdm_cxrw" to "",
+        "p_kcdm_cxrw_zckc" to "",
+        "p_kc_gjz" to "",
+        "p_xzcxtjz_nj" to "",
+        "p_xzcxtjz_yx" to "",
+        "p_xzcxtjz_zy" to "",
+        "p_xzcxtjz_zyfx" to "",
+        "p_xzcxtjz_bj" to "",
+        "p_sfxsgwckb" to "1",
+        "p_skyy" to "",
+        "p_sfmxzj" to "0",
+        "p_chaxunxkfsdm" to "",
+        "pageNum" to page.toString(),
+        "pageSize" to pageSize.toString()
+    )
+
+    fun getShenzhenCourseAttachments(
+        token: EASToken,
+        courseId: String,
+        taskNumber: String
+    ): LiveData<DataState<List<ShenzhenCourseAttachment>>> {
+        val result = MutableLiveData<DataState<List<ShenzhenCourseAttachment>>>()
+        Thread {
+            if (!token.hasShenzhenWebSession()) {
+                result.postValue(DataState(DataState.STATE.NOT_LOGGED_IN, "请先连接深圳 Web 教务"))
+                return@Thread
+            }
+            if (courseId.isBlank() || taskNumber.isBlank()) {
+                result.postValue(DataState(DataState.STATE.FETCH_FAILED, "课程缺少详情标识"))
+                return@Thread
+            }
+            try {
+                val response = jwFormPost(
+                    token = token,
+                    path = "/kck/kcxxwh/xsckViewByxk?sf_request_type=ajax",
+                    data = mapOf(
+                        "kcid" to courseId,
+                        "kcsqid" to "",
+                        "rwh" to taskNumber
+                    ),
+                    refererPath = "/Xsxk/query/1"
+                )
+                if (isJwAuthenticationExpired(response)) {
+                    result.postValue(DataState(DataState.STATE.NOT_LOGGED_IN, "深圳 Web 会话已失效"))
+                    return@Thread
+                }
+                val attachments = ShenzhenCourseCatalogParser.parseAttachments(
+                    response.body(),
+                    courseId
+                )
+                if (response.statusCode() != 200 || attachments == null) {
+                    result.postValue(DataState(DataState.STATE.FETCH_FAILED, "课程附件解析失败"))
+                } else {
+                    result.postValue(DataState(attachments, DataState.STATE.SUCCESS))
+                }
+            } catch (error: Exception) {
+                result.postValue(DataState(DataState.STATE.FETCH_FAILED, error.message))
+            }
+        }.start()
+        return result
+    }
+
+    fun getShenzhenGradeCourses(
+        token: EASToken,
+        term: TermItem
+    ): LiveData<DataState<List<ShenzhenGradeCourse>>> {
+        val result = MutableLiveData<DataState<List<ShenzhenGradeCourse>>>()
+        Thread {
+            if (!token.hasShenzhenWebSession()) {
+                result.postValue(DataState(DataState.STATE.NOT_LOGGED_IN, "请先连接深圳 Web 教务"))
+                return@Thread
+            }
+            try {
+                val publishedResponse = jwJsonPost(
+                    token = token,
+                    path = "/cjgl/grcjcx/grcjcx",
+                    body = JSONObject()
+                        .put("xn", term.yearCode)
+                        .put("xq", term.termCode)
+                        .put("kcmc", JSONObject.NULL)
+                        .put("cxbj", "-1")
+                        .put("pylx", token.getStudentType())
+                        .put("current", 1)
+                        .put("pageSize", 1000)
+                        .put("xscjlb", JSONObject.NULL)
+                        .put("sffx", JSONObject.NULL)
+                        .toString(),
+                    refererPath = "/cjgl/grcjcx"
+                )
+                val selectedResponse = requestShenzhenWebSelectedSubjects(token, term)
+                if (isJwAuthenticationExpired(publishedResponse) ||
+                    isJwAuthenticationExpired(selectedResponse)
+                ) {
+                    result.postValue(DataState(DataState.STATE.NOT_LOGGED_IN, "深圳 Web 会话已失效"))
+                    return@Thread
+                }
+                if (publishedResponse.statusCode() != 200 || selectedResponse.statusCode() != 200) {
+                    result.postValue(DataState(DataState.STATE.FETCH_FAILED, "课程成绩列表请求失败"))
+                    return@Thread
+                }
+
+                var earlyBody: String? = null
+                val identityResponse = jwFormPost(
+                    token = token,
+                    path = "/UserManager/queryxsxx",
+                    refererPath = "/cjgl/cjzhtjcx/cjcx"
+                )
+                if (isJwAuthenticationExpired(identityResponse)) {
+                    result.postValue(DataState(DataState.STATE.NOT_LOGGED_IN, "深圳 Web 会话已失效"))
+                    return@Thread
+                }
+                val identity = identityResponse.takeIf { it.statusCode() == 200 }
+                    ?.let { ShenzhenCreditProgressParser.parseIdentity(it.body()) }
+                val studentNumber = identity?.studentNumber.orEmpty()
+                    .ifBlank { token.stuId.orEmpty() }
+                    .ifBlank { token.username.orEmpty() }
+                var studentRecordId = identity?.studentRecordId.orEmpty()
+                if (studentNumber.isNotBlank()) {
+                    if (studentRecordId.isBlank()) {
+                        val studentResponse = jwJsonPost(
+                            token = token,
+                            path = "/cjgl/cjzhtjcx/cjcx/getXs",
+                            body = JSONObject().put("xjidorxh", studentNumber).toString(),
+                            refererPath = "/cjgl/cjzhtjcx/cjcx"
+                        )
+                        if (isJwAuthenticationExpired(studentResponse)) {
+                            result.postValue(
+                                DataState(DataState.STATE.NOT_LOGGED_IN, "深圳 Web 会话已失效")
+                            )
+                            return@Thread
+                        }
+                        studentRecordId = if (studentResponse.statusCode() == 200) {
+                            ShenzhenGradeParser.parseStudentRecordId(studentResponse.body())
+                                .orEmpty()
+                        } else ""
+                    }
+                    studentRecordId = studentRecordId.ifBlank { token.id.orEmpty() }
+                    if (studentRecordId.isNotBlank()) {
+                        token.stuId = studentNumber
+                        token.id = studentRecordId
+                        identity?.studentType?.takeIf { it == "1" || it == "2" }?.let {
+                            token.stutype = if (it == "1") {
+                                EASToken.TYPE.UNDERGRAD
+                            } else EASToken.TYPE.GRAD
+                        }
+                        onTokenRefreshed?.invoke(token)
+                        val earlyResponse = jwJsonPost(
+                            token = token,
+                            path = "/cjgl/cjzhtjcx/cjcx/queryZxcjPage",
+                            body = JSONObject()
+                                .put("current", 1)
+                                .put("pageSize", 200)
+                                .put("xh", studentNumber)
+                                .put("xjid", studentRecordId)
+                                .put("pylx", token.getStudentType())
+                                .toString(),
+                            refererPath = "/cjgl/cjzhtjcx/cjcx"
+                        )
+                        if (earlyResponse.statusCode() == 200 &&
+                            !isJwAuthenticationExpired(earlyResponse)
+                        ) {
+                            earlyBody = earlyResponse.body()
+                        }
+                    }
+                }
+                LogUtils.d(
+                    "getShenzhenGradeCourses: identity=${identity != null}, " +
+                        "studentNumber=${studentNumber.isNotBlank()}, " +
+                        "studentRecordId=${studentRecordId.isNotBlank()}, " +
+                        "personalScores=${earlyBody != null}"
+                )
+                val earlyDiagnostics = ShenzhenGradeParser.earlyScoreDiagnostics(earlyBody)
+                LogUtils.d(
+                    "getShenzhenGradeCourses: personalScoreRows=${earlyDiagnostics.first}, " +
+                        "numericPersonalScores=${earlyDiagnostics.second}"
+                )
+
+                val courses = ShenzhenGradeParser.parseCourses(
+                    publishedBody = publishedResponse.body(),
+                    selectedBody = selectedResponse.body(),
+                    earlyBody = earlyBody,
+                    term = term
+                )
+                LogUtils.d(
+                    "getShenzhenGradeCourses: courses=${courses?.size ?: 0}, " +
+                        "earlyScores=${courses?.count {
+                            it.status == ShenzhenGradeStatus.EARLY && it.myScore != null
+                        } ?: 0}"
+                )
+                if (courses == null) {
+                    result.postValue(DataState(DataState.STATE.FETCH_FAILED, "课程成绩列表解析失败"))
+                } else {
+                    result.postValue(DataState(courses, DataState.STATE.SUCCESS))
+                }
+            } catch (error: Exception) {
+                result.postValue(DataState(DataState.STATE.FETCH_FAILED, error.message))
+            }
+        }.start()
+        return result
+    }
+
+    fun getShenzhenGradeAnalysis(
+        token: EASToken,
+        course: ShenzhenGradeCourse
+    ): LiveData<DataState<ShenzhenGradeAnalysis>> {
+        val result = MutableLiveData<DataState<ShenzhenGradeAnalysis>>()
+        Thread {
+            if (!token.hasShenzhenWebSession()) {
+                result.postValue(DataState(DataState.STATE.NOT_LOGGED_IN, "请先连接深圳 Web 教务"))
+                return@Thread
+            }
+            if (course.taskId.isBlank()) {
+                result.postValue(DataState(DataState.STATE.FETCH_FAILED, "该课程缺少教学任务标识"))
+                return@Thread
+            }
+            try {
+                val response = jwFormPost(
+                    token = token,
+                    path = "/cjgl/grcjcx/seeFx",
+                    data = mapOf("rwid" to course.taskId),
+                    refererPath = "/cjgl/grcjcx"
+                )
+                if (isJwAuthenticationExpired(response)) {
+                    result.postValue(DataState(DataState.STATE.NOT_LOGGED_IN, "深圳 Web 会话已失效"))
+                    return@Thread
+                }
+                val analysis = if (response.statusCode() == 200) {
+                    ShenzhenGradeParser.analyze(course, response.body())
+                } else null
+                if (analysis == null) {
+                    result.postValue(
+                        DataState(
+                            DataState.STATE.FETCH_FAILED,
+                            "暂未查询到该教学班的分项成绩"
+                        )
+                    )
+                } else {
+                    result.postValue(DataState(analysis, DataState.STATE.SUCCESS))
+                }
+            } catch (error: Exception) {
+                result.postValue(DataState(DataState.STATE.FETCH_FAILED, error.message))
+            }
+        }.start()
+        return result
+    }
+
+    fun getShenzhenHistoricalTeacherFailureRates(
+        token: EASToken,
+        referenceTerm: TermItem,
+        studentType: String,
+        referenceCourse: ShenzhenCourseCatalogItem,
+        yearsBack: Int = 2
+    ): LiveData<DataState<ShenzhenHistoricalFailureReport>> {
+        val result = MutableLiveData<DataState<ShenzhenHistoricalFailureReport>>()
+        Thread {
+            if (!token.hasShenzhenWebSession()) {
+                result.postValue(DataState(DataState.STATE.NOT_LOGGED_IN, "请先连接深圳 Web 教务"))
+                return@Thread
+            }
+            val targetTerm = ShenzhenHistoricalGradeAnalyzer.termYearsBefore(referenceTerm, yearsBack)
+            if (targetTerm == null) {
+                result.postValue(DataState(DataState.STATE.FETCH_FAILED, "无法识别当前课程学年"))
+                return@Thread
+            }
+            try {
+                val keyword = referenceCourse.courseName.ifBlank { referenceCourse.courseCode }
+                val matchedCourses = mutableListOf<ShenzhenCourseCatalogItem>()
+                var pageNumber = 1
+                var hasNextPage: Boolean
+                do {
+                    val response = jwFormPost(
+                        token = token,
+                        path = "/Xsxktz/queryRwxxcxList?sf_request_type=ajax",
+                        data = shenzhenSchoolCourseForm(
+                            term = targetTerm,
+                            studentType = studentType,
+                            keyword = keyword,
+                            page = pageNumber,
+                            pageSize = 200
+                        ),
+                        refererPath = "/Xsxktz/queryRwxxcx"
+                    )
+                    if (isJwAuthenticationExpired(response)) {
+                        result.postValue(DataState(DataState.STATE.NOT_LOGGED_IN, "深圳 Web 会话已失效"))
+                        return@Thread
+                    }
+                    val page = if (response.statusCode() == 200) {
+                        ShenzhenCourseCatalogParser.parsePage(
+                            response.body(),
+                            ShenzhenCourseCatalogSource.SCHOOL,
+                            studentType
+                        )
+                    } else null
+                    if (page == null) {
+                        result.postValue(DataState(DataState.STATE.FETCH_FAILED, "历史全校课表查询失败"))
+                        return@Thread
+                    }
+                    matchedCourses += page.items.filter {
+                        ShenzhenHistoricalGradeAnalyzer.matches(referenceCourse, it)
+                    }
+                    hasNextPage = page.hasNextPage
+                    pageNumber++
+                } while (hasNextPage)
+
+                val distinctMatches = matchedCourses.distinctBy {
+                    it.taskId.ifBlank { it.id }
+                }
+                val uniqueCourses = distinctMatches
+                    .filter { it.taskId.isNotBlank() }
+                val classStats = mutableListOf<ShenzhenHistoricalClassStats>()
+                var skipped = distinctMatches.size - uniqueCourses.size
+                uniqueCourses.forEach { course ->
+                    val response = jwFormPost(
+                        token = token,
+                        path = "/cjgl/grcjcx/seeFx",
+                        data = mapOf("rwid" to course.taskId),
+                        refererPath = "/cjgl/grcjcx"
+                    )
+                    if (isJwAuthenticationExpired(response)) {
+                        result.postValue(DataState(DataState.STATE.NOT_LOGGED_IN, "深圳 Web 会话已失效"))
+                        return@Thread
+                    }
+                    val analysis = if (response.statusCode() == 200) {
+                        ShenzhenGradeParser.analyze(
+                            ShenzhenGradeCourse(
+                                taskId = course.taskId,
+                                taskNumber = course.taskNumber,
+                                courseCode = course.courseCode,
+                                courseName = course.courseName,
+                                termCode = targetTerm.getCode(),
+                                teacher = course.teacher
+                            ),
+                            response.body()
+                        )
+                    } else null
+                    if (analysis == null) {
+                        skipped++
+                    } else {
+                        classStats += ShenzhenHistoricalClassStats(
+                            teacher = course.teacher,
+                            scores = analysis.students.map { it.total },
+                            excludedIncompleteStudentCount =
+                                analysis.excludedIncompleteStudentCount
+                        )
+                    }
+                }
+
+                val report = ShenzhenHistoricalFailureReport(
+                    courseName = referenceCourse.courseName,
+                    courseCode = referenceCourse.courseCode,
+                    targetTerm = targetTerm,
+                    matchedClassCount = distinctMatches.size,
+                    analyzedClassCount = classStats.size,
+                    skippedClassCount = skipped,
+                    teacherRates = ShenzhenHistoricalGradeAnalyzer.aggregate(classStats)
+                )
+                result.postValue(DataState(report, DataState.STATE.SUCCESS))
+            } catch (error: Exception) {
+                result.postValue(DataState(DataState.STATE.FETCH_FAILED, error.message))
+            }
+        }.start()
+        return result
+    }
+
+    fun getShenzhenTrainingPlans(
+        token: EASToken
+    ): LiveData<DataState<List<ShenzhenTrainingPlan>>> {
+        val result = MutableLiveData<DataState<List<ShenzhenTrainingPlan>>>()
+        Thread {
+            if (!token.hasShenzhenWebSession()) {
+                result.postValue(DataState(DataState.STATE.NOT_LOGGED_IN, "请先连接深圳 Web 教务"))
+                return@Thread
+            }
+            try {
+                val identityResponse = jwFormPost(
+                    token,
+                    "/UserManager/queryxsxx",
+                    refererPath = "/authentication/main"
+                )
+                if (isJwAuthenticationExpired(identityResponse)) {
+                    result.postValue(DataState(DataState.STATE.NOT_LOGGED_IN, "深圳 Web 会话已失效"))
+                    return@Thread
+                }
+                val identity = if (identityResponse.statusCode() == 200) {
+                    ShenzhenTrainingPlanParser.parseIdentity(identityResponse.body())
+                } else null
+                val major = identity?.major.orEmpty().ifBlank { token.major.orEmpty() }
+                val grade = identity?.grade.orEmpty().ifBlank { token.grade.orEmpty() }
+                    .let { Regex("20\\d{2}").find(it)?.value.orEmpty() }
+                val studentType = identity?.studentType.orEmpty().ifBlank { token.getStudentType() }
+                if (major.isBlank()) {
+                    result.postValue(
+                        DataState(
+                            DataState.STATE.FETCH_FAILED,
+                            "教务系统未返回你的专业信息，暂时无法匹配个人培养方案"
+                        )
+                    )
+                    return@Thread
+                }
+                if (studentType == "1" && grade.isBlank()) {
+                    result.postValue(
+                        DataState(
+                            DataState.STATE.FETCH_FAILED,
+                            "教务系统未返回你的入学年级，暂时无法查询本科培养方案"
+                        )
+                    )
+                    return@Thread
+                }
+                token.major = major
+                token.grade = grade.ifBlank { token.grade }
+                token.stutype = if (studentType == "1") EASToken.TYPE.UNDERGRAD else EASToken.TYPE.GRAD
+                onTokenRefreshed?.invoke(token)
+
+                val level = if (studentType == "1") {
+                    ShenzhenTrainingPlanLevel.UNDERGRADUATE
+                } else ShenzhenTrainingPlanLevel.POSTGRADUATE
+                val baseForm = linkedMapOf(
+                    "sf_request_type" to "ajax",
+                    "key" to "",
+                    "xkdm" to "",
+                    "yxdm" to "",
+                    "zydm" to "",
+                    "zyfxdm" to "",
+                    "bbh" to if (level == ShenzhenTrainingPlanLevel.POSTGRADUATE) "202603" else "",
+                    "ywdm" to "",
+                    "falx" to if (level == ShenzhenTrainingPlanLevel.UNDERGRADUATE) "3" else "2",
+                    "njdm" to if (level == ShenzhenTrainingPlanLevel.UNDERGRADUATE) grade else "",
+                    "cxby" to "",
+                    "pylb" to if (level == ShenzhenTrainingPlanLevel.UNDERGRADUATE) "1" else "2",
+                    "order1" to "",
+                    "order2" to "",
+                    "falxdm" to "",
+                    "kzsjqx" to "0",
+                    "py_xssfcxzj_zx" to "1",
+                    "py_xssfcxzj_fx" to "1",
+                    "sfdl" to "",
+                    "pageNum" to "1",
+                    "pageSize" to "500"
+                )
+                val plans = mutableListOf<ShenzhenTrainingPlan>()
+                var page = 1
+                var pages = 1
+                do {
+                    val response = jwFormPost(
+                        token,
+                        "/faxq/query?sf_request_type=ajax",
+                        baseForm + ("pageNum" to page.toString()),
+                        "/faxq/query"
+                    )
+                    if (isJwAuthenticationExpired(response)) {
+                        result.postValue(DataState(DataState.STATE.NOT_LOGGED_IN, "深圳 Web 会话已失效"))
+                        return@Thread
+                    }
+                    if (response.statusCode() != 200) {
+                        result.postValue(DataState(DataState.STATE.FETCH_FAILED, "培养方案列表请求失败"))
+                        return@Thread
+                    }
+                    plans += ShenzhenTrainingPlanParser.parsePlans(response.body(), level).orEmpty()
+                    if (page == 1) pages = ShenzhenTrainingPlanParser.parsePageCount(response.body())
+                    page++
+                } while (page <= pages)
+
+                val matched = ShenzhenTrainingPlanParser.matchPersonalPlans(plans, major)
+                if (matched.isEmpty()) {
+                    result.postValue(
+                        DataState(
+                            DataState.STATE.FETCH_FAILED,
+                            "未找到与“$major”匹配的个人培养方案"
+                        )
+                    )
+                } else {
+                    result.postValue(DataState(matched, DataState.STATE.SUCCESS))
+                }
+            } catch (error: Exception) {
+                result.postValue(DataState(DataState.STATE.FETCH_FAILED, error.message))
+            }
+        }.start()
+        return result
+    }
+
+    fun getShenzhenCreditProgress(
+        token: EASToken
+    ): LiveData<DataState<ShenzhenCreditProgress>> {
+        val result = MutableLiveData(
+            DataState<ShenzhenCreditProgress>(DataState.STATE.NOTHING)
+        )
+        Thread {
+            if (!token.hasShenzhenWebSession()) {
+                result.postValue(DataState(DataState.STATE.NOT_LOGGED_IN, "请先连接深圳 Web 教务"))
+                return@Thread
+            }
+            try {
+                val referer = "/cjgl/grcjcx/cjxqList"
+                val identityResponse = jwFormPost(
+                    token,
+                    "/UserManager/queryxsxx",
+                    refererPath = "/authentication/main"
+                )
+                if (isJwAuthenticationExpired(identityResponse)) {
+                    result.postValue(DataState(DataState.STATE.NOT_LOGGED_IN, "深圳 Web 会话已失效"))
+                    return@Thread
+                }
+                val parsedIdentity = identityResponse.takeIf { it.statusCode() == 200 }
+                    ?.let { ShenzhenCreditProgressParser.parseIdentity(it.body()) }
+                val studentNumber = parsedIdentity?.studentNumber.orEmpty()
+                    .ifBlank { token.stuId.orEmpty() }
+                    .ifBlank { token.username.orEmpty() }
+                val studentType = parsedIdentity?.studentType.orEmpty()
+                    .ifBlank { token.getStudentType() }
+                val grade = parsedIdentity?.grade.orEmpty()
+                    .ifBlank { Regex("(?:19|20)\\d{2}").find(token.grade.orEmpty())?.value.orEmpty() }
+                var recordId = parsedIdentity?.studentRecordId.orEmpty()
+                if (studentNumber.isBlank() || grade.isBlank()) {
+                    result.postValue(
+                        DataState(DataState.STATE.FETCH_FAILED, "教务系统未返回学号或入学年级")
+                    )
+                    return@Thread
+                }
+                if (recordId.isBlank()) {
+                    val lookupResponse = jwJsonPost(
+                        token,
+                        "/cjgl/cjzhtjcx/cjcx/getXs",
+                        JSONObject().put("xjidorxh", studentNumber).toString(),
+                        referer
+                    )
+                    if (isJwAuthenticationExpired(lookupResponse)) {
+                        result.postValue(DataState(DataState.STATE.NOT_LOGGED_IN, "深圳 Web 会话已失效"))
+                        return@Thread
+                    }
+                    recordId = lookupResponse.takeIf { it.statusCode() == 200 }
+                        ?.let { ShenzhenGradeParser.parseStudentRecordId(it.body()) }.orEmpty()
+                }
+                if (recordId.isBlank()) {
+                    result.postValue(DataState(DataState.STATE.FETCH_FAILED, "教务系统未返回学籍标识"))
+                    return@Thread
+                }
+
+                token.stuId = studentNumber
+                token.id = recordId
+                token.grade = grade
+                token.stutype = if (studentType == "1") EASToken.TYPE.UNDERGRAD else EASToken.TYPE.GRAD
+                onTokenRefreshed?.invoke(token)
+
+                val termResponse = jwFormPost(
+                    token,
+                    "/cjgl/cjzhtjcx/cjcx/queryqxnxq?sf_request_type=ajax",
+                    refererPath = referer
+                )
+                if (isJwAuthenticationExpired(termResponse)) {
+                    result.postValue(DataState(DataState.STATE.NOT_LOGGED_IN, "深圳 Web 会话已失效"))
+                    return@Thread
+                }
+                val currentTerm = termResponse.takeIf { it.statusCode() == 200 }
+                    ?.let { ShenzhenCreditProgressParser.parseCurrentTerm(it.body()) }
+                if (currentTerm.isNullOrBlank()) {
+                    result.postValue(DataState(DataState.STATE.FETCH_FAILED, "当前成绩学期读取失败"))
+                    return@Thread
+                }
+                val courseRecordTotal = ShenzhenCreditProgressParser.parseCourseRecordTotal(
+                    termResponse.body()
+                )
+
+                val planResponse = jwFormPost(
+                    token,
+                    "/cjgl/cjzhtjcx/cjcx/queryfahHljdx?sf_request_type=ajax",
+                    mapOf(
+                        "xh" to studentNumber,
+                        "pylx" to studentType,
+                        "falxdm" to "1"
+                    ),
+                    referer
+                )
+                if (isJwAuthenticationExpired(planResponse)) {
+                    result.postValue(DataState(DataState.STATE.NOT_LOGGED_IN, "深圳 Web 会话已失效"))
+                    return@Thread
+                }
+                var plan = planResponse.takeIf { it.statusCode() == 200 }
+                    ?.let { ShenzhenCreditProgressParser.parsePlanContext(it.body()) }
+                if (plan == null) {
+                    val fallbackPlanResponse = jwFormPost(
+                        token,
+                        "/cjgl/cjzhtjcx/cjcx/queryfah?sf_request_type=ajax",
+                        mapOf(
+                            "xh" to studentNumber,
+                            "pylx" to studentType,
+                            "falxdm" to "1"
+                        ),
+                        referer
+                    )
+                    if (isJwAuthenticationExpired(fallbackPlanResponse)) {
+                        result.postValue(DataState(DataState.STATE.NOT_LOGGED_IN, "深圳 Web 会话已失效"))
+                        return@Thread
+                    }
+                    plan = fallbackPlanResponse.takeIf { it.statusCode() == 200 }
+                        ?.let { ShenzhenCreditProgressParser.parsePlanContext(it.body()) }
+                }
+                if (plan == null) {
+                    result.postValue(DataState(DataState.STATE.FETCH_FAILED, "个人培养方案读取失败"))
+                    return@Thread
+                }
+
+                val commonBody = JSONObject()
+                    .put("xjid", recordId)
+                    .put("zyfxdm", JSONObject.NULL)
+                    .put("pylx", studentType)
+                    .put("fah", plan.planId)
+                val summaryResponse = jwJsonPost(
+                    token,
+                    "/cjgl/cjzhtjcx/cjcx/queryBxkqk?sf_request_type=ajax",
+                    JSONObject(commonBody.toString())
+                        .put("xh", studentNumber)
+                        .put("nj", grade)
+                        .put("jzxnxq", currentTerm)
+                        .toString(),
+                    referer
+                )
+                if (isJwAuthenticationExpired(summaryResponse)) {
+                    result.postValue(DataState(DataState.STATE.NOT_LOGGED_IN, "深圳 Web 会话已失效"))
+                    return@Thread
+                }
+                if (summaryResponse.statusCode() != 200) {
+                    result.postValue(DataState(DataState.STATE.FETCH_FAILED, "培养方案完成度请求失败"))
+                    return@Thread
+                }
+
+                val emptyListBody = """{"content":[]}"""
+                val initialProgress = ShenzhenCreditProgressParser.parseProgress(
+                    summaryBody = summaryResponse.body(),
+                    categoriesBody = "",
+                    groupsBody = emptyListBody,
+                    courseRecordBodies = emptyList(),
+                    currentTerm = currentTerm
+                )
+                if (initialProgress == null) {
+                    result.postValue(DataState(DataState.STATE.FETCH_FAILED, "培养方案完成度解析失败"))
+                    return@Thread
+                }
+                result.postValue(DataState(initialProgress, DataState.STATE.SUCCESS))
+                LogUtils.d(
+                    "getShenzhenCreditProgress: summary categories=${initialProgress.categories.size}"
+                )
+
+                var categoryBody = ""
+                if (initialProgress.categories.isEmpty()) {
+                    val categoryResponse = runCatching {
+                        jwJsonPost(
+                            token,
+                            "/cjgl/cjzhtjcx/cjcx/queryXflbyq1?sf_request_type=ajax",
+                            JSONObject(commonBody.toString())
+                                .put("current", 1)
+                                .put("pageSize", 200)
+                                .toString(),
+                            referer
+                        )
+                    }.onFailure {
+                        LogUtils.w("credit progress: category details unavailable: ${it.message}")
+                    }.getOrNull()
+                    categoryBody = categoryResponse
+                        ?.takeIf { it.statusCode() == 200 && !isJwAuthenticationExpired(it) }
+                        ?.body()
+                        .orEmpty()
+                }
+
+                val groupResponse = runCatching {
+                    jwJsonPost(
+                        token,
+                        "/cjgl/cjzhtjcx/cjcx/queryMkyq?sf_request_type=ajax",
+                        commonBody.toString(),
+                        referer
+                    )
+                }.onFailure {
+                    LogUtils.w("credit progress: group details unavailable: ${it.message}")
+                }.getOrNull()
+                val groupBody = groupResponse
+                    ?.takeIf { it.statusCode() == 200 && !isJwAuthenticationExpired(it) }
+                    ?.body()
+                    ?: emptyListBody
+
+                val progressWithGroups = ShenzhenCreditProgressParser.parseProgress(
+                    summaryBody = summaryResponse.body(),
+                    categoriesBody = categoryBody,
+                    groupsBody = groupBody,
+                    courseRecordBodies = emptyList(),
+                    currentTerm = currentTerm
+                ) ?: initialProgress
+                result.postValue(DataState(progressWithGroups, DataState.STATE.SUCCESS))
+
+                val parsedGroups = progressWithGroups.groups
+                val parentIds = parsedGroups.mapTo(hashSetOf()) { it.parentId }
+                val leafGroups = parsedGroups.filter { group ->
+                    group.depth > 0 && group.id !in parentIds
+                }
+                val groupCourseBodies = linkedMapOf<String, String>()
+                leafGroups.forEach { group ->
+                    val courseResponse = runCatching {
+                        jwJsonPost(
+                            token,
+                            "/cjgl/cjzhtjcx/cjcx/queryFaKzkc?sf_request_type=ajax",
+                            JSONObject()
+                                .put("current", 1)
+                                .put("pageSize", 200)
+                                .put("xn", JSONObject.NULL)
+                                .put("xq", JSONObject.NULL)
+                                .put("yxdm", JSONObject.NULL)
+                                .put("kzid", group.id)
+                                .put("kzlx", "0")
+                                .put("kcxzdm", JSONObject.NULL)
+                                .put("kclbdm", JSONObject.NULL)
+                                .put("kzmc", group.name)
+                                .put("kcmc", "")
+                                .put("orderby", JSONObject.NULL)
+                                .put("sxjx", JSONObject.NULL)
+                                .put("xjid", recordId)
+                                .put("nj", grade)
+                                .put("pylx", studentType)
+                                .put("fah", plan.planId)
+                                .put("zyfxdm", JSONObject.NULL)
+                                .toString(),
+                            referer
+                        )
+                    }.onFailure {
+                        LogUtils.w(
+                            "credit progress: courses unavailable for group ${group.id}: ${it.message}"
+                        )
+                    }.getOrNull()
+                    if (courseResponse?.statusCode() == 200 &&
+                        !isJwAuthenticationExpired(courseResponse)
+                    ) {
+                        groupCourseBodies[group.id] = courseResponse.body()
+                    }
+                }
+
+                val courseRecordBodies = mutableListOf<String>()
+                var page = 1
+                var pages = 1
+                do {
+                    val earnedResponse = runCatching {
+                        jwFormPost(
+                            token,
+                            "/cjgl/grcjcx/dyxwList?sf_request_type=ajax",
+                            mapOf(
+                                "pageNum" to page.toString(),
+                                "pageSize" to "200",
+                                "total" to courseRecordTotal.toString(),
+                                "xjid" to recordId,
+                                "sfgld" to "1",
+                                "pxzd" to "",
+                                "pxfx" to "",
+                                "xn" to "",
+                                "xq" to "",
+                                "kcxz" to "",
+                                "kclb" to "",
+                                "key" to "",
+                                "pylx" to studentType,
+                                "sffx" to "",
+                                "sfcxfxcj" to "0",
+                                "sfsjqx" to "0"
+                            ),
+                            referer
+                        )
+                    }.onFailure {
+                        LogUtils.w("credit progress: earned course page $page unavailable: ${it.message}")
+                    }.getOrNull()
+                    if (earnedResponse == null || earnedResponse.statusCode() != 200 ||
+                        isJwAuthenticationExpired(earnedResponse)
+                    ) {
+                        break
+                    }
+                    courseRecordBodies += earnedResponse.body()
+                    if (page == 1) {
+                        pages = ShenzhenCreditProgressParser.parseCourseRecordPageCount(
+                            earnedResponse.body()
+                        )
+                    }
+                    page++
+                } while (page <= pages)
+
+                val progress = ShenzhenCreditProgressParser.parseProgress(
+                    summaryBody = summaryResponse.body(),
+                    categoriesBody = categoryBody,
+                    groupsBody = groupBody,
+                    groupCourseBodies = groupCourseBodies,
+                    courseRecordBodies = courseRecordBodies,
+                    currentTerm = currentTerm
+                )
+                val finalProgress = progress ?: progressWithGroups
+                result.postValue(DataState(finalProgress, DataState.STATE.SUCCESS))
+                LogUtils.d(
+                    "getShenzhenCreditProgress: groups=${finalProgress.groups.size}, " +
+                        "groupCourseResponses=${groupCourseBodies.size}, " +
+                        "courseRecords=${finalProgress.courseRecords.size}"
+                )
+            } catch (error: Exception) {
+                LogUtils.e("getShenzhenCreditProgress failed", error)
+                result.postValue(DataState(DataState.STATE.FETCH_FAILED, error.message))
+            }
+        }.start()
+        return result
+    }
+
+    fun getShenzhenTrainingPlanCourses(
+        token: EASToken,
+        plan: ShenzhenTrainingPlan
+    ): LiveData<DataState<ShenzhenTrainingPlanDetail>> {
+        val result = MutableLiveData<DataState<ShenzhenTrainingPlanDetail>>()
+        Thread {
+            if (!token.hasShenzhenWebSession()) {
+                result.postValue(DataState(DataState.STATE.NOT_LOGGED_IN, "请先连接深圳 Web 教务"))
+                return@Thread
+            }
+            try {
+                val groups = if (plan.level == ShenzhenTrainingPlanLevel.POSTGRADUATE) {
+                    val response = jwFormPost(
+                        token,
+                        "/Zdxpyfakz/queryKzTree?sf_request_type=ajax",
+                        mapOf(
+                            "fah" to plan.id,
+                            "bgid" to plan.changeId,
+                            "pylb" to "2",
+                            "sfcx" to ""
+                        ),
+                        "/Zdxpyfakz/query"
+                    )
+                    if (isJwAuthenticationExpired(response)) {
+                        result.postValue(DataState(DataState.STATE.NOT_LOGGED_IN, "深圳 Web 会话已失效"))
+                        return@Thread
+                    }
+                    if (response.statusCode() != 200) {
+                        result.postValue(DataState(DataState.STATE.FETCH_FAILED, "培养方案课组请求失败"))
+                        return@Thread
+                    }
+                    ShenzhenTrainingPlanParser.parseGroups(response.body()).orEmpty()
+                } else emptyList()
+
+                val path: String
+                val referer: String
+                val baseForm: Map<String, String>
+                if (plan.level == ShenzhenTrainingPlanLevel.UNDERGRADUATE) {
+                    path = "/Njpyfakc/queryList?sf_request_type=ajax"
+                    referer = "/Njpyfakc/query"
+                    baseForm = linkedMapOf(
+                        "bglx" to "",
+                        "multiple" to "false",
+                        "sfcx" to "",
+                        "pylx" to "1",
+                        "pylb" to "1",
+                        "fah" to plan.id,
+                        "bgid" to plan.changeId,
+                        "kcmc" to "",
+                        "yxdm" to "",
+                        "xqdm" to "",
+                        "kclbdm" to "",
+                        "kcxzdm" to "",
+                        "order1" to "",
+                        "order2" to "",
+                        "pageNum" to "1",
+                        "pageSize" to "500"
+                    )
+                } else {
+                    path = "/Zdxpyfakz/queryFaKzkc?sf_request_type=ajax"
+                    referer = "/Zdxpyfakz/query"
+                    baseForm = linkedMapOf(
+                        "sfcx" to "",
+                        "pylx" to "2",
+                        "pylb" to "2",
+                        "fah" to plan.id,
+                        "bgid" to plan.changeId,
+                        "kzid" to "",
+                        "kcmc" to "",
+                        "zyfx" to plan.majorCode,
+                        "yxdm" to "",
+                        "xqdm" to "",
+                        "order1" to "",
+                        "order2" to "",
+                        "pageNum" to "1",
+                        "pageSize" to "500"
+                    )
+                }
+
+                val courses = mutableListOf<ShenzhenTrainingPlanCourse>()
+                var page = 1
+                var pages = 1
+                do {
+                    val response = jwFormPost(
+                        token,
+                        path,
+                        baseForm + ("pageNum" to page.toString()),
+                        referer
+                    )
+                    if (isJwAuthenticationExpired(response)) {
+                        result.postValue(DataState(DataState.STATE.NOT_LOGGED_IN, "深圳 Web 会话已失效"))
+                        return@Thread
+                    }
+                    if (response.statusCode() != 200) {
+                        result.postValue(DataState(DataState.STATE.FETCH_FAILED, "培养方案课程请求失败"))
+                        return@Thread
+                    }
+                    courses += ShenzhenTrainingPlanParser.parseCourses(response.body()).orEmpty()
+                    if (page == 1) pages = ShenzhenTrainingPlanParser.parsePageCount(response.body())
+                    page++
+                } while (page <= pages)
+
+                if (courses.isEmpty()) {
+                    result.postValue(DataState(DataState.STATE.FETCH_FAILED, "该培养方案暂未返回课程"))
+                } else {
+                    result.postValue(
+                        DataState(
+                            ShenzhenTrainingPlanParser.combine(
+                                plan,
+                                groups,
+                                courses.distinctBy {
+                                    listOf(it.groupId, it.courseCode, it.courseName, it.recommendedTerm)
+                                }
+                            ),
+                            DataState.STATE.SUCCESS
+                        )
+                    )
                 }
             } catch (error: Exception) {
                 result.postValue(DataState(DataState.STATE.FETCH_FAILED, error.message))
@@ -886,7 +1976,9 @@ class EASWebSource internal constructor(
         token: EASToken,
         term: TermItem
     ): LiveData<DataState<MutableList<TermSubject>>> {
-        if (token.accessToken.isNullOrBlank() && token.hasShenzhenWebSession()) {
+        // queryYxkc on the Web session carries the stable course code, credit and teacher fields
+        // needed to enrich timetable rows whose weekly payload omits KCDM.
+        if (token.hasShenzhenWebSession()) {
             return getShenzhenWebSubjects(token, term)
         }
         val res = MutableLiveData<DataState<MutableList<TermSubject>>>()

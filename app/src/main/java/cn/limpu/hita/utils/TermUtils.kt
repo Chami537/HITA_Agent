@@ -10,6 +10,36 @@ import java.util.Calendar
  */
 object TermUtils {
 
+    fun filterTermsForStudent(
+        allTerms: List<TermItem>,
+        grade: String?
+    ): List<TermItem> = filterTermsForStudent(
+        allTerms,
+        grade,
+        Calendar.getInstance().get(Calendar.YEAR),
+        Calendar.getInstance().get(Calendar.MONTH)
+    )
+
+    internal fun filterTermsForStudent(
+        allTerms: List<TermItem>,
+        grade: String?,
+        currentYear: Int,
+        currentMonth: Int
+    ): List<TermItem> {
+        val enrollmentYear = Regex("(20\\d{2})").find(grade.orEmpty())
+            ?.groupValues?.getOrNull(1)?.toIntOrNull()
+        if (enrollmentYear == null) return filterRecentTerms(allTerms, currentYear)
+
+        val currentAcademicStart = allTerms.firstOrNull { it.isCurrent }
+            ?.yearCode?.let(::startYear)
+            ?: if (currentMonth >= Calendar.AUGUST) currentYear else currentYear - 1
+        val filtered = allTerms.filter { term ->
+            val year = startYear(term.yearCode) ?: return@filter false
+            year in enrollmentYear..currentAcademicStart
+        }
+        return sortNewestFirst(if (filtered.isNotEmpty()) filtered else allTerms)
+    }
+
     /**
      * 过滤学期列表，只显示最近的学期
      *
@@ -42,8 +72,7 @@ object TermUtils {
         }
 
         // 排序：按学年代码降序，然后按学期代码降序
-        return filtered.sortedWith(compareByDescending<TermItem> { it.yearCode }
-            .thenByDescending { it.termCode })
+        return sortNewestFirst(filtered)
     }
 
     /**
@@ -64,4 +93,14 @@ object TermUtils {
         val startYear = term.yearCode.split("-")[0].toIntOrNull() ?: 0
         return startYear >= cutoffYear
     }
+
+    private fun sortNewestFirst(terms: List<TermItem>): List<TermItem> = terms
+        .distinctBy { it.id }
+        .sortedWith(
+            compareByDescending<TermItem> { startYear(it.yearCode) ?: Int.MIN_VALUE }
+                .thenByDescending { it.termCode.toIntOrNull() ?: Int.MIN_VALUE }
+        )
+
+    private fun startYear(raw: String): Int? = Regex("(20\\d{2})")
+        .find(raw)?.groupValues?.getOrNull(1)?.toIntOrNull()
 }

@@ -168,6 +168,7 @@ class MainActivity : HiltBaseActivity<ComposeViewBinding>(),
 
     private val autoReimportIntervalMs = 12 * 60 * 60 * 1000L
     private var autoReimportAttempted = false
+    private val easLoginTransitionTracker = EasLoginTransitionTracker()
     private var checkedUpdate = false
     private var lastCheckTs: Long = 0
 
@@ -186,7 +187,7 @@ class MainActivity : HiltBaseActivity<ComposeViewBinding>(),
 
     private val easTokenObserver = Observer<cn.limpu.hita.data.model.eas.EASToken> {
         refreshDrawerState()
-        if (it.isLogin()) {
+        if (easLoginTransitionTracker.shouldTriggerLoginWork(it)) {
             autoReimportAttempted = false
             maybeAutoReimportTimetable()
         }

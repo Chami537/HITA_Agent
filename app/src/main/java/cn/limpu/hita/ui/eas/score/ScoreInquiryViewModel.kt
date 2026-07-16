@@ -15,6 +15,7 @@ import cn.limpu.hita.data.repository.EASRepository
 import cn.limpu.hita.data.source.web.service.EASService
 import cn.limpu.hita.ui.eas.EASViewModel
 import cn.limpu.hita.utils.WeightedScoreCalculator
+import cn.limpu.hita.utils.TermUtils
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
 
@@ -40,13 +41,10 @@ class ScoreInquiryViewModel @Inject constructor(
             if (state.state != DataState.STATE.SUCCESS || data.isNullOrEmpty()) {
                 return@map state
             }
-            val currentYear = java.util.Calendar.getInstance().get(java.util.Calendar.YEAR)
-            val minYear = currentYear - 4
-            val filtered = data.filter { term ->
-                val startYear = parseStartYear(term.yearCode)
-                startYear == null || startYear >= minYear
-            }
-            val finalList = if (filtered.isNotEmpty()) filtered else data
+            val finalList = TermUtils.filterTermsForStudent(
+                data,
+                easRepo.getEasToken().grade
+            )
             DataState(finalList, state.state)
         }
     }
@@ -122,12 +120,6 @@ class ScoreInquiryViewModel @Inject constructor(
         selectedTermLiveData.value = term
         selectedTestTypeLiveData.value = testType
         return true
-    }
-
-    private fun parseStartYear(raw: String?): Int? {
-        if (raw.isNullOrBlank()) return null
-        val match = Regex("(\\d{4})").find(raw) ?: return null
-        return match.groupValues.getOrNull(1)?.toIntOrNull()
     }
 
 }

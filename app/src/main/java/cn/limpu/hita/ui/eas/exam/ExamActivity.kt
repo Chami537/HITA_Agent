@@ -197,7 +197,10 @@ class ExamActivity : EASActivity<ExamViewModel, ComposeViewBinding>() {
 
     private fun openMemoEditor(item: ExamItem? = null) {
         val allTerms = viewModel.termsLiveData.value?.data.orEmpty()
-        val memoTerms = TermUtils.filterRecentTerms(allTerms).toMutableList()
+        val memoTerms = TermUtils.filterTermsForStudent(
+            allTerms,
+            easRepository.getEasToken().grade
+        ).toMutableList()
         listOfNotNull(item?.termId, viewModel.selectedTermLiveData.value?.id).forEach { termId ->
             allTerms.firstOrNull { it.id == termId }
                 ?.takeIf { candidate -> memoTerms.none { it.id == candidate.id } }
@@ -236,7 +239,10 @@ class ExamActivity : EASActivity<ExamViewModel, ComposeViewBinding>() {
 
     private fun pickTerm() {
         viewModel.termsLiveData.value?.data?.let { terms ->
-            val filteredTerms = TermUtils.filterRecentTerms(terms)
+            val filteredTerms = TermUtils.filterTermsForStudent(
+                terms,
+                easRepository.getEasToken().grade
+            )
             val names = filteredTerms.map { getDisplayTermName(it) }
             if (names.isEmpty()) return
             PopUpCheckableList<TermItem>()
@@ -274,7 +280,7 @@ class ExamActivity : EASActivity<ExamViewModel, ComposeViewBinding>() {
     }
 
     private fun getDisplayTermName(term: TermItem): String {
-        return TermNameFormatter.shortTermName(term.termName, term.name)
+        return TermNameFormatter.fullTermName(term)
     }
 
     private fun importAllExams() {

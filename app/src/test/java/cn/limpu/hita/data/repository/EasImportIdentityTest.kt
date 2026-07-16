@@ -1,6 +1,7 @@
 package cn.limpu.hita.data.repository
 
 import cn.limpu.hita.data.model.timetable.EventItem
+import cn.limpu.hita.utils.CourseNameUtils
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertTrue
@@ -19,6 +20,19 @@ class EasImportIdentityTest {
         assertTrue("code:MATH1001" in keys)
         assertTrue("name:高等数学" in keys)
         assertTrue("name:高等数学（A）" in keys)
+    }
+
+    @Test
+    fun subjectLookupKeys_mergeExistingShenzhenTeachingClassWithCanonicalCourse() {
+        val rawName = "计算机设计与实践 1/E班"
+        val keys = EasImportIdentity.subjectLookupKeys(
+            code = null,
+            normalizedName = CourseNameUtils.normalize(rawName),
+            rawName = rawName
+        )
+
+        assertTrue("name:计算机设计与实践" in keys)
+        assertTrue("name:计算机设计与实践 1/E班" in keys)
     }
 
     @Test
