@@ -540,7 +540,12 @@ private fun OfficialRequirementCard(requirement: ShenzhenCreditRequirement) {
                 }
                 append("，要求 ${formatRequirementCredit(requirement.requiredCredits)} 学分")
                 append("，完成 $completed 学分")
-                if (requirement.includesMooc) append("，含慕课学分")
+                if (requirement.includesMooc) {
+                    append(
+                        "，慕课实修 ${formatRequirementCredit(requirement.earnedMoocCredits)} 学分" +
+                            "，计入 ${formatRequirementCredit(requirement.creditedMoocCredits)} 学分"
+                    )
+                }
                 append("，剩余 $remaining 学分")
                 append(if (requirement.passed) "，已完成要求" else "，仍需完成")
                 requirement.completedHours?.let { append("，完成学时 $it") }
@@ -606,6 +611,15 @@ private fun OfficialRequirementCard(requirement: ShenzhenCreditRequirement) {
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     fontSize = 11.sp,
                     modifier = Modifier.padding(top = 10.dp)
+                )
+            }
+            if (requirement.includesMooc) {
+                Text(
+                    text = "MOOC 实修 ${formatRequirementCredit(requirement.earnedMoocCredits)} 学分" +
+                        " · 计入 ${formatRequirementCredit(requirement.creditedMoocCredits)} 学分",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    fontSize = 11.sp,
+                    modifier = Modifier.padding(top = 4.dp)
                 )
             }
         }

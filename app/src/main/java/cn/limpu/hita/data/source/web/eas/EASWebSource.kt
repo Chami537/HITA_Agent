@@ -23,6 +23,7 @@ import cn.limpu.hita.data.model.eas.ShenzhenHistoricalFailureReport
 import cn.limpu.hita.data.model.eas.ShenzhenCourseCatalogItem
 import cn.limpu.hita.data.model.eas.ShenzhenCourseRecommendationResult
 import cn.limpu.hita.data.model.eas.ShenzhenCreditProgress
+import cn.limpu.hita.data.model.eas.ShenzhenCreditRequirement
 import cn.limpu.hita.data.model.eas.ShenzhenRecommendationOptions
 import cn.limpu.hita.data.model.eas.ShenzhenSelectionPool
 import cn.limpu.hita.data.model.eas.ShenzhenTrainingPlan
@@ -69,12 +70,29 @@ class EASWebSource internal constructor(
     private val jwProxyHostName = "https://jw-hitsz-edu-cn.hitsz.edu.cn"
     private val basicAuth = "Basic aW5jb246MTIzNDU="
     private val timeout = 15000
+    private val slowQueryTimeout = 60000
     private val DEBUG_WEEK = 6
     private val DEBUG_DOW = 1
     private val overviewTermDatesCache = ConcurrentHashMap<String, List<String>>()
 
     private fun jwHostName(token: EASToken): String =
         if (token.webBaseUrl?.trimEnd('/') == jwProxyHostName) jwProxyHostName else jwDirectHostName
+
+    private fun jwRequestTimeout(path: String): Int = if (
+        listOf(
+            "/Xsxk/",
+            "/Xsxktz/",
+            "/cjgl/grcjcx/",
+            "/cjgl/cjzhtjcx/",
+            "/faxq/",
+            "/Njpyfakc/",
+            "/Zdxpyfakz/"
+        ).any(path::contains)
+    ) {
+        slowQueryTimeout
+    } else {
+        timeout
+    }
 
     // ---------------------------------------------------------------- 公共头
     private fun baseHeaders(authorization: String, rolecode: String = "06"): Map<String, String> =
@@ -216,7 +234,7 @@ class EASWebSource internal constructor(
                 .header("Content-Type", "application/x-www-form-urlencoded; charset=UTF-8")
                 .userAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36")
                 .cookies(cookieJar)
-                .timeout(timeout)
+                .timeout(jwRequestTimeout(path))
                 .ignoreContentType(true)
                 .ignoreHttpErrors(true)
                 .method(Connection.Method.POST)
@@ -260,7 +278,7 @@ class EASWebSource internal constructor(
                 .userAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36")
                 .cookies(cookieJar)
                 .requestBody(body)
-                .timeout(timeout)
+                .timeout(jwRequestTimeout(path))
                 .ignoreContentType(true)
                 .ignoreHttpErrors(true)
                 .method(Connection.Method.POST)
@@ -845,7 +863,8 @@ class EASWebSource internal constructor(
         token: EASToken,
         term: TermItem,
         pools: List<ShenzhenSelectionPool>,
-        options: ShenzhenRecommendationOptions
+        options: ShenzhenRecommendationOptions,
+        requirements: List<ShenzhenCreditRequirement> = emptyList()
     ): LiveData<DataState<ShenzhenCourseRecommendationResult>> {
         val result = MutableLiveData(
             DataState<ShenzhenCourseRecommendationResult>(DataState.STATE.NOTHING)
@@ -926,7 +945,8 @@ class EASWebSource internal constructor(
                 val recommendation = ShenzhenCourseRecommendationEngine.recommend(
                     selected = selected,
                     candidates = candidates,
-                    options = options
+                    options = options,
+                    requirements = requirements
                 )
                 result.postValue(DataState(recommendation, DataState.STATE.SUCCESS))
             } catch (error: Exception) {
@@ -1454,7 +1474,10 @@ class EASWebSource internal constructor(
     }
 
     fun getShenzhenCreditProgress(
-        token: EASToken
+        token: EASToken,
+        includeDetails: Boolean = true,
+        includeCourseRecords: Boolean = true,
+        trackCoursesOnly: Boolean = false
     ): LiveData<DataState<ShenzhenCreditProgress>> {
         val result = MutableLiveData(
             DataState<ShenzhenCreditProgress>(DataState.STATE.NOTHING)
@@ -1610,10 +1633,13 @@ class EASWebSource internal constructor(
                     result.postValue(DataState(DataState.STATE.FETCH_FAILED, "培养方案完成度解析失败"))
                     return@Thread
                 }
-                result.postValue(DataState(initialProgress, DataState.STATE.SUCCESS))
+                if (includeCourseRecords || !includeDetails) {
+                    result.postValue(DataState(initialProgress, DataState.STATE.SUCCESS))
+                }
                 LogUtils.d(
                     "getShenzhenCreditProgress: summary categories=${initialProgress.categories.size}"
                 )
+                if (!includeDetails && initialProgress.categories.isNotEmpty()) return@Thread
 
                 var categoryBody = ""
                 if (initialProgress.categories.isEmpty()) {
@@ -1634,6 +1660,17 @@ class EASWebSource internal constructor(
                         ?.takeIf { it.statusCode() == 200 && !isJwAuthenticationExpired(it) }
                         ?.body()
                         .orEmpty()
+                }
+                if (!includeDetails) {
+                    val progressWithCategories = ShenzhenCreditProgressParser.parseProgress(
+                        summaryBody = summaryResponse.body(),
+                        categoriesBody = categoryBody,
+                        groupsBody = emptyListBody,
+                        courseRecordBodies = emptyList(),
+                        currentTerm = currentTerm
+                    ) ?: initialProgress
+                    result.postValue(DataState(progressWithCategories, DataState.STATE.SUCCESS))
+                    return@Thread
                 }
 
                 val groupResponse = runCatching {
@@ -1658,15 +1695,21 @@ class EASWebSource internal constructor(
                     courseRecordBodies = emptyList(),
                     currentTerm = currentTerm
                 ) ?: initialProgress
-                result.postValue(DataState(progressWithGroups, DataState.STATE.SUCCESS))
+                if (includeCourseRecords) {
+                    result.postValue(DataState(progressWithGroups, DataState.STATE.SUCCESS))
+                }
 
                 val parsedGroups = progressWithGroups.groups
                 val parentIds = parsedGroups.mapTo(hashSetOf()) { it.parentId }
-                val leafGroups = parsedGroups.filter { group ->
-                    group.depth > 0 && group.id !in parentIds
+                val courseGroups = parsedGroups.filter { group ->
+                    if (trackCoursesOnly) {
+                        group.name.contains("轨道")
+                    } else {
+                        group.depth > 0 && group.id !in parentIds
+                    }
                 }
                 val groupCourseBodies = linkedMapOf<String, String>()
-                leafGroups.forEach { group ->
+                courseGroups.forEach { group ->
                     val courseResponse = runCatching {
                         jwJsonPost(
                             token,
@@ -1703,6 +1746,23 @@ class EASWebSource internal constructor(
                     ) {
                         groupCourseBodies[group.id] = courseResponse.body()
                     }
+                }
+
+                if (!includeCourseRecords) {
+                    val progressWithCourses = ShenzhenCreditProgressParser.parseProgress(
+                        summaryBody = summaryResponse.body(),
+                        categoriesBody = categoryBody,
+                        groupsBody = groupBody,
+                        groupCourseBodies = groupCourseBodies,
+                        courseRecordBodies = emptyList(),
+                        currentTerm = currentTerm
+                    ) ?: progressWithGroups
+                    result.postValue(DataState(progressWithCourses, DataState.STATE.SUCCESS))
+                    LogUtils.d(
+                        "getShenzhenCreditProgress: groups=${progressWithCourses.groups.size}, " +
+                            "groupCourseResponses=${groupCourseBodies.size}, courseRecords=skipped"
+                    )
+                    return@Thread
                 }
 
                 val courseRecordBodies = mutableListOf<String>()

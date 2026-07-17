@@ -114,6 +114,8 @@ internal object ShenzhenCreditProgressParser {
             val completed = number(row, "ywcxf", "YWCXF") ?: 0.0
             val remaining = number(row, "wwcxf", "WWCXF")
                 ?: (required - completed).coerceAtLeast(0.0)
+            val creditedMoocCredits = number(row, "moochdxf", "MOOCHDXF") ?: 0.0
+            val earnedMoocCredits = number(row, "moocsjhdxf", "MOOCSJHDXF") ?: 0.0
             ShenzhenCreditRequirement(
                 id = listOf(
                     first(row, "kcxzdm", "KCXZDM"),
@@ -128,7 +130,9 @@ internal object ShenzhenCreditProgressParser {
                 completedCredits = completed,
                 remainingCredits = remaining,
                 completedHours = number(row, "ywcxs", "YWCXS")?.toInt(),
-                includesMooc = first(row, "moochdxf", "MOOCHDXF") == "1",
+                includesMooc = creditedMoocCredits > 0.0 || earnedMoocCredits > 0.0,
+                creditedMoocCredits = creditedMoocCredits,
+                earnedMoocCredits = earnedMoocCredits,
                 passed = remaining <= 0.0001 || completed + 0.0001 >= required
             )
         }.distinctBy { it.id }
@@ -191,6 +195,7 @@ internal object ShenzhenCreditProgressParser {
                 courseName = name.ifBlank { code },
                 credits = number(row, "xf", "XF") ?: 0.0,
                 recommendedTerm = first(row, "tjkkxnxq", "TJKKXNXQ"),
+                courseNature = first(row, "kcxzmc", "KCXZMC"),
                 completed = first(row, "sfyxkc", "SFYXKC") == "1" ||
                     first(row, "zpcj", "ZPCJ", "xscj", "XSCJ").isNotBlank()
             )

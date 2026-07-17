@@ -32,6 +32,8 @@ data class ShenzhenCreditRequirement(
     val remainingCredits: Double,
     val completedHours: Int? = null,
     val includesMooc: Boolean = false,
+    val creditedMoocCredits: Double = 0.0,
+    val earnedMoocCredits: Double = 0.0,
     val passed: Boolean
 )
 
@@ -56,6 +58,7 @@ data class ShenzhenCreditGroupCourse(
     val courseName: String,
     val credits: Double,
     val recommendedTerm: String = "",
+    val courseNature: String = "",
     val completed: Boolean
 )
 

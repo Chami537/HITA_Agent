@@ -5,6 +5,7 @@ import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.switchMap
 import cn.limpu.hita.data.model.eas.ShenzhenCourseRecommendationResult
 import cn.limpu.hita.data.model.eas.ShenzhenRecommendationOptions
+import cn.limpu.hita.data.model.eas.ShenzhenRecommendationTrack
 import cn.limpu.hita.data.model.eas.ShenzhenSelectionPools
 import cn.limpu.hita.data.model.eas.TermItem
 import cn.limpu.hita.data.repository.EASRepository
@@ -23,6 +24,9 @@ class ShenzhenCourseRecommendationViewModel @Inject constructor(
     easRepo: EASRepository
 ) : EASViewModel(easRepo) {
     private val request = MutableLiveData<RecommendationRequest>()
+
+    val tracks: LiveData<DataState<List<ShenzhenRecommendationTrack>>> =
+        easRepo.getShenzhenRecommendationTracks()
 
     val recommendations: LiveData<DataState<ShenzhenCourseRecommendationResult>> =
         request.switchMap { value ->

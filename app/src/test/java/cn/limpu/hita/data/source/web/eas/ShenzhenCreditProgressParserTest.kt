@@ -66,7 +66,7 @@ class ShenzhenCreditProgressParserTest {
             }]}""",
             groupCourseBodies = mapOf(
                 "TRACK" to """{"content":{"list":[{
-                    "kcdm":"COMP2012","kcmc":"计算机设计与实践","xf":"3",
+                    "kcdm":"COMP2012","kcmc":"计算机设计与实践","xf":"3","kcxzmc":"必修",
                     "tjkkxnxq":"第二学年夏季","sfyxkc":"0"
                 }]}}"""
             ),
@@ -92,9 +92,12 @@ class ShenzhenCreditProgressParserTest {
         assertEquals("任选", progress.categories.last().courseNature)
         assertEquals("英文", progress.categories.last().teachingLanguage)
         assertTrue(progress.categories.last().includesMooc)
+        assertEquals(1.0, progress.categories.last().creditedMoocCredits, 0.001)
+        assertEquals(3.0, progress.categories.last().earnedMoocCredits, 0.001)
         val track = progress.groups.single { it.id == "TRACK" }
         assertEquals(1, track.depth)
         assertEquals("COMP2012", track.courses.single().courseCode)
+        assertEquals("必修", track.courses.single().courseNature)
         assertFalse(track.courses.single().completed)
         assertEquals("COMP2052", progress.courseRecords.single().courseCode)
     }

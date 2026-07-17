@@ -1142,12 +1142,70 @@ class EASRepository @Inject constructor(
         pools: List<ShenzhenSelectionPool>,
         options: ShenzhenRecommendationOptions
     ): LiveData<DataState<ShenzhenCourseRecommendationResult>> {
-        return shenzhenService.getShenzhenCourseRecommendations(
+        val token = easPreferenceSource.getEasToken()
+        return shenzhenService.getShenzhenCreditProgress(
+            token,
+            includeDetails = false
+        ).switchMap { progressState ->
+            val progress = progressState.data
+            val hasRecommendationRequirements = progress?.categories?.any { requirement ->
+                requirement.name.contains("跨专业发展") ||
+                    requirement.name.contains("文理通识")
+            } == true
+            if (progressState.state == DataState.STATE.SUCCESS &&
+                progress != null && hasRecommendationRequirements
+            ) {
+                shenzhenService.getShenzhenCourseRecommendations(
+                    token,
+                    term,
+                    pools,
+                    options,
+                    progress.categories
+                )
+            } else if (progressState.state == DataState.STATE.SUCCESS) {
+                LiveDataUtils.getMutableLiveData(
+                    DataState<ShenzhenCourseRecommendationResult>(
+                        DataState.STATE.FETCH_FAILED,
+                        "教务系统未返回跨专业或文理通识学分要求"
+                    )
+                )
+            } else {
+                LiveDataUtils.getMutableLiveData(
+                    DataState<ShenzhenCourseRecommendationResult>(
+                        progressState.state,
+                        progressState.message
+                    )
+                )
+            }
+        }
+    }
+
+    fun getShenzhenRecommendationTracks(): LiveData<DataState<List<ShenzhenRecommendationTrack>>> {
+        return shenzhenService.getShenzhenCreditProgress(
             easPreferenceSource.getEasToken(),
-            term,
-            pools,
-            options
-        )
+            includeDetails = true,
+            includeCourseRecords = false,
+            trackCoursesOnly = true
+        ).map { state ->
+            val tracks = state.data?.groups.orEmpty()
+                .filter { group -> group.name.contains("轨道") && group.courses.isNotEmpty() }
+                .map { group ->
+                    ShenzhenRecommendationTrack(
+                        id = group.id,
+                        name = group.name,
+                        courseCodes = group.courses.asSequence()
+                            .map { it.courseCode.trim().uppercase(Locale.ROOT) }
+                            .filter { it.isNotBlank() }
+                            .toSet(),
+                        compulsoryCourseCodes = group.courses.asSequence()
+                            .filter { it.courseNature.contains("必修") }
+                            .map { it.courseCode.trim().uppercase(Locale.ROOT) }
+                            .filter { it.isNotBlank() }
+                            .toSet()
+                    )
+                }
+            DataState(tracks, state.state).apply { message = state.message }
+        }
     }
 
     fun getShenzhenCourseAttachments(
