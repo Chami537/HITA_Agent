@@ -66,6 +66,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.compositeOver
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.input.pointer.pointerInput
@@ -98,10 +99,26 @@ import cn.limpu.hita.data.repository.TimetableRepository
 import cn.limpu.hita.ui.base.ComposeViewBinding
 import cn.limpu.hita.ui.base.HiltBaseFragment
 import cn.limpu.hita.ui.design.HitaComposeTheme
+import cn.limpu.hita.ui.design.HitaCourseBubbleTreatment
 import cn.limpu.hita.ui.design.HitaTheme
+import cn.limpu.hita.ui.design.hitaCourseColor
 import cn.limpu.hita.ui.design.hitaCourseCrystalGlassModifier
 import cn.limpu.hita.ui.design.hitaGlassCardModifier
 import cn.limpu.hita.ui.design.hitaIsAppleGlassSurface
+import cn.limpu.hita.ui.design.hitaIsCyber
+import cn.limpu.hita.ui.design.hitaIsDeepSpace
+import cn.limpu.hita.ui.design.hitaIsPersona
+import cn.limpu.hita.ui.design.hitaIsSumi
+import cn.limpu.hita.ui.design.hitaIsSoraCloud
+import cn.limpu.hita.ui.design.hitaPersonaTitleFont
+import cn.limpu.hita.ui.design.hitaSoraTitleFont
+import cn.limpu.hita.ui.design.hitaSumiTitleFont
+import cn.limpu.hita.ui.design.hitaStyleCardShape
+import cn.limpu.hita.ui.design.soraCloudCardShape
+import cn.limpu.hita.ui.design.soraCloudCourseContentColor
+import cn.limpu.hita.ui.design.SoraIndigo
+import cn.limpu.hita.ui.design.SoraOchre
+import cn.limpu.hita.ui.design.SoraVermilion
 import cn.limpu.hita.ui.event.add.PopupAddEvent
 import cn.limpu.hita.ui.main.timetable.views.TimetableCardTextScale
 import cn.limpu.hita.ui.main.timetable.views.TimetableOverlapLayout
@@ -596,6 +613,7 @@ private fun TimetableDowHeader(startDate: Long, monthColor: Color) {
         }
     }
     val isAppleGlass = hitaIsAppleGlassSurface()
+    val isSoraCloud = hitaIsSoraCloud()
     val todayDow = TimeTools.currentDOW()
     val isCurrentWeek = remember(startDate) {
         val start = Calendar.getInstance().apply { timeInMillis = startDate }
@@ -622,9 +640,15 @@ private fun TimetableDowHeader(startDate: Long, monthColor: Color) {
         }
         // Day columns with dow circle + date
         days.forEachIndexed { index, day ->
-            val isToday = isAppleGlass && isCurrentWeek && index == todayDow - 1
-            val dayShape = CircleShape
-            val inactiveDayBackground = if (isAppleGlass && !HitaTheme.isDark) {
+            val isToday = (isAppleGlass || isSoraCloud) && isCurrentWeek && index == todayDow - 1
+            val dayShape = if (isSoraCloud) soraCloudCardShape(7.dp) else CircleShape
+            val inactiveDayBackground = if (isSoraCloud) {
+                when (index % 3) {
+                    0 -> SoraVermilion.copy(alpha = if (HitaTheme.isDark) 0.22f else 0.16f)
+                    1 -> SoraIndigo.copy(alpha = if (HitaTheme.isDark) 0.30f else 0.14f)
+                    else -> SoraOchre.copy(alpha = if (HitaTheme.isDark) 0.20f else 0.16f)
+                }
+            } else if (isAppleGlass && !HitaTheme.isDark) {
                 Color(0xFFE4EEF8).copy(alpha = 0.78f)
             } else {
                 MaterialTheme.colorScheme.surface
@@ -635,7 +659,10 @@ private fun TimetableDowHeader(startDate: Long, monthColor: Color) {
             ) {
                 Box(
                     modifier = Modifier
-                        .size(26.dp)
+                        .then(
+                            if (isSoraCloud) Modifier.size(width = 30.dp, height = 24.dp)
+                            else Modifier.size(26.dp)
+                        )
                         .clip(dayShape)
                         .background(
                             if (isToday) {
@@ -645,11 +672,13 @@ private fun TimetableDowHeader(startDate: Long, monthColor: Color) {
                             }
                         )
                         .then(
-                            if (isToday || (isAppleGlass && !HitaTheme.isDark)) {
+                            if (isToday || isSoraCloud || (isAppleGlass && !HitaTheme.isDark)) {
                                 Modifier.border(
-                                    width = 0.5.dp,
+                                    width = if (isSoraCloud) 0.9.dp else 0.5.dp,
                                     color = if (isToday) {
                                         MaterialTheme.colorScheme.primary.copy(alpha = 0.72f)
+                                    } else if (isSoraCloud) {
+                                        MaterialTheme.colorScheme.onSurface.copy(alpha = 0.42f)
                                     } else {
                                         Color(0xFF7891AA).copy(alpha = 0.24f)
                                     },
@@ -670,6 +699,7 @@ private fun TimetableDowHeader(startDate: Long, monthColor: Color) {
                         },
                         fontSize = 10.sp,
                         fontWeight = FontWeight.Bold,
+                        fontFamily = hitaSoraTitleFont(),
                         textAlign = TextAlign.Center,
                     )
                 }
@@ -678,6 +708,7 @@ private fun TimetableDowHeader(startDate: Long, monthColor: Color) {
                     color = if (isToday) MaterialTheme.colorScheme.primary else monthColor,
                     fontSize = 10.sp,
                     fontWeight = if (isToday) FontWeight.Bold else FontWeight.Medium,
+                    fontFamily = hitaSoraTitleFont(),
                     maxLines = 1,
                     modifier = Modifier.padding(top = 2.dp)
                 )
@@ -976,8 +1007,12 @@ private fun ConflictEventRow(
     style: TimetableStyleSheet,
     onClick: () -> Unit,
 ) {
+    val courseColor = hitaCourseColor(
+        courseKey = event.subjectId.ifBlank { event.name },
+        storedColor = event.color,
+    )
     val bg = if (style.isColorEnabled) {
-        Color(event.color).copy(alpha = 0.15f)
+        courseColor.copy(alpha = 0.15f)
     } else {
         MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)
     }
@@ -1048,23 +1083,49 @@ private fun TimetableEventCard(
     val view = LocalView.current
     var cardPositionInWindow by remember { mutableStateOf(IntOffset.Zero) }
     val isAppleGlass = hitaIsAppleGlassSurface()
+    val isCyber = hitaIsCyber()
+    val isPersona = hitaIsPersona()
+    val isSoraCloud = hitaIsSoraCloud()
+    val isDeepSpace = hitaIsDeepSpace()
+    val isSumi = hitaIsSumi()
+    val usesIllustratedFill = isAppleGlass || isSoraCloud
+    val themedCourseColor = hitaCourseColor(
+        courseKey = event.subjectId.ifBlank { event.name },
+        storedColor = event.color,
+    )
     val courseTint = if (style.isColorEnabled) {
-        Color(event.color)
+        themedCourseColor
     } else {
         MaterialTheme.colorScheme.primary
     }
     val baseAlpha = style.cardOpacity.coerceIn(20, 100) / 100f
+    val bubbleStyle = style.courseBubbleStyle
     val backgroundAlpha = if (isAppleGlass) {
         if (isBottomCascadeCard) {
             0.04f
         } else {
-            (baseAlpha * 0.34f).coerceIn(0.10f, 0.18f)
+            when (bubbleStyle) {
+                CourseBubbleStyle.SOLID -> (baseAlpha * 0.34f).coerceIn(0.10f, 0.18f)
+                CourseBubbleStyle.TONAL -> (baseAlpha * 0.22f).coerceIn(0.08f, 0.14f)
+                CourseBubbleStyle.OUTLINE -> (baseAlpha * 0.10f).coerceIn(0.04f, 0.08f)
+            }
         }
+    } else if (isPersona) {
+        // P5 统一配置：实色面板，不跟随气泡质感选项
+        if (isBottomCascadeCard) 0.52f else 1f
     } else {
-        baseAlpha * if (isBottomCascadeCard) 0.5f else 1f
+        val styleMultiplier = when (bubbleStyle) {
+            CourseBubbleStyle.SOLID -> 1f
+            CourseBubbleStyle.TONAL -> 0.32f
+            CourseBubbleStyle.OUTLINE -> 0.12f
+        }
+        baseAlpha * styleMultiplier * if (isBottomCascadeCard) 0.5f else 1f
     }
     val background = courseTint.copy(alpha = backgroundAlpha)
-    val backgroundBrush = if (style.isFadeEnabled) {
+    val backgroundBrush = if (isPersona) {
+        // P5 统一配置：纯色块，不用渐变
+        SolidColor(background)
+    } else if (style.isFadeEnabled) {
         Brush.linearGradient(
             colors = listOf(
                 background.copy(alpha = background.alpha * 0.72f),
@@ -1074,22 +1135,40 @@ private fun TimetableEventCard(
     } else {
         SolidColor(background)
     }
-    val borderColor = if (isAppleGlass) {
-        Color.Transparent
-    } else {
-        background.copy(alpha = 0.3f)
+    val borderColor = when {
+        isPersona -> Color.Transparent
+        bubbleStyle == CourseBubbleStyle.OUTLINE -> courseTint.copy(alpha = 0.88f)
+        isAppleGlass || isCyber || isSoraCloud || isDeepSpace || isSumi -> Color.Transparent
+        else -> courseTint.copy(alpha = 0.28f)
     }
-    val cardShape = RoundedCornerShape(HitaTheme.tokens.radius.md)
-    val effectiveBg = background.toArgb()
-    val titleColor = if (isAppleGlass) {
+    val borderWidth = if (bubbleStyle == CourseBubbleStyle.OUTLINE && !isPersona) 1.25.dp else 0.5.dp
+    val cardShape = hitaStyleCardShape(HitaTheme.tokens.radius.md, 10.dp)
+    val effectiveBg = if (isSoraCloud) {
+        background.compositeOver(MaterialTheme.colorScheme.surface).toArgb()
+    } else {
+        background.toArgb()
+    }
+    val titleColor = if (isSoraCloud) {
+        if (bubbleStyle == CourseBubbleStyle.SOLID) {
+            Color(ColorContrast.contrastText(courseTint.toArgb()))
+        } else {
+            soraCloudCourseContentColor(HitaTheme.isDark)
+        }
+    } else if (isAppleGlass || (bubbleStyle != CourseBubbleStyle.SOLID && !isPersona)) {
         MaterialTheme.colorScheme.onSurface.copy(alpha = 0.90f)
     } else {
-        resolveCardTextColor(style.cardTitleColor, style.isColorEnabled, event.color, effectiveBg)
+        resolveCardTextColor(style.cardTitleColor, style.isColorEnabled, courseTint.toArgb(), effectiveBg)
     }
-    val subtitleColor = if (isAppleGlass) {
+    val subtitleColor = if (isSoraCloud) {
+        if (bubbleStyle == CourseBubbleStyle.SOLID) {
+            Color(ColorContrast.contrastText(courseTint.toArgb())).copy(alpha = 0.76f)
+        } else {
+            soraCloudCourseContentColor(HitaTheme.isDark).copy(alpha = 0.72f)
+        }
+    } else if (isAppleGlass || (bubbleStyle != CourseBubbleStyle.SOLID && !isPersona)) {
         MaterialTheme.colorScheme.onSurface.copy(alpha = 0.72f)
     } else {
-        resolveCardTextColor(style.subTitleColor, style.isColorEnabled, event.color, effectiveBg)
+        resolveCardTextColor(style.subTitleColor, style.isColorEnabled, courseTint.toArgb(), effectiveBg)
     }
     val textScale = TimetableCardTextScale.forColumnCount(columnCount)
     val marginScale = TimetableCardTextScale.marginScaleForColumnCount(columnCount)
@@ -1121,10 +1200,10 @@ private fun TimetableEventCard(
     Box(
         modifier = modifier
             .then(
-                if (isAppleGlass) {
+                if (isAppleGlass || isSoraCloud) {
                     Modifier
                 } else {
-                    Modifier.hitaGlassCardModifier(cardShape, elevation = 8.dp)
+                    Modifier.hitaGlassCardModifier(cardShape, elevation = 8.dp, edgeTint = courseTint)
                 }
             )
             .onGloballyPositioned { coordinates ->
@@ -1135,10 +1214,10 @@ private fun TimetableEventCard(
                 )
             }
             .then(
-                if (isAppleGlass) {
+                if (usesIllustratedFill && bubbleStyle != CourseBubbleStyle.OUTLINE) {
                     Modifier
                 } else {
-                    Modifier.border(0.5.dp, borderColor, cardShape)
+                    Modifier.border(borderWidth, borderColor, cardShape)
                 }
             )
             .pointerInput(event.id) {
@@ -1155,16 +1234,16 @@ private fun TimetableEventCard(
                     onTap = { onClick() }
                 )
             }
-            .clip(cardShape)
+            .then(if (isSoraCloud) Modifier else Modifier.clip(cardShape))
             .then(
-                if (isAppleGlass) {
+                if (usesIllustratedFill) {
                     Modifier.background(Color.Transparent)
                 } else {
                     Modifier.background(backgroundBrush)
                 }
             )
     ) {
-        if (isAppleGlass) {
+        if (usesIllustratedFill) {
             Box(
                 modifier = Modifier
                     .fillMaxSize()
@@ -1174,7 +1253,16 @@ private fun TimetableEventCard(
                         tint = courseTint,
                         isMuted = isBottomCascadeCard,
                         gradientEnabled = style.isFadeEnabled,
-                        opacity = baseAlpha,
+                        opacity = when (bubbleStyle) {
+                            CourseBubbleStyle.SOLID -> baseAlpha
+                            CourseBubbleStyle.TONAL -> baseAlpha * 0.68f
+                            CourseBubbleStyle.OUTLINE -> baseAlpha * 0.34f
+                        },
+                        treatment = when (bubbleStyle) {
+                            CourseBubbleStyle.SOLID -> HitaCourseBubbleTreatment.SOLID
+                            CourseBubbleStyle.TONAL -> HitaCourseBubbleTreatment.TONAL
+                            CourseBubbleStyle.OUTLINE -> HitaCourseBubbleTreatment.OUTLINE
+                        },
                     )
             )
         }
@@ -1228,6 +1316,7 @@ private fun TimetableEventCard(
                         fontSize = titleFontSize,
                         lineHeight = (titleFontSize.value * 1.2f).sp,
                         fontWeight = if (style.isBoldText) FontWeight.Bold else FontWeight.Normal,
+                        fontFamily = hitaPersonaTitleFont() ?: hitaSoraTitleFont() ?: hitaSumiTitleFont(),
                         textAlign = textAlignFromGravity(style.titleGravity),
                         maxLines = maxTitleLines,
                         overflow = TextOverflow.Ellipsis,

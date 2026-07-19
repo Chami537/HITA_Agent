@@ -16,6 +16,8 @@ import cn.limpu.hita.data.repository.KEY_LABEL_PERIOD
 import cn.limpu.hita.data.repository.KEY_START_DATE
 import cn.limpu.hita.data.repository.KEY_CARD_OPACITY
 import cn.limpu.hita.data.repository.KEY_WALLPAPER_SCRIM
+import cn.limpu.hita.data.repository.KEY_COURSE_BUBBLE_STYLE
+import cn.limpu.hita.ui.main.timetable.CourseBubbleStyle
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
 
@@ -46,6 +48,8 @@ class TimetablePanelViewModel @Inject constructor(
         get() = timetableStyleRepository.wallpaperScrimLiveData
     val cardOpacityLiveData: SharedPreferenceIntLiveData
         get() = timetableStyleRepository.cardOpacityLiveData
+    val courseBubbleStyleLiveData
+        get() = timetableStyleRepository.courseBubbleStyleLiveData
 
 
     fun changeStartDate(hour: Int, minute: Int) {
@@ -74,6 +78,10 @@ class TimetablePanelViewModel @Inject constructor(
 
     fun setCardOpacity(opacity: Int) {
         timetableStyleRepository.putData(KEY_CARD_OPACITY, opacity)
+    }
+
+    fun setCourseBubbleStyle(style: CourseBubbleStyle) {
+        timetableStyleRepository.putData(KEY_COURSE_BUBBLE_STYLE, style.storageValue)
     }
 
     fun triggerAutoReimportNow() {

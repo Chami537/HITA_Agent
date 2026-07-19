@@ -82,7 +82,11 @@ import cn.limpu.hita.ui.design.HitaTheme
 import cn.limpu.hita.ui.design.hitaGlassCardBorder
 import cn.limpu.hita.ui.design.hitaGlassCardColors
 import cn.limpu.hita.ui.design.hitaGlassCardModifier
+import cn.limpu.hita.ui.design.hitaUsesMainBackdrop
 import cn.limpu.hita.ui.design.hitaIsAppleGlassSurface
+import cn.limpu.hita.ui.design.hitaIsPersona
+import cn.limpu.hita.ui.design.hitaPersonaCardModifier
+import cn.limpu.hita.ui.design.hitaStyleCardShape
 import cn.limpu.hita.ui.widgets.WidgetUtils
 import cn.limpu.hita.utils.EventsUtils
 import cn.limpu.hita.utils.HintUtils
@@ -236,7 +240,7 @@ private fun TimelineScreen(
         modifier = Modifier
             .fillMaxSize()
             .background(
-                if (hitaIsAppleGlassSurface()) {
+                if (hitaUsesMainBackdrop()) {
                     Color.Transparent
                 } else {
                     MaterialTheme.colorScheme.background
@@ -480,7 +484,7 @@ private fun TimelineHeaderCard(
 ) {
     val view = LocalView.current
     val isGlass = hitaIsAppleGlassSurface()
-    val cardShape = RoundedCornerShape(20.dp)
+    val cardShape = hitaStyleCardShape(20.dp, 16.dp)
     Card(
         modifier = Modifier
             .fillMaxWidth()
@@ -733,11 +737,19 @@ private fun TimelineTopEventRow(event: EventItem, onClick: () -> Unit) {
     } else {
         TimeTools.getDateString(context, event.from.time, true, TTY_REPLACE)
     }
+    val rowShape = hitaStyleCardShape(24.dp, 14.dp)
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .padding(bottom = HitaTheme.tokens.spacing.sm)
-            .clip(RoundedCornerShape(24.dp))
+            .then(
+                if (hitaIsPersona()) {
+                    Modifier.hitaPersonaCardModifier(rowShape)
+                } else {
+                    Modifier
+                }
+            )
+            .clip(rowShape)
             .background(MaterialTheme.colorScheme.surface)
             .clickable(onClick = onClick)
             .padding(
@@ -792,7 +804,7 @@ private fun TimelineTopEventRow(event: EventItem, onClick: () -> Unit) {
 private fun TimelineHintCard(event: EventItem, onConfirmed: (EventItem) -> Unit) {
     val view = LocalView.current
     val isGlass = hitaIsAppleGlassSurface()
-    val cardShape = RoundedCornerShape(16.dp)
+    val cardShape = hitaStyleCardShape(16.dp, 12.dp)
     Card(
         modifier = Modifier
             .fillMaxWidth()
@@ -864,7 +876,10 @@ private fun TimelineEventRow(
             .padding(start = HitaTheme.tokens.spacing.xl),
     ) {
         TimelineRail(isPassed = isPassed, isFirst = isFirstTimeline, isLast = isLastTimeline)
-        val cardShape = RoundedCornerShape(if (isPassed) 24.dp else 16.dp)
+        val cardShape = hitaStyleCardShape(
+            roundedRadius = if (isPassed) 24.dp else 16.dp,
+            cyberCut = if (isPassed) 16.dp else 12.dp,
+        )
         Card(
             modifier = Modifier
                 .fillMaxWidth()

@@ -1,6 +1,7 @@
 package cn.limpu.hita.data.source.web.eas
 
 import cn.limpu.hita.data.model.eas.ShenzhenGradeAnalysis
+import cn.limpu.hita.data.model.eas.ShenzhenGradeAnalysisScope
 import cn.limpu.hita.data.model.eas.ShenzhenGradeComponent
 import cn.limpu.hita.data.model.eas.ShenzhenGradeCourse
 import cn.limpu.hita.data.model.eas.ShenzhenGradeStatus
@@ -18,6 +19,25 @@ import kotlin.math.sqrt
 import java.util.Locale
 
 internal object ShenzhenGradeParser {
+    internal data class AnalysisResponseDiagnostics(
+        val structure: String,
+        val rowCount: Int?,
+        val serverCode: String = "",
+        val serverMessage: String = ""
+    ) {
+        val hasRows: Boolean
+            get() = rowCount != null && rowCount > 0
+
+        fun logSummary(): String = buildString {
+            append("structure=").append(structure)
+            append(", rows=").append(rowCount ?: "unknown")
+            if (serverCode.isNotBlank()) append(", code=").append(serverCode.take(32))
+            if (serverMessage.isNotBlank()) {
+                append(", message=").append(serverMessage.replace(Regex("\\s+"), " ").take(120))
+            }
+        }
+    }
+
     fun parseStudentRecordId(body: String): String? {
         val root = objectRoot(body) ?: return null
         val rows = arrayAt(root, "content") ?: return null
@@ -88,15 +108,13 @@ internal object ShenzhenGradeParser {
         return rows.size() to scoreCount
     }
 
-    fun analyze(course: ShenzhenGradeCourse, body: String): ShenzhenGradeAnalysis? {
+    fun analyze(
+        course: ShenzhenGradeCourse,
+        body: String,
+        scope: ShenzhenGradeAnalysisScope = ShenzhenGradeAnalysisScope.CLASS
+    ): ShenzhenGradeAnalysis? {
         val parsed = runCatching { JsonParser().parse(body) }.getOrNull() ?: return null
-        val rows = when {
-            parsed.isJsonArray -> parsed.asJsonArray
-            parsed.isJsonObject -> arrayAt(parsed.asJsonObject, "content")
-                ?: arrayAt(parsed.asJsonObject, "list")
-                ?: return null
-            else -> return null
-        }
+        val rows = analysisRows(parsed) ?: return null
 
         data class Definition(val full: Double, val weight: Double)
         val definitions = linkedMapOf<String, Definition>()
@@ -163,6 +181,7 @@ internal object ShenzhenGradeParser {
 
         return ShenzhenGradeAnalysis(
             course = course,
+            scope = scope,
             students = students,
             componentDefinitions = definitions.map { (name, definition) ->
                 ShenzhenGradeComponent(name, null, definition.full, definition.weight)
@@ -189,6 +208,29 @@ internal object ShenzhenGradeParser {
         )
     }
 
+    fun analysisResponseDiagnostics(body: String): AnalysisResponseDiagnostics {
+        val trimmed = body.trim()
+        if (trimmed.isBlank()) return AnalysisResponseDiagnostics("empty-body", 0)
+        if (trimmed.startsWith("<")) return AnalysisResponseDiagnostics("html", null)
+        val parsed = runCatching { JsonParser().parse(trimmed) }.getOrNull()
+            ?: return AnalysisResponseDiagnostics("non-json", null)
+        val rows = analysisRows(parsed)
+        if (parsed.isJsonArray) {
+            return AnalysisResponseDiagnostics("root-array", rows?.size())
+        }
+        if (!parsed.isJsonObject) return AnalysisResponseDiagnostics("json-primitive", null)
+        val root = parsed.asJsonObject
+        return AnalysisResponseDiagnostics(
+            structure = when {
+                rows != null -> "wrapped-array"
+                else -> "json-object"
+            },
+            rowCount = rows?.size(),
+            serverCode = text(root, "code", "status", "errorCode"),
+            serverMessage = text(root, "msg", "message", "error_description", "error")
+        )
+    }
+
     private fun courseFrom(
         row: JsonObject,
         status: ShenzhenGradeStatus,
@@ -197,7 +239,12 @@ internal object ShenzhenGradeParser {
         val taskId = text(row, "rwid", "RWID")
         return ShenzhenGradeCourse(
             rowId = text(row, "id", "ID"),
-            recordId = if (status == ShenzhenGradeStatus.PUBLISHED) text(row, "id", "ID") else "",
+            recordId = text(
+                row,
+                "XSCJB_ID", "xscjb_id", "cjid", "CJID", "GLCJID", "glcjid"
+            ).ifBlank {
+                if (status == ShenzhenGradeStatus.PUBLISHED) text(row, "id", "ID") else ""
+            },
             taskId = taskId,
             taskNumber = text(row, "rwh", "RWH"),
             courseCode = text(row, "kcdm", "KCDM"),
@@ -225,6 +272,25 @@ internal object ShenzhenGradeParser {
 
     private fun objectRoot(body: String): JsonObject? = runCatching { JsonParser().parse(body) }
         .getOrNull()?.takeIf { it.isJsonObject }?.asJsonObject
+
+    private fun analysisRows(root: JsonElement): JsonArray? {
+        if (root.isJsonArray) return root.asJsonArray
+        val objectRoot = root.takeIf { it.isJsonObject }?.asJsonObject ?: return null
+        return listOf(
+            arrayAt(objectRoot, "content"),
+            arrayAt(objectRoot, "list"),
+            arrayAt(objectRoot, "data"),
+            arrayAt(objectRoot, "rows"),
+            arrayAt(objectRoot, "records"),
+            arrayAt(objectRoot, "content", "list"),
+            arrayAt(objectRoot, "content", "rows"),
+            arrayAt(objectRoot, "content", "records"),
+            arrayAt(objectRoot, "data", "list"),
+            arrayAt(objectRoot, "data", "rows"),
+            arrayAt(objectRoot, "data", "records"),
+            arrayAt(objectRoot, "pageInfo", "list")
+        ).firstOrNull { it != null }
+    }
 
     private fun arrayAt(root: JsonObject, vararg path: String): JsonArray? {
         var current: JsonElement = root

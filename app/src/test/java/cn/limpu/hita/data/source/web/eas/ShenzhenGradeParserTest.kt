@@ -1,6 +1,7 @@
 package cn.limpu.hita.data.source.web.eas
 
 import cn.limpu.hita.data.model.eas.ShenzhenGradeCourse
+import cn.limpu.hita.data.model.eas.ShenzhenGradeAnalysisScope
 import cn.limpu.hita.data.model.eas.ShenzhenGradeStatus
 import cn.limpu.hita.data.model.eas.TermItem
 import org.junit.Assert.assertEquals
@@ -50,6 +51,21 @@ class ShenzhenGradeParserTest {
         assertEquals(ShenzhenGradeStatus.PUBLISHED, courses.single().status)
         assertEquals("GRADE-1", courses.single().recordId)
         assertEquals(91.0, courses.single().myScore ?: 0.0, 0.001)
+    }
+
+    @Test
+    fun `course list keeps component record id required by new seeFx contract`() {
+        val courses = ShenzhenGradeParser.parseCourses(
+            publishedBody = """{"content":{"list":[{
+                "id":"CJ-1","rwid":"RW-1","rwh":"2025-2026-2-COMP1001-001",
+                "kcmc":"程序设计","xscj":"93"
+            }]}}""",
+            selectedBody = """{"yxkcList":[]}""",
+            earlyBody = null,
+            term = term
+        ).orEmpty()
+
+        assertEquals("CJ-1", courses.single().recordId)
     }
 
     @Test
@@ -153,5 +169,64 @@ class ShenzhenGradeParserTest {
         assertEquals(59.0, analysis.mean, 0.001)
         assertEquals(1, analysis.failCount)
         assertEquals(1, analysis.excludedIncompleteStudentCount)
+    }
+
+    @Test
+    fun `analysis accepts wrapped list and records response structures`() {
+        val course = ShenzhenGradeCourse(taskId = "RW-1", courseName = "课程")
+        val row = """{"XSCJB_ID":"A","FXMC":"总评","DF":"88","MF":"100","LJFXBZ":"100"}"""
+
+        val contentList = ShenzhenGradeParser.analyze(
+            course,
+            """{"code":200,"content":{"list":[$row]}}"""
+        )
+        val dataRecords = ShenzhenGradeParser.analyze(
+            course,
+            """{"status":"ok","data":{"records":[$row]}}"""
+        )
+
+        assertEquals(88.0, requireNotNull(contentList).mean, 0.001)
+        assertEquals(88.0, requireNotNull(dataRecords).mean, 0.001)
+    }
+
+    @Test
+    fun `new seeFx personal response is marked personal and calculates weighted total`() {
+        val course = ShenzhenGradeCourse(
+            recordId = "CJ-1",
+            taskId = "RW-1",
+            courseName = "课程"
+        )
+        val body = """[
+            {"XSCJB_ID":"CJ-1","FXMC":"期末","DF":"90","MF":"100","LJFXBZ":"70"},
+            {"XSCJB_ID":"CJ-1","FXMC":"实验","DF":"100","MF":"100","LJFXBZ":"20"},
+            {"XSCJB_ID":"CJ-1","FXMC":"作业","DF":"100","MF":"100","LJFXBZ":"10"}
+        ]"""
+
+        val analysis = ShenzhenGradeParser.analyze(
+            course,
+            body,
+            ShenzhenGradeAnalysisScope.PERSONAL
+        )
+
+        requireNotNull(analysis)
+        assertEquals(ShenzhenGradeAnalysisScope.PERSONAL, analysis.scope)
+        assertEquals(1, analysis.students.size)
+        assertEquals(3, analysis.myComponents.size)
+        assertEquals(93.0, analysis.myScore ?: 0.0, 0.001)
+    }
+
+    @Test
+    fun `analysis diagnostics distinguish empty permission and html responses`() {
+        val empty = ShenzhenGradeParser.analysisResponseDiagnostics("[]")
+        val forbidden = ShenzhenGradeParser.analysisResponseDiagnostics(
+            """{"code":403,"message":"权限不足"}"""
+        )
+        val html = ShenzhenGradeParser.analysisResponseDiagnostics("<html>login</html>")
+
+        assertEquals("root-array", empty.structure)
+        assertEquals(0, empty.rowCount)
+        assertEquals("403", forbidden.serverCode)
+        assertEquals("权限不足", forbidden.serverMessage)
+        assertEquals("html", html.structure)
     }
 }

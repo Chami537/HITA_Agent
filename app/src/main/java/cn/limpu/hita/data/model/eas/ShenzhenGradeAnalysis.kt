@@ -6,6 +6,14 @@ enum class ShenzhenGradeStatus {
     SELECTED
 }
 
+enum class ShenzhenGradeAnalysisScope {
+    /** 新版 seeFx 携带 cjid 后只返回当前学生的分项。 */
+    PERSONAL,
+
+    /** 兼容旧后端曾经返回的匿名教学班明细。 */
+    CLASS
+}
+
 data class ShenzhenGradeCourse(
     val rowId: String = "",
     val recordId: String = "",
@@ -61,6 +69,7 @@ data class ShenzhenHistoricalFailureReport(
 
 data class ShenzhenGradeAnalysis(
     val course: ShenzhenGradeCourse,
+    val scope: ShenzhenGradeAnalysisScope,
     val students: List<ShenzhenStudentGrade>,
     val componentDefinitions: List<ShenzhenGradeComponent>,
     val mean: Double,

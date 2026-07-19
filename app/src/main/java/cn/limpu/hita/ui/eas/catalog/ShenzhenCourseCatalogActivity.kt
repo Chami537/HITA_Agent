@@ -82,7 +82,6 @@ import cn.limpu.hita.ui.design.hitaGlassCardBorder
 import cn.limpu.hita.ui.design.hitaGlassCardColors
 import cn.limpu.hita.ui.design.hitaGlassCardModifier
 import cn.limpu.hita.ui.eas.EASActivity
-import cn.limpu.hita.ui.eas.grade.ShenzhenGradeAnalysisActivity
 import cn.limpu.hita.ui.eas.login.PopUpLoginEAS
 import cn.limpu.hita.utils.ActivityUtils
 import cn.limpu.hita.utils.TermNameFormatter
@@ -357,28 +356,7 @@ class ShenzhenCourseCatalogActivity :
     }
 
     private fun showCourseActions(course: ShenzhenCourseCatalogItem) {
-        MaterialAlertDialogBuilder(this)
-            .setTitle(course.courseName)
-            .setItems(
-                arrayOf("查看教学附件", "查看全班成绩与分布", "查看两年前各教师挂科率")
-            ) { _, which ->
-                when (which) {
-                    0 -> showCourseAttachments(course)
-                    1 -> if (course.taskId.isBlank()) {
-                        Toast.makeText(this, "该课程缺少教学任务标识", Toast.LENGTH_LONG).show()
-                    } else {
-                        startActivity(
-                            ShenzhenGradeAnalysisActivity.intent(
-                                this,
-                                course,
-                                viewModel.selectedTermLiveData.value
-                            )
-                        )
-                    }
-                    2 -> showHistoricalFailureRates(course)
-                }
-            }
-            .show()
+        showCourseAttachments(course)
     }
 
     private fun showHistoricalFailureRates(course: ShenzhenCourseCatalogItem) {

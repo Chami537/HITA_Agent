@@ -98,7 +98,9 @@ import cn.limpu.hita.ui.design.HitaTheme
 import cn.limpu.hita.ui.design.hitaGlassCardBorder
 import cn.limpu.hita.ui.design.hitaGlassCardColors
 import cn.limpu.hita.ui.design.hitaGlassCardModifier
+import cn.limpu.hita.ui.design.hitaUsesMainBackdrop
 import cn.limpu.hita.ui.design.hitaIsAppleGlassSurface
+import cn.limpu.hita.ui.design.hitaStyleCardShape
 import cn.limpu.hita.ui.resource.UnifiedResourceSearchActivity
 import cn.limpu.hita.utils.ActivityUtils
 import cn.limpu.hita.utils.LogUtils
@@ -401,7 +403,7 @@ private fun AgentChatScreen(
         modifier = Modifier
             .fillMaxSize()
             .background(
-                if (hitaIsAppleGlassSurface()) {
+                if (hitaUsesMainBackdrop()) {
                     Color.Transparent
                 } else {
                     MaterialTheme.colorScheme.background
@@ -421,7 +423,7 @@ private fun AgentChatScreen(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Box(modifier = Modifier.weight(1f)) {
-                    val sessionShape = RoundedCornerShape(18.dp)
+                    val sessionShape = hitaStyleCardShape(18.dp, 12.dp)
                     Surface(
                         color = MaterialTheme.colorScheme.surface,
                         shape = sessionShape,
@@ -566,7 +568,7 @@ private fun AgentChatScreen(
                         fontSize = 14.sp
                     )
                 },
-                shape = RoundedCornerShape(22.dp),
+                shape = hitaStyleCardShape(22.dp, 14.dp),
                 minLines = 1,
                 maxLines = 8,
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
@@ -598,7 +600,7 @@ private fun AgentChatScreen(
                 enabled = !isLoading,
                 modifier = Modifier
                     .padding(start = tokens.spacing.sm)
-                    .background(MaterialTheme.colorScheme.primary, CircleShape)
+                    .background(MaterialTheme.colorScheme.primary, hitaStyleCardShape(999.dp, 14.dp))
             ) {
                 if (isLoading) {
                     CircularProgressIndicator(
@@ -649,7 +651,7 @@ private fun AgentMessageBubble(
             .padding(vertical = tokens.spacing.xs),
         horizontalArrangement = if (isUser) Arrangement.End else Arrangement.Start
     ) {
-        val bubbleShape = RoundedCornerShape(20.dp)
+        val bubbleShape = hitaStyleCardShape(20.dp, 16.dp)
         val isGlass = hitaIsAppleGlassSurface()
         Card(
             colors = if (isGlass) {
@@ -785,7 +787,7 @@ private fun AgentResourceCardView(
     onClick: () -> Unit,
 ) {
     val tokens = HitaTheme.tokens
-    val cardShape = RoundedCornerShape(tokens.radius.md)
+    val cardShape = hitaStyleCardShape(tokens.radius.md, 12.dp)
     Card(
         colors = hitaGlassCardColors(
             containerColor = MaterialTheme.colorScheme.background,

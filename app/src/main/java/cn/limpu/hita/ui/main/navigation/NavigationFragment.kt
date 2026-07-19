@@ -69,7 +69,10 @@ import cn.limpu.hita.ui.design.HitaTheme
 import cn.limpu.hita.ui.design.hitaGlassCardBorder
 import cn.limpu.hita.ui.design.hitaGlassCardColors
 import cn.limpu.hita.ui.design.hitaGlassCardModifier
+import cn.limpu.hita.ui.design.hitaUsesMainBackdrop
 import cn.limpu.hita.ui.design.hitaIsAppleGlassSurface
+import cn.limpu.hita.ui.design.hitaStyleCardShape
+import cn.limpu.hita.ui.design.hitaSumiBrushUnderline
 import cn.limpu.hita.ui.eas.classroom.EmptyClassroomActivity
 import cn.limpu.hita.ui.eas.catalog.ShenzhenCourseCatalogActivity
 import cn.limpu.hita.ui.eas.exam.ExamActivity
@@ -354,7 +357,7 @@ private fun NavigationScreen(
             .fillMaxSize()
             .verticalScroll(rememberScrollState())
             .background(
-                if (hitaIsAppleGlassSurface()) {
+                if (hitaUsesMainBackdrop()) {
                     Color.Transparent
                 } else {
                     MaterialTheme.colorScheme.background
@@ -406,8 +409,8 @@ private fun NavigationScreen(
             if (easToken.campus == EASToken.Campus.SHENZHEN) {
                 NavigationRow(
                     icon = R.drawable.ic_baseline_format_list_bulleted_24,
-                    title = "课程成绩分析",
-                    subtitle = "提前成绩 · 全班分布 · 匿名排名",
+                    title = "个人成绩明细",
+                    subtitle = "成绩状态 · 分项得分 · 权重折算",
                     onClick = onGradeAnalysis
                 )
             }
@@ -493,7 +496,7 @@ private fun UserCard(
         subtitle = stringResource(R.string.eas_account_not_logged_in_subtitle)
         avatarSource = localAvatar
     }
-    val cardShape = RoundedCornerShape(tokens.radius.lg)
+    val cardShape = hitaStyleCardShape(tokens.radius.lg, 14.dp)
     Card(
         modifier = Modifier
             .fillMaxWidth()
@@ -565,7 +568,7 @@ private fun ShortcutCard(
     modifier: Modifier = Modifier,
 ) {
     val tokens = HitaTheme.tokens
-    val cardShape = RoundedCornerShape(tokens.radius.lg)
+    val cardShape = hitaStyleCardShape(tokens.radius.lg, 14.dp)
     Card(
         modifier = modifier
             .hitaGlassCardModifier(cardShape, elevation = 10.dp)
@@ -618,14 +621,16 @@ private fun NavigationGroup(
         color = MaterialTheme.colorScheme.onSurface,
         fontSize = 18.sp,
         fontWeight = FontWeight.Bold,
-        modifier = Modifier.padding(
-            start = tokens.spacing.lg,
-            top = tokens.spacing.lg,
-            end = tokens.spacing.lg,
-            bottom = tokens.spacing.xs
-        )
+        modifier = Modifier
+            .padding(
+                start = tokens.spacing.lg,
+                top = tokens.spacing.lg,
+                end = tokens.spacing.lg,
+                bottom = tokens.spacing.xs
+            )
+            .hitaSumiBrushUnderline()
     )
-    val cardShape = RoundedCornerShape(tokens.radius.lg)
+    val cardShape = hitaStyleCardShape(tokens.radius.lg, 14.dp)
     Card(
         modifier = Modifier
             .fillMaxWidth()

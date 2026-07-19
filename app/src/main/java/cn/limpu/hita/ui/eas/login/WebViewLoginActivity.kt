@@ -101,6 +101,7 @@ class WebViewLoginActivity : AppCompatActivity() {
     companion object {
         const val EXTRA_SILENT_MODE = "silent_mode"
         const val EXTRA_CAMPUS = "campus"
+        const val EXTRA_STUDENT_TYPE = "student_type"
 
         // 校园网络URL常量
         private object CampusUrls {
@@ -151,6 +152,8 @@ class WebViewLoginActivity : AppCompatActivity() {
         private const val MFA_NATIVE_OVERLAY_ENABLED = false
         private const val MFA_METHOD_SWITCH_POLL_DELAY_MS = 400L
         private const val MFA_METHOD_SWITCH_MAX_POLLS = 75
+        private const val SHENZHEN_AUTO_ADVANCE_RETRY_DELAY_MS = 300L
+        private const val SHENZHEN_AUTO_ADVANCE_MAX_RETRIES = 12
         private const val SHENZHEN_DESKTOP_USER_AGENT =
             "Mozilla/5.0 (Windows NT 10.0; Win64; x64) " +
                 "AppleWebKit/537.36 (KHTML, like Gecko) " +
@@ -189,6 +192,11 @@ class WebViewLoginActivity : AppCompatActivity() {
     private var shenzhenMobileUserAgent = ""
     private var shenzhenDesktopUserAgentApplied = false
     private var shenzhenForceWebModeApplied = false
+    private var shenzhenPreferredStudentType = ShenzhenWebAutoLogin.UNDERGRAD
+    private var shenzhenAutoAdvanceGeneration = 0
+    private var shenzhenAutoAdvanceScheduledGeneration = -1
+    private var shenzhenUnifiedLoginClicked = false
+    private var shenzhenRoleSelectionClicked = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         val campus = runCatching {
@@ -198,6 +206,9 @@ class WebViewLoginActivity : AppCompatActivity() {
         }.getOrDefault(EASToken.Campus.BENBU)
         config = configFor(campus)
         silentMode = intent?.getBooleanExtra(EXTRA_SILENT_MODE, false) == true
+        shenzhenPreferredStudentType = ShenzhenWebAutoLogin.normalizeStudentType(
+            intent?.getStringExtra(EXTRA_STUDENT_TYPE)
+        )
 
         setTheme(
             if (silentMode) {
@@ -277,7 +288,10 @@ class WebViewLoginActivity : AppCompatActivity() {
             )
             EASToken.Campus.SHENZHEN -> CampusWebConfig(
                 campus = campus,
-                loginUrl = CampusUrls.SHENZHEN_LOGIN,
+                // Enter the authenticated application directly. If Trust/CAS is still
+                // remembered this completes without showing the proxy landing page; if
+                // authentication is required the proxy redirects to the normal flow.
+                loginUrl = CampusUrls.SHENZHEN_JWTS,
                 jwtsUrl = CampusUrls.SHENZHEN_JWTS,
                 cookieProbeUrls = CampusUrls.SHENZHEN_PROBE_URLS
             )
@@ -380,6 +394,13 @@ class WebViewLoginActivity : AppCompatActivity() {
             webViewClient = object : WebViewClient() {
                 override fun onPageStarted(view: WebView?, url: String?, favicon: android.graphics.Bitmap?) {
                     super.onPageStarted(view, url, favicon)
+                    shenzhenAutoAdvanceGeneration++
+                    if (config.campus == EASToken.Campus.SHENZHEN) {
+                        LogUtils.d(
+                            "SHENZHEN_AUTO navigation-start generation=$shenzhenAutoAdvanceGeneration " +
+                                "url=${safeUrl(url)}"
+                        )
+                    }
                     if (view != null && url != null && switchShenzhenUserAgentForNavigation(view, url)) {
                         return
                     }
@@ -404,6 +425,7 @@ class WebViewLoginActivity : AppCompatActivity() {
                         applyTrustPortalViewportUnitWorkaround(view)
                     } else if (isShenzhenProxyJwPage(url)) {
                         applyShenzhenJwDesktopViewportWorkaround(view)
+                        scheduleShenzhenAutoAdvance(view, url)
                     }
                     scheduleMfaDetection(view, url)
                 }
@@ -431,6 +453,12 @@ class WebViewLoginActivity : AppCompatActivity() {
                     }
 
                     val uri = Uri.parse(url)
+                    if (config.campus == EASToken.Campus.SHENZHEN) {
+                        LogUtils.d(
+                            "SHENZHEN_AUTO navigation-finished generation=$shenzhenAutoAdvanceGeneration " +
+                                "url=${safeUrl(url)}"
+                        )
+                    }
                     LogUtils.d("onPageFinished: host=${uri.host} path=${uri.path} autoOpeningJwts=$autoOpeningJwts")
                     logWebViewRenderMarker("page-finished", view, url)
                     if (applyShenzhenForceWebMode(view, url)) {
@@ -447,6 +475,7 @@ class WebViewLoginActivity : AppCompatActivity() {
                         applyTrustPortalViewportUnitWorkaround(view)
                     } else if (isShenzhenProxyJwPage(url)) {
                         applyShenzhenJwDesktopViewportWorkaround(view)
+                        scheduleShenzhenAutoAdvance(view, url)
                     }
 
                     when {
@@ -1318,7 +1347,8 @@ class WebViewLoginActivity : AppCompatActivity() {
         val path = Uri.parse(url).path.orEmpty()
         val shouldProbe = host.contains("ivpn.hit.edu.cn") ||
             host.contains("ids") ||
-            path.contains("authserver")
+            path.contains("authserver") ||
+            (config.campus == EASToken.Campus.SHENZHEN && isShenzhenProxyJwPage(url))
         if (!shouldProbe) return
 
         view.postDelayed({
@@ -1360,6 +1390,64 @@ class WebViewLoginActivity : AppCompatActivity() {
               var inputs = Array.prototype.slice.call(document.querySelectorAll('input, textarea, select'));
               var forms = Array.prototype.slice.call(document.querySelectorAll('form'));
               var buttons = Array.prototype.slice.call(document.querySelectorAll('button, input[type=button], input[type=submit], .login, [class*=login], [id*=login]'));
+              var frames = Array.prototype.slice.call(document.querySelectorAll('iframe'));
+              var allElements = Array.prototype.slice.call(document.querySelectorAll('*'));
+              function compactText(el) {
+                return String(el && (el.innerText || el.textContent || el.value) || '')
+                  .replace(/\s+/g, ' ').trim();
+              }
+              function relevantElement(el) {
+                var text = compactText(el);
+                if (!text || text.length > 100 || !/(统一|身份|登录|本科|研究生)/.test(text)) {
+                  return null;
+                }
+                var r = el.getBoundingClientRect();
+                var ownerWindow = el.ownerDocument && el.ownerDocument.defaultView || window;
+                var s = ownerWindow.getComputedStyle(el);
+                return {
+                  tag: el.tagName,
+                  id: el.id || '',
+                  cls: (el.className || '').toString().slice(0, 100),
+                  role: el.getAttribute('role') || '',
+                  tabindex: el.getAttribute('tabindex') || '',
+                  hasOnClick: !!(el.onclick || el.getAttribute('onclick')),
+                  pointer: s.cursor === 'pointer',
+                  visible: s.display !== 'none' && s.visibility !== 'hidden' &&
+                    r.width > 0 && r.height > 0,
+                  rect: [Math.round(r.x), Math.round(r.y), Math.round(r.width), Math.round(r.height)],
+                  text: text.slice(0, 100)
+                };
+              }
+              function safeFrameSrc(frame) {
+                try {
+                  var parsed = new URL(frame.src || '', location.href);
+                  return parsed.protocol + '//' + parsed.host + parsed.pathname;
+                } catch (e) {
+                  return '';
+                }
+              }
+              var relevant = allElements.map(relevantElement).filter(Boolean)
+                .sort(function(a, b) { return a.text.length - b.text.length; }).slice(0, 30);
+              var frameInfo = frames.slice(0, 10).map(function(frame) {
+                var accessible = false;
+                var relevantInside = [];
+                try {
+                  var doc = frame.contentDocument;
+                  accessible = !!doc;
+                  if (doc) {
+                    relevantInside = Array.prototype.slice.call(doc.querySelectorAll('*'))
+                      .map(relevantElement).filter(Boolean).slice(0, 15);
+                  }
+                } catch (e) {}
+                return {
+                  id: frame.id || '',
+                  name: frame.name || '',
+                  cls: (frame.className || '').toString().slice(0, 80),
+                  src: safeFrameSrc(frame),
+                  accessible: accessible,
+                  relevant: relevantInside
+                };
+              });
               var centerEl = document.elementFromPoint(Math.floor(window.innerWidth / 2), Math.floor(window.innerHeight / 2));
               var bodyStyle = document.body ? window.getComputedStyle(document.body) : null;
               var htmlStyle = document.documentElement ? window.getComputedStyle(document.documentElement) : null;
@@ -1398,17 +1486,21 @@ class WebViewLoginActivity : AppCompatActivity() {
                 counts: {
                   forms: forms.length,
                   inputs: inputs.length,
-                  buttons: buttons.length
+                  buttons: buttons.length,
+                  elements: allElements.length,
+                  iframes: frames.length
                 },
                 firstInputs: inputs.slice(0, 8).map(visibleStyle),
                 firstButtons: buttons.slice(0, 8).map(visibleStyle),
                 centerElement: centerEl ? visibleStyle(centerEl) : null,
-                bodyTextStart: ((document.body && document.body.innerText) || '').replace(/\s+/g, ' ').slice(0, 120)
+                bodyTextStart: ((document.body && document.body.innerText) || '').replace(/\s+/g, ' ').slice(0, 300),
+                relevant: relevant,
+                frames: frameInfo
               });
             })();
         """.trimIndent()
         view.evaluateJavascript(script) { result ->
-            LogUtils.d("WEBVIEW_DIAG page ${sanitizeJsResult(result)}")
+            logShenzhenAutoPayload("DOM $marker", result)
         }
     }
 
@@ -1430,8 +1522,15 @@ class WebViewLoginActivity : AppCompatActivity() {
         return result
             ?.replace("\\u003C", "<")
             ?.replace(Regex("(?i)(value|password|pwd|pass|token)[^,}]{0,80}"), "$1=***")
-            ?.take(3500)
+            ?.take(12000)
             ?: "null"
+    }
+
+    private fun logShenzhenAutoPayload(label: String, result: String?) {
+        val chunks = sanitizeJsResult(result).chunked(2800).ifEmpty { listOf("null") }
+        chunks.forEachIndexed { index, chunk ->
+            LogUtils.d("SHENZHEN_AUTO $label part=${index + 1}/${chunks.size} $chunk")
+        }
     }
 
     private fun safeUrl(url: String?): String {
@@ -1462,7 +1561,10 @@ class WebViewLoginActivity : AppCompatActivity() {
             EASToken.Campus.BENBU -> uri.host == "i-hit-edu-cn.ivpn.hit.edu.cn" &&
                 (normalizedPath == "/portal/home" || normalizedPath == "/portal")
             EASToken.Campus.WEIHAI -> uri.host == "webvpn.hitwh.edu.cn" && (normalizedPath.isBlank() || normalizedPath == "/portal/home")
-            EASToken.Campus.SHENZHEN -> false
+            EASToken.Campus.SHENZHEN -> ShenzhenWebAutoLogin.isProxyRoot(
+                url,
+                CampusUrls.SHENZHEN_PROXY_BASE
+            )
         }
     }
 
@@ -1557,6 +1659,85 @@ class WebViewLoginActivity : AppCompatActivity() {
             Uri.parse(CampusUrls.SHENZHEN_PROXY_BASE).host,
             ignoreCase = true
         )
+    }
+
+    private fun scheduleShenzhenAutoAdvance(view: WebView, url: String) {
+        LogUtils.d(
+            "SHENZHEN_AUTO schedule requested generation=$shenzhenAutoAdvanceGeneration " +
+                "url=${safeUrl(url)} finished=$finished"
+        )
+        if (
+            config.campus != EASToken.Campus.SHENZHEN ||
+            !isShenzhenProxyJwPage(url) ||
+            finished
+        ) {
+            return
+        }
+        val generation = shenzhenAutoAdvanceGeneration
+        if (shenzhenAutoAdvanceScheduledGeneration == generation) {
+            LogUtils.d("SHENZHEN_AUTO schedule deduplicated generation=$generation")
+            return
+        }
+        shenzhenAutoAdvanceScheduledGeneration = generation
+        LogUtils.d(
+            "SHENZHEN_AUTO schedule accepted generation=$generation " +
+                "studentType=$shenzhenPreferredStudentType"
+        )
+
+        fun attempt(index: Int) {
+            if (
+                finished ||
+                generation != shenzhenAutoAdvanceGeneration ||
+                !isShenzhenProxyJwPage(view.url.orEmpty())
+            ) {
+                return
+            }
+            val allowUnified = !shenzhenUnifiedLoginClicked
+            val allowRole = !shenzhenRoleSelectionClicked
+            if (!allowUnified && !allowRole) return
+            LogUtils.d(
+                "SHENZHEN_AUTO attempt=$index generation=$generation " +
+                    "allowUnified=$allowUnified allowRole=$allowRole url=${safeUrl(view.url)}"
+            )
+
+            view.evaluateJavascript(
+                ShenzhenWebAutoLogin.buildClickScript(
+                    studentType = shenzhenPreferredStudentType,
+                    allowUnifiedLogin = allowUnified,
+                    allowRoleSelection = allowRole
+                )
+            ) { raw ->
+                if (finished || generation != shenzhenAutoAdvanceGeneration) {
+                    return@evaluateJavascript
+                }
+                val result = runCatching { parseJavascriptJson(raw ?: "") }.getOrNull()
+                LogUtils.d(
+                    "SHENZHEN_AUTO result attempt=$index parsed=${result != null} " +
+                        "payload=${sanitizeJsResult(raw)}"
+                )
+                if (result?.optBoolean("clicked", false) == true) {
+                    when (val action = result.optString("action")) {
+                        "unified-login" -> shenzhenUnifiedLoginClicked = true
+                        "undergrad-role", "postgrad-role" -> shenzhenRoleSelectionClicked = true
+                    }
+                    LogUtils.success(
+                        "Shenzhen Web auto advance action=${result.optString("action")} " +
+                            "studentType=$shenzhenPreferredStudentType"
+                    )
+                    return@evaluateJavascript
+                }
+                if (index + 1 < SHENZHEN_AUTO_ADVANCE_MAX_RETRIES) {
+                    view.postDelayed(
+                        { attempt(index + 1) },
+                        SHENZHEN_AUTO_ADVANCE_RETRY_DELAY_MS
+                    )
+                } else {
+                    LogUtils.d("SHENZHEN_AUTO exhausted without matching action")
+                }
+            }
+        }
+
+        attempt(0)
     }
 
     private fun switchShenzhenUserAgentForNavigation(view: WebView, url: String): Boolean {

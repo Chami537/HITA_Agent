@@ -15,10 +15,25 @@ object ColorContrast {
         return 0.299 * r + 0.587 * g + 0.114 * b
     }
 
-    /**
-     * 阈值 128：亮底 → 暗灰 #333，暗底 → 白色。
-     */
-    fun contrastText(color: Int): Int =
-        if (luminance(color) >= 128) Color.rgb(0x33, 0x33, 0x33)
-        else Color.WHITE
+    /** 按 WCAG 相对亮度选择黑/白文字，取对比度更高的一侧。 */
+    fun contrastText(color: Int): Int {
+        val background = relativeLuminance(color)
+        val contrastWithWhite = 1.05 / (background + 0.05)
+        val contrastWithBlack = (background + 0.05) / 0.05
+        return if (contrastWithBlack >= contrastWithWhite) Color.BLACK else Color.WHITE
+    }
+
+    private fun relativeLuminance(color: Int): Double {
+        fun channel(value: Int): Double {
+            val normalized = value / 255.0
+            return if (normalized <= 0.04045) {
+                normalized / 12.92
+            } else {
+                Math.pow((normalized + 0.055) / 1.055, 2.4)
+            }
+        }
+        return 0.2126 * channel(Color.red(color)) +
+                0.7152 * channel(Color.green(color)) +
+                0.0722 * channel(Color.blue(color))
+    }
 }

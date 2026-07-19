@@ -12,6 +12,7 @@ import com.limpu.component.data.booleanLiveData
 import com.limpu.component.data.intLiveData
 import com.limpu.component.data.stringLiveData
 import cn.limpu.hita.ui.main.timetable.TimetableStyleSheet
+import cn.limpu.hita.ui.main.timetable.CourseBubbleStyle
 
 private const val SP_NAME = "timetable_style"
 const val KEY_START_DATE = "start_date"
@@ -22,6 +23,7 @@ const val KEY_LABEL_PERIOD = "label_period"
 const val KEY_WALLPAPER_PATH = "wallpaper_path"
 const val KEY_WALLPAPER_SCRIM = "wallpaper_scrim"
 const val KEY_CARD_OPACITY = "card_opacity"
+const val KEY_COURSE_BUBBLE_STYLE = "course_bubble_style"
 
 @Singleton
 class TimetableStyleRepository @Inject constructor(application: Application) {
@@ -34,6 +36,10 @@ class TimetableStyleRepository @Inject constructor(application: Application) {
     val wallpaperPathLiveData = timetableStyleSP.stringLiveData(KEY_WALLPAPER_PATH, "")
     val wallpaperScrimLiveData = timetableStyleSP.intLiveData(KEY_WALLPAPER_SCRIM, 30)
     val cardOpacityLiveData = timetableStyleSP.intLiveData(KEY_CARD_OPACITY, 85)
+    val courseBubbleStyleLiveData = timetableStyleSP.stringLiveData(
+        KEY_COURSE_BUBBLE_STYLE,
+        CourseBubbleStyle.SOLID.storageValue
+    )
     val wallpaperDateColorLiveData = MutableLiveData(Color.WHITE)
     val wallpaperLabelColorLiveData = MutableLiveData(Color.WHITE)
 
@@ -70,6 +76,11 @@ class TimetableStyleRepository @Inject constructor(application: Application) {
         }
         sheet.addSource(cardOpacityLiveData) { opacity ->
             sheet.value = sheet.value?.withCardOpacity(opacity)
+        }
+        sheet.addSource(courseBubbleStyleLiveData) { bubbleStyle ->
+            sheet.value = sheet.value?.copy(
+                courseBubbleStyle = CourseBubbleStyle.fromStorage(bubbleStyle)
+            )
         }
         return sheet
     }

@@ -17,6 +17,7 @@ import cn.limpu.hita.data.model.eas.ShenzhenCourseCatalogPage
 import cn.limpu.hita.data.model.eas.ShenzhenCourseCatalogSource
 import cn.limpu.hita.data.model.eas.ShenzhenCourseAttachment
 import cn.limpu.hita.data.model.eas.ShenzhenGradeAnalysis
+import cn.limpu.hita.data.model.eas.ShenzhenGradeAnalysisScope
 import cn.limpu.hita.data.model.eas.ShenzhenGradeCourse
 import cn.limpu.hita.data.model.eas.ShenzhenGradeStatus
 import cn.limpu.hita.data.model.eas.ShenzhenHistoricalFailureReport
@@ -1158,7 +1159,7 @@ class EASWebSource internal constructor(
                         }
                     }
                 }
-                LogUtils.d(
+                LogUtils.w(
                     "getShenzhenGradeCourses: identity=${identity != null}, " +
                         "studentNumber=${studentNumber.isNotBlank()}, " +
                         "studentRecordId=${studentRecordId.isNotBlank()}, " +
@@ -1208,25 +1209,54 @@ class EASWebSource internal constructor(
                 result.postValue(DataState(DataState.STATE.FETCH_FAILED, "该课程缺少教学任务标识"))
                 return@Thread
             }
+            if (course.recordId.isBlank()) {
+                result.postValue(
+                    DataState(
+                        DataState.STATE.FETCH_FAILED,
+                        "该课程尚未提供可查询的个人成绩分项"
+                    )
+                )
+                return@Thread
+            }
             try {
                 val response = jwFormPost(
                     token = token,
-                    path = "/cjgl/grcjcx/seeFx",
-                    data = mapOf("rwid" to course.taskId),
-                    refererPath = "/cjgl/grcjcx"
+                    path = "/cjgl/grcjcx/seeFx?sf_request_type=ajax",
+                    data = mapOf(
+                        "rwid" to course.taskId,
+                        "cjid" to course.recordId
+                    ),
+                    refererPath = "/cjgl/grcjcx/go/1"
                 )
-                if (isJwAuthenticationExpired(response)) {
+                val diagnostics = ShenzhenGradeParser.analysisResponseDiagnostics(response.body())
+                LogUtils.d(
+                    "getShenzhenGradeAnalysis: HTTP ${response.statusCode()}, " +
+                        "bodyLength=${response.body().length}, ${diagnostics.logSummary()}"
+                )
+                val permissionRestricted = isGradeAnalysisPermissionRestricted(
+                    response.statusCode(),
+                    diagnostics
+                )
+                if (!permissionRestricted && isJwAuthenticationExpired(response)) {
                     result.postValue(DataState(DataState.STATE.NOT_LOGGED_IN, "深圳 Web 会话已失效"))
                     return@Thread
                 }
                 val analysis = if (response.statusCode() == 200) {
-                    ShenzhenGradeParser.analyze(course, response.body())
+                    ShenzhenGradeParser.analyze(
+                        course,
+                        response.body(),
+                        ShenzhenGradeAnalysisScope.PERSONAL
+                    )
                 } else null
                 if (analysis == null) {
                     result.postValue(
                         DataState(
                             DataState.STATE.FETCH_FAILED,
-                            "暂未查询到该教学班的分项成绩"
+                            gradeAnalysisFailureMessage(
+                                response.statusCode(),
+                                diagnostics,
+                                permissionRestricted
+                            )
                         )
                     )
                 } else {
@@ -1252,6 +1282,20 @@ class EASWebSource internal constructor(
                 result.postValue(DataState(DataState.STATE.NOT_LOGGED_IN, "请先连接深圳 Web 教务"))
                 return@Thread
             }
+            // 旧实现依赖 seeFx 在不传 cjid 时泄露整个教学班成绩。2026-07 后端已修复：
+            // 接口必须携带当前学生自己的成绩记录 ID，且只返回该学生的分项。全校课表
+            // 只提供教学任务 ID，不提供也不应尝试推测其他学生的 cjid，因此教师/班型统计
+            // 已没有合法可靠的数据源。
+            if (!supportsClassWideGradeAnalysis()) {
+                result.postValue(
+                    DataState(
+                        DataState.STATE.FETCH_FAILED,
+                        "新版教务已将成绩分项限制为本人记录，无法再生成其他教学班或教师的成绩统计"
+                    )
+                )
+                return@Thread
+            }
+
             val targetTerm = ShenzhenHistoricalGradeAnalyzer.termYearsBefore(referenceTerm, yearsBack)
             if (targetTerm == null) {
                 result.postValue(DataState(DataState.STATE.FETCH_FAILED, "无法识别当前课程学年"))
@@ -1311,6 +1355,28 @@ class EASWebSource internal constructor(
                         data = mapOf("rwid" to course.taskId),
                         refererPath = "/cjgl/grcjcx"
                     )
+                    val diagnostics = ShenzhenGradeParser.analysisResponseDiagnostics(response.body())
+                    LogUtils.w(
+                        "getShenzhenHistoricalTeacherFailureRates: HTTP ${response.statusCode()}, " +
+                            "bodyLength=${response.body().length}, ${diagnostics.logSummary()}"
+                    )
+                    val permissionRestricted = isGradeAnalysisPermissionRestricted(
+                        response.statusCode(),
+                        diagnostics
+                    )
+                    if (permissionRestricted) {
+                        result.postValue(
+                            DataState(
+                                DataState.STATE.FETCH_FAILED,
+                                gradeAnalysisFailureMessage(
+                                    response.statusCode(),
+                                    diagnostics,
+                                    permissionRestricted = true
+                                )
+                            )
+                        )
+                        return@Thread
+                    }
                     if (isJwAuthenticationExpired(response)) {
                         result.postValue(DataState(DataState.STATE.NOT_LOGGED_IN, "深圳 Web 会话已失效"))
                         return@Thread
@@ -1340,6 +1406,16 @@ class EASWebSource internal constructor(
                     }
                 }
 
+                if (uniqueCourses.isNotEmpty() && classStats.isEmpty()) {
+                    result.postValue(
+                        DataState(
+                            DataState.STATE.FETCH_FAILED,
+                            "教务未返回这些教学班的可用成绩汇总，可能尚未录入或接口已调整"
+                        )
+                    )
+                    return@Thread
+                }
+
                 val report = ShenzhenHistoricalFailureReport(
                     courseName = referenceCourse.courseName,
                     courseCode = referenceCourse.courseCode,
@@ -1355,6 +1431,30 @@ class EASWebSource internal constructor(
             }
         }.start()
         return result
+    }
+
+    private fun supportsClassWideGradeAnalysis(): Boolean = false
+
+    private fun isGradeAnalysisPermissionRestricted(
+        statusCode: Int,
+        diagnostics: ShenzhenGradeParser.AnalysisResponseDiagnostics
+    ): Boolean = statusCode == 403 || diagnostics.serverCode.trim() == "403" ||
+        diagnostics.serverMessage.contains("无权限") ||
+        diagnostics.serverMessage.contains("权限不足") ||
+        diagnostics.serverMessage.contains("forbidden", ignoreCase = true)
+
+    private fun gradeAnalysisFailureMessage(
+        statusCode: Int,
+        diagnostics: ShenzhenGradeParser.AnalysisResponseDiagnostics,
+        permissionRestricted: Boolean
+    ): String = when {
+        permissionRestricted -> "教务拒绝访问该课程的个人成绩分项"
+        statusCode == 404 -> "教务成绩分析接口已调整，当前版本暂不兼容"
+        statusCode !in 200..299 -> "个人成绩分项请求失败（HTTP $statusCode）"
+        diagnostics.structure == "html" -> "教务返回了页面而不是成绩数据，接口可能已经调整"
+        diagnostics.rowCount == 0 -> "教务未返回该课程的个人分项，可能尚未录入"
+        diagnostics.serverMessage.isNotBlank() -> diagnostics.serverMessage
+        else -> "个人成绩分项响应结构已变化，当前版本暂时无法解析"
     }
 
     fun getShenzhenTrainingPlans(

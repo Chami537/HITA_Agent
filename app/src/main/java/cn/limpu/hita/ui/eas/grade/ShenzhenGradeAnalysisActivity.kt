@@ -33,7 +33,6 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -49,12 +48,11 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.livedata.observeAsState
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.ComposeView
@@ -228,7 +226,7 @@ class ShenzhenGradeAnalysisActivity :
                 taskId = taskId,
                 taskNumber = intent.getStringExtra(EXTRA_TASK_NUMBER).orEmpty(),
                 courseCode = intent.getStringExtra(EXTRA_COURSE_CODE).orEmpty(),
-                courseName = intent.getStringExtra(EXTRA_COURSE_NAME).orEmpty().ifBlank { "课程成绩分析" },
+                courseName = intent.getStringExtra(EXTRA_COURSE_NAME).orEmpty().ifBlank { "个人成绩明细" },
                 termCode = intent.getStringExtra(EXTRA_TERM_CODE).orEmpty()
             )
         )
@@ -332,7 +330,7 @@ private fun GradeScreen(
         TopAppBar(
             title = {
                 Text(
-                    selectedCourse?.courseName ?: "课程成绩分析",
+                    selectedCourse?.courseName ?: "个人成绩明细",
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
@@ -373,8 +371,7 @@ private fun GradeScreen(
             )
             selectedCourse != null && analysisState?.state == DataState.STATE.SUCCESS ->
                 AnalysisContent(
-                    analysis = requireNotNull(analysisState?.data),
-                    onCompareTeachers = onCompareTeachers
+                    analysis = requireNotNull(analysisState?.data)
                 )
             selectedCourse == null && coursesState?.state == DataState.STATE.SUCCESS ->
                 CourseList(
@@ -408,7 +405,7 @@ private fun CourseList(
                 Text(term?.let(TermNameFormatter::fullTermName) ?: "选择学期")
             }
             Text(
-                "包含已公布、刚录入未公布及本学期已选课程；点开后才查询全班分项。",
+                "已公布课程可查看分项得分；提前可见和已选课程会保留在列表中。",
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 fontSize = 12.sp,
                 modifier = Modifier.padding(vertical = tokens.spacing.sm)
@@ -418,12 +415,14 @@ private fun CourseList(
             item { StateCard("该学期没有可分析的课程", null, null) }
         }
         items(courses, key = { "${it.taskId}-${it.courseName}" }) { course ->
+            val canOpenDetails = course.recordId.isNotBlank()
             val shape = RoundedCornerShape(tokens.radius.lg)
             Card(
                 modifier = Modifier
                     .fillMaxWidth()
+                    .alpha(if (canOpenDetails) 1f else .72f)
                     .hitaGlassCardModifier(shape)
-                    .clickable { onCourseClick(course) },
+                    .clickable(enabled = canOpenDetails) { onCourseClick(course) },
                 shape = shape,
                 colors = hitaGlassCardColors(),
                 border = hitaGlassCardBorder()
@@ -446,6 +445,26 @@ private fun CourseList(
                     course.myScore?.let {
                         Text("我的成绩 ${format(it)}", color = MaterialTheme.colorScheme.primary)
                     }
+                    if (canOpenDetails) {
+                        Text(
+                            "查看分项",
+                            color = MaterialTheme.colorScheme.primary,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            modifier = Modifier.align(Alignment.End).padding(top = 4.dp)
+                        )
+                    } else {
+                        Text(
+                            if (course.status == ShenzhenGradeStatus.EARLY) {
+                                "分项将在教务正式公布成绩后开放"
+                            } else {
+                                "暂时没有可查看的成绩分项"
+                            },
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            fontSize = 12.sp,
+                            modifier = Modifier.padding(top = 4.dp)
+                        )
+                    }
                 }
             }
         }
@@ -466,28 +485,53 @@ private fun StatusPill(status: ShenzhenGradeStatus) {
 
 @Composable
 private fun AnalysisContent(
-    analysis: ShenzhenGradeAnalysis,
-    onCompareTeachers: () -> Unit
+    analysis: ShenzhenGradeAnalysis
 ) {
-    var tab by remember(analysis.course.taskId) { mutableIntStateOf(0) }
-    Column(Modifier.fillMaxSize()) {
-        Row(
-            Modifier.fillMaxWidth().padding(horizontal = 16.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            listOf("概览", "我的分项", "全部成绩").forEachIndexed { index, title ->
-                FilterChip(
-                    selected = tab == index,
-                    onClick = { tab = index },
-                    label = { Text(title) },
-                    modifier = Modifier.weight(1f)
+    PersonalGradeContent(analysis)
+}
+
+@Composable
+private fun PersonalGradeContent(analysis: ShenzhenGradeAnalysis) {
+    val tokens = HitaTheme.tokens
+    LazyColumn(
+        modifier = Modifier.fillMaxSize(),
+        contentPadding = PaddingValues(tokens.spacing.lg),
+        verticalArrangement = Arrangement.spacedBy(tokens.spacing.sm)
+    ) {
+        item {
+            GradeCard {
+                Text("个人分项成绩", fontWeight = FontWeight.Bold)
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    "以下数据来自教务系统，可用于核对各分项得分及最终折算结果。",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    fontSize = 13.sp
                 )
+                analysis.myScore?.let {
+                    Spacer(Modifier.height(12.dp))
+                    Text(
+                        "按分项权重折算 ${format(it)} 分",
+                        color = MaterialTheme.colorScheme.primary,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                }
             }
         }
-        when (tab) {
-            0 -> OverviewTab(analysis, onCompareTeachers)
-            1 -> ComponentsTab(analysis)
-            else -> StudentScoresTab(analysis)
+        items(analysis.myComponents) { component ->
+            GradeCard {
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                    Text(component.name, fontWeight = FontWeight.SemiBold)
+                    Text("占比 ${format(component.weight)}%")
+                }
+                Text("${component.score?.let(::format) ?: "--"} / ${format(component.fullScore)}")
+            }
+        }
+        item {
+            Text(
+                "折算规则：每项先按满分换算为百分制，再乘以该项权重；总权重不等于 100% 时归一化。",
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                fontSize = 12.sp
+            )
         }
     }
 }

@@ -132,7 +132,10 @@ class PopUpLoginEAS : BottomSheetDialogFragment() {
                         },
                         onAutoLaunch = { campus ->
                             if (!autoLaunchTriggered && autoLaunchWebLogin &&
-                                campus == EASToken.Campus.BENBU && isUserAgreementAccepted()
+                                campus in setOf(
+                                    EASToken.Campus.BENBU,
+                                    EASToken.Campus.SHENZHEN
+                                ) && isUserAgreementAccepted()
                             ) {
                                 autoLaunchTriggered = true
                                 silentWebLoginTried = true
@@ -183,6 +186,10 @@ class PopUpLoginEAS : BottomSheetDialogFragment() {
             Intent(requireContext(), WebViewLoginActivity::class.java).apply {
                 putExtra(WebViewLoginActivity.EXTRA_SILENT_MODE, silentMode)
                 putExtra(WebViewLoginActivity.EXTRA_CAMPUS, campus.name)
+                putExtra(
+                    WebViewLoginActivity.EXTRA_STUDENT_TYPE,
+                    viewModel.easRepo.getEasToken().getStudentType()
+                )
             }
         )
     }
@@ -192,7 +199,11 @@ class PopUpLoginEAS : BottomSheetDialogFragment() {
             loginInProgress = false
             val campus = pendingWebViewCampus
             pendingWebViewCampus = null
-            if (autoLaunchWebLogin && silentWebLoginTried && campus == EASToken.Campus.BENBU) {
+            if (autoLaunchWebLogin && silentWebLoginTried && campus in setOf(
+                    EASToken.Campus.BENBU,
+                    EASToken.Campus.SHENZHEN
+                )
+            ) {
                 LogUtils.i("retry non-silent login")
                 silentWebLoginTried = false
             } else {

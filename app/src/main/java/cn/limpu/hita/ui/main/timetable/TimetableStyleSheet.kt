@@ -4,12 +4,23 @@ import android.view.Gravity
 import androidx.compose.runtime.Immutable
 import cn.limpu.hita.data.model.timetable.TimeInDay
 
+enum class CourseBubbleStyle(val storageValue: String) {
+    SOLID("solid"),
+    TONAL("tonal"),
+    OUTLINE("outline");
+
+    companion object {
+        fun fromStorage(value: String?): CourseBubbleStyle =
+            entries.firstOrNull { it.storageValue == value } ?: SOLID
+    }
+}
+
 @Immutable
 data class TimetableStyleSheet(
     val isColorEnabled: Boolean = true,
     val isFadeEnabled: Boolean = true,
-    val cardTitleColor: String = "white",
-    val subTitleColor: String = "white",
+    val cardTitleColor: String = "auto",
+    val subTitleColor: String = "auto",
     val iconColor: String = "white",
     val isBoldText: Boolean = true,
     val drawBGLine: Boolean = true,
@@ -24,6 +35,7 @@ data class TimetableStyleSheet(
     val titleAlpha: Int = 100,
     val subtitleAlpha: Int = 60,
     val drawNowLine: Boolean = true,
+    val courseBubbleStyle: CourseBubbleStyle = CourseBubbleStyle.SOLID,
 ) {
     val cardOpacity: Int get() = storedCardOpacity.coerceIn(20, 100)
     val startHour: Int get() = startTime / 100
