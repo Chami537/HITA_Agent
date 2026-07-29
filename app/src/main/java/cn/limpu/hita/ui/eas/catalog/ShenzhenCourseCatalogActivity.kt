@@ -86,6 +86,7 @@ import cn.limpu.hita.ui.eas.login.PopUpLoginEAS
 import cn.limpu.hita.utils.ActivityUtils
 import cn.limpu.hita.utils.TermNameFormatter
 import cn.limpu.hita.utils.TermUtils
+import cn.limpu.hita.ui.widgets.WidgetUtils
 import dagger.hilt.android.AndroidEntryPoint
 import java.util.Locale
 
@@ -98,6 +99,7 @@ class ShenzhenCourseCatalogActivity :
     private var uiState by mutableStateOf<CatalogUiState>(CatalogUiState.Loading)
     private var attachmentDialog by mutableStateOf<CourseAttachmentDialogState?>(null)
     private var historicalFailureDialog by mutableStateOf<HistoricalFailureDialogState?>(null)
+    private var isShowingCoursePlanPreview by mutableStateOf(false)
     private var pendingDownload: ShenzhenCourseAttachment? = null
     private val storagePermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestPermission()
@@ -122,25 +124,36 @@ class ShenzhenCourseCatalogActivity :
         bindLiveData()
         (binding.root as ComposeView).setContent {
             HitaComposeTheme {
-                ShenzhenCourseCatalogScreen(
-                    viewModel = viewModel,
-                    uiState = uiState,
-                    onBack = { finish() },
-                    onRefresh = { refresh() },
-                    onConnectWeb = { connectWebSession() },
-                    onSelectTerm = { showTermPicker() },
-                    onSelectPool = { showPoolPicker() },
-                    onSelectStudentType = { showStudentTypePicker() },
-                    onRecommend = { openCourseRecommendation() },
-                    attachmentDialog = attachmentDialog,
-                    historicalFailureDialog = historicalFailureDialog,
-                    onCourseClick = { showCourseActions(it) },
-                    onDismissAttachments = { attachmentDialog = null },
-                    onRetryAttachments = { retryCourseAttachments() },
-                    onDownloadAttachment = { downloadAttachment(it) },
-                    onDismissHistoricalFailure = { historicalFailureDialog = null },
-                    onRetryHistoricalFailure = { retryHistoricalFailureRates() }
-                )
+                if (isShowingCoursePlanPreview) {
+                    CoursePlanPreviewScreen(
+                        viewModel = viewModel,
+                        onBack = { isShowingCoursePlanPreview = false },
+                        onShowInTimetable = { viewModel.setCoursePlanProjectionEnabled(true) },
+                        onHideFromTimetable = { viewModel.setCoursePlanProjectionEnabled(false) },
+                        onClearDraft = { viewModel.clearCoursePlan() }
+                    )
+                } else {
+                    ShenzhenCourseCatalogScreen(
+                        viewModel = viewModel,
+                        uiState = uiState,
+                        onBack = { finish() },
+                        onRefresh = { refresh() },
+                        onConnectWeb = { connectWebSession() },
+                        onSelectTerm = { showTermPicker() },
+                        onSelectPool = { showPoolPicker() },
+                        onSelectStudentType = { showStudentTypePicker() },
+                        onRecommend = { openCourseRecommendation() },
+                        onShowCoursePlan = { showCoursePlan() },
+                        attachmentDialog = attachmentDialog,
+                        historicalFailureDialog = historicalFailureDialog,
+                        onCourseClick = { showCourseActions(it) },
+                        onDismissAttachments = { attachmentDialog = null },
+                        onRetryAttachments = { retryCourseAttachments() },
+                        onDownloadAttachment = { downloadAttachment(it) },
+                        onDismissHistoricalFailure = { historicalFailureDialog = null },
+                        onRetryHistoricalFailure = { retryHistoricalFailureRates() }
+                    )
+                }
             }
         }
     }
@@ -276,6 +289,60 @@ class ShenzhenCourseCatalogActivity :
                 }
             }
         }
+        viewModel.followActionLiveData.observe(this) { state ->
+            when (state.state) {
+                DataState.STATE.SUCCESS -> {
+                    Toast.makeText(this, "关注课程已同步到时间表", Toast.LENGTH_SHORT).show()
+                    WidgetUtils.sendRefreshToAll(this)
+                }
+                DataState.STATE.FETCH_FAILED -> Toast.makeText(
+                    this,
+                    state.message ?: "关注课程更新失败",
+                    Toast.LENGTH_LONG
+                ).show()
+                else -> Unit
+            }
+        }
+        viewModel.coursePlanActionLiveData.observe(this) { state ->
+            when (state.state) {
+                DataState.STATE.SUCCESS -> {
+                    Toast.makeText(this, "选课预览已更新", Toast.LENGTH_SHORT).show()
+                    WidgetUtils.sendRefreshToAll(this)
+                }
+                DataState.STATE.FETCH_FAILED -> Toast.makeText(
+                    this,
+                    state.message ?: "选课预览更新失败",
+                    Toast.LENGTH_LONG
+                ).show()
+                else -> Unit
+            }
+        }
+        viewModel.coursePlanProjectionActionLiveData.observe(this) { state ->
+            when (state.state) {
+                DataState.STATE.SUCCESS -> {
+                    val timetableId = state.data?.timetableId
+                    WidgetUtils.sendRefreshToAll(this)
+                    viewModel.consumeCoursePlanProjectionAction()
+                    if (timetableId != null) {
+                        isShowingCoursePlanPreview = false
+                        ActivityUtils.startTimetableDetailActivity(this, timetableId)
+                    } else {
+                        Toast.makeText(this, "选课预览已从时间表隐藏", Toast.LENGTH_SHORT).show()
+                    }
+                }
+                DataState.STATE.FETCH_FAILED -> {
+                    val message = state.message ?: "选课预览课表生成失败"
+                    viewModel.consumeCoursePlanProjectionAction()
+                    Toast.makeText(this, message, Toast.LENGTH_LONG).show()
+                }
+                DataState.STATE.LOADING -> Toast.makeText(
+                    this,
+                    state.message ?: "正在准备选课预览，完成后会自动打开",
+                    Toast.LENGTH_SHORT
+                ).show()
+                else -> Unit
+            }
+        }
     }
 
     override fun refresh() {
@@ -348,6 +415,14 @@ class ShenzhenCourseCatalogActivity :
     private fun openCourseRecommendation() {
         val term = viewModel.selectedTermLiveData.value ?: return
         startActivity(ShenzhenCourseRecommendationActivity.intent(this, term))
+    }
+
+    private fun showCoursePlan() {
+        if (viewModel.selectedTermLiveData.value == null) {
+            Toast.makeText(this, "请先选择课程所在学期", Toast.LENGTH_SHORT).show()
+            return
+        }
+        isShowingCoursePlanPreview = true
     }
 
     private fun showCourseAttachments(course: ShenzhenCourseCatalogItem) {
@@ -443,6 +518,7 @@ private fun ShenzhenCourseCatalogScreen(
     onSelectPool: () -> Unit,
     onSelectStudentType: () -> Unit,
     onRecommend: () -> Unit,
+    onShowCoursePlan: () -> Unit,
     attachmentDialog: CourseAttachmentDialogState?,
     historicalFailureDialog: HistoricalFailureDialogState?,
     onCourseClick: (ShenzhenCourseCatalogItem) -> Unit,
@@ -452,6 +528,7 @@ private fun ShenzhenCourseCatalogScreen(
     onDismissHistoricalFailure: () -> Unit,
     onRetryHistoricalFailure: () -> Unit
 ) {
+    val context = androidx.compose.ui.platform.LocalContext.current
     val tokens = HitaTheme.tokens
     val source by viewModel.sourceLiveData.observeAsState(ShenzhenCourseCatalogSource.AVAILABLE)
     val term by viewModel.selectedTermLiveData.observeAsState()
@@ -459,6 +536,14 @@ private fun ShenzhenCourseCatalogScreen(
     val studentType by viewModel.studentTypeLiveData.observeAsState("1")
     val query by viewModel.queryLiveData.observeAsState()
     val pageState by viewModel.coursesLiveData.observeAsState()
+    val followedSectionIds by viewModel.followedSectionIdsLiveData.observeAsState(emptySet())
+    val coursePlanDraft by viewModel.courseSelectionDraftLiveData.observeAsState()
+    val selectedCoursesState by viewModel.selectedCoursesLiveData.observeAsState()
+    val selectedCourses = selectedCoursesState?.data.orEmpty()
+    val selectedCourseIds = selectedCourses.mapTo(hashSetOf()) { it.taskId.ifBlank { it.id } }
+    val effectivePreviewCount = (selectedCourses + coursePlanDraft?.courses.orEmpty())
+        .distinctBy { it.taskId.ifBlank { it.id } }
+        .size
     val page = pageState?.data
     val isLoading = uiState is CatalogUiState.Loading ||
         (uiState is CatalogUiState.Ready && uiState.refreshing)
@@ -602,6 +687,14 @@ private fun ShenzhenCourseCatalogScreen(
         ) {
             Text("智能选课推荐")
         }
+        OutlinedButton(
+            onClick = onShowCoursePlan,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = tokens.spacing.lg, vertical = tokens.spacing.xs)
+        ) {
+            Text("选课预览 · $effectivePreviewCount（已选 ${selectedCourses.size}）")
+        }
 
         if (errorMessage != null) {
             Text(
@@ -631,7 +724,36 @@ private fun ShenzhenCourseCatalogScreen(
                     )
                 }
                 items(page.items, key = { "${it.source}-${it.id}" }) { item ->
-                    CourseCatalogCard(item, onClick = { onCourseClick(item) })
+                    CourseCatalogCard(
+                        item = item,
+                        followed = item.taskId.ifBlank { item.id } in followedSectionIds,
+                        selectedInEas = item.taskId.ifBlank { item.id } in selectedCourseIds,
+                        inCoursePlan = item.taskId.ifBlank { item.id } in coursePlanDraft?.courseIds.orEmpty(),
+                        conflictMessage = if (item.source == ShenzhenCourseCatalogSource.AVAILABLE) {
+                            viewModel.coursePlanConflict(item)
+                        } else {
+                            null
+                        },
+                        onToggleFollow = {
+                            if (!viewModel.toggleFollow(item)) {
+                                Toast.makeText(
+                                    context,
+                                    "正在加载本学期日期与作息，请稍后再试",
+                                    Toast.LENGTH_SHORT
+                                ).show()
+                            }
+                        },
+                        onToggleCoursePlan = {
+                            if (!viewModel.toggleCoursePlanCourse(item)) {
+                                Toast.makeText(
+                                    context,
+                                    "请先选择课程所在学期",
+                                    Toast.LENGTH_SHORT
+                                ).show()
+                            }
+                        },
+                        onClick = { onCourseClick(item) }
+                    )
                 }
                 item {
                     PaginationRow(
@@ -798,6 +920,12 @@ private fun FilterValue(text: String, onClick: () -> Unit, modifier: Modifier = 
 @Composable
 private fun CourseCatalogCard(
     item: ShenzhenCourseCatalogItem,
+    followed: Boolean,
+    selectedInEas: Boolean,
+    inCoursePlan: Boolean,
+    conflictMessage: String?,
+    onToggleFollow: () -> Unit,
+    onToggleCoursePlan: () -> Unit,
     onClick: () -> Unit
 ) {
     val tokens = HitaTheme.tokens
@@ -827,6 +955,33 @@ private fun CourseCatalogCard(
                 }
                 if (item.credits.isNotBlank()) {
                     Text("${item.credits} 学分", color = MaterialTheme.colorScheme.primary)
+                }
+                if (item.source == ShenzhenCourseCatalogSource.SCHOOL) {
+                    TextButton(
+                        onClick = onToggleFollow,
+                        enabled = followed || item.isFollowable
+                    ) {
+                        Text(
+                            when {
+                                followed -> "已关注"
+                                item.isFollowable -> "关注"
+                                else -> "时间不完整"
+                            }
+                        )
+                    }
+                } else {
+                    TextButton(
+                        onClick = onToggleCoursePlan,
+                        enabled = !selectedInEas
+                    ) {
+                        Text(
+                            when {
+                                selectedInEas -> "教务已选"
+                                inCoursePlan -> "已加入"
+                                else -> "加入预览"
+                            }
+                        )
+                    }
                 }
             }
             val metadata = listOf(
@@ -859,6 +1014,14 @@ private fun CourseCatalogCard(
                     color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f)
                 )
                 Text(item.schedule, fontSize = 13.sp, maxLines = 4, overflow = TextOverflow.Ellipsis)
+            }
+            if (conflictMessage != null) {
+                Text(
+                    text = conflictMessage,
+                    color = MaterialTheme.colorScheme.error,
+                    fontSize = 12.sp,
+                    modifier = Modifier.padding(top = tokens.spacing.sm)
+                )
             }
             Row(
                 modifier = Modifier
@@ -893,7 +1056,11 @@ private fun CourseCatalogCard(
                 }
             }
             Text(
-                text = "点击查看课程简介与教学大纲附件",
+                text = if (item.source == ShenzhenCourseCatalogSource.SCHOOL) {
+                    "关注后会显示在时间表、今日页和桌面小组件"
+                } else {
+                    "点击查看课程简介与教学大纲附件"
+                },
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 fontSize = 11.sp,
                 modifier = Modifier.padding(top = tokens.spacing.sm)

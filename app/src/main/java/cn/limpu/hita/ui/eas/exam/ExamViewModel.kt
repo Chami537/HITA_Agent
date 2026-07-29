@@ -183,15 +183,9 @@ class ExamViewModel @Inject constructor(
     }
 
     private fun publishMergedExamState(remoteState: DataState<List<ExamItem>>? = null) {
-        val merged = ExamMemoCodec.merge(lastRemoteExams, examMemoStore.getAll())
-        val output = if (merged.isNotEmpty() || remoteState == null || remoteState.state == DataState.STATE.SUCCESS) {
-            DataState(merged, DataState.STATE.SUCCESS).apply {
-                message = remoteState?.message
-            }
-        } else {
-            remoteState
-        }
-        rawExamLiveData.postValue(output)
+        rawExamLiveData.postValue(
+            mergeExamDataState(lastRemoteExams, examMemoStore.getAll(), remoteState)
+        )
     }
 
     private fun publishFilteredExamState() {
@@ -387,4 +381,28 @@ class ExamViewModel @Inject constructor(
         return newTable
     }
 
+}
+
+internal fun mergeExamDataState(
+    remoteExams: List<ExamItem>,
+    memoExams: List<ExamItem>,
+    remoteState: DataState<List<ExamItem>>?
+): DataState<List<ExamItem>> {
+    val merged = ExamMemoCodec.merge(remoteExams, memoExams)
+    if (remoteState?.state == DataState.STATE.NOT_LOGGED_IN) {
+        return DataState(merged, DataState.STATE.NOT_LOGGED_IN).apply {
+            message = remoteState.message
+        }
+    }
+    return if (
+        merged.isNotEmpty() ||
+        remoteState == null ||
+        remoteState.state == DataState.STATE.SUCCESS
+    ) {
+        DataState(merged, DataState.STATE.SUCCESS).apply {
+            message = remoteState?.message
+        }
+    } else {
+        remoteState
+    }
 }

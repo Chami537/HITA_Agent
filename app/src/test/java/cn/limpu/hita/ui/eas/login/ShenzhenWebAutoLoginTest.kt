@@ -37,4 +37,35 @@ class ShenzhenWebAutoLoginTest {
         assertTrue(postgrad.contains("if (false)"))
         assertTrue(postgrad.contains("if (true)"))
     }
+
+    @Test
+    fun `expired direct and proxy sessions navigate to their CAS endpoint`() {
+        val direct = "https://jw.hitsz.edu.cn"
+        val proxy = "https://jw-hitsz-edu-cn.hitsz.edu.cn"
+
+        assertEquals(
+            "$direct/cas",
+            ShenzhenWebAutoLogin.reauthenticationUrl(
+                "$direct/authentication/require",
+                direct,
+                proxy
+            )
+        )
+        assertEquals(
+            "$proxy/cas",
+            ShenzhenWebAutoLogin.reauthenticationUrl(
+                "$proxy/session/invalid",
+                direct,
+                proxy
+            )
+        )
+        assertEquals(
+            null,
+            ShenzhenWebAutoLogin.reauthenticationUrl(
+                "$proxy/authentication/main",
+                direct,
+                proxy
+            )
+        )
+    }
 }

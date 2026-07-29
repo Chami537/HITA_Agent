@@ -131,6 +131,7 @@ class WebViewLoginActivity : AppCompatActivity() {
             )
 
             const val SHENZHEN_PROXY_BASE = "https://jw-hitsz-edu-cn.hitsz.edu.cn"
+            const val SHENZHEN_DIRECT_BASE = "https://jw.hitsz.edu.cn"
             const val SHENZHEN_LOGIN = "$SHENZHEN_PROXY_BASE/"
             const val SHENZHEN_JWTS = "$SHENZHEN_PROXY_BASE/authentication/main"
             val SHENZHEN_PROBE_URLS = listOf(
@@ -159,7 +160,8 @@ class WebViewLoginActivity : AppCompatActivity() {
                 "AppleWebKit/537.36 (KHTML, like Gecko) " +
                 "Chrome/134.0.0.0 Safari/537.36"
         private val BENBU_REQUIRED_COOKIES = setOf("JSESSIONID", "HIT")
-        private val SHENZHEN_REQUIRED_COOKIES = setOf("JSESSIONID", "route")
+        private val SHENZHEN_DIRECT_SESSION_COOKIES = setOf("JSESSIONID", "route")
+        private const val SHENZHEN_PROXY_SESSION_COOKIE = "SESSION"
         private const val WEIHAI_TICKET_COOKIE_PREFIX = "wengine_vpn_ticket"
         private val WEIHAI_EAS_SESSION_COOKIE_HINTS = listOf("JSESSIONID", "HIT", "TWFID")
     }
@@ -197,6 +199,7 @@ class WebViewLoginActivity : AppCompatActivity() {
     private var shenzhenAutoAdvanceScheduledGeneration = -1
     private var shenzhenUnifiedLoginClicked = false
     private var shenzhenRoleSelectionClicked = false
+    private var shenzhenReauthenticationStarted = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         val campus = runCatching {
@@ -298,6 +301,7 @@ class WebViewLoginActivity : AppCompatActivity() {
         }
     }
 
+    @SuppressLint("SetJavaScriptEnabled")
     @Suppress("DEPRECATION")
     private fun setupWebView() {
         webView.apply {
@@ -462,6 +466,9 @@ class WebViewLoginActivity : AppCompatActivity() {
                     LogUtils.d("onPageFinished: host=${uri.host} path=${uri.path} autoOpeningJwts=$autoOpeningJwts")
                     logWebViewRenderMarker("page-finished", view, url)
                     if (applyShenzhenForceWebMode(view, url)) {
+                        return
+                    }
+                    if (redirectExpiredShenzhenSession(view, url)) {
                         return
                     }
                     schedulePageDiagnostics(view, url)
@@ -1352,10 +1359,12 @@ class WebViewLoginActivity : AppCompatActivity() {
         if (!shouldProbe) return
 
         view.postDelayed({
+            if (finished || !view.isAttachedToWindow) return@postDelayed
             logWebViewRenderMarker("diag-800ms", view, url)
             evaluatePageDiagnostics(view, "diag-800ms")
         }, 800)
         view.postDelayed({
+            if (finished || !view.isAttachedToWindow) return@postDelayed
             logWebViewRenderMarker("diag-2500ms", view, url)
             evaluatePageDiagnostics(view, "diag-2500ms")
         }, 2500)
@@ -1363,6 +1372,7 @@ class WebViewLoginActivity : AppCompatActivity() {
 
     @Suppress("DEPRECATION")
     private fun evaluatePageDiagnostics(view: WebView, marker: String) {
+        if (finished || !view.isAttachedToWindow) return
         val script = """
             (function() {
               function visibleStyle(el) {
@@ -1506,7 +1516,7 @@ class WebViewLoginActivity : AppCompatActivity() {
 
     @Suppress("DEPRECATION")
     private fun logWebViewRenderMarker(marker: String, view: WebView?, url: String? = view?.url) {
-        if (silentMode || view == null) return
+        if (silentMode || finished || view == null || !view.isAttachedToWindow) return
         val rect = Rect()
         val hasGlobalRect = view.getGlobalVisibleRect(rect)
         LogUtils.d(
@@ -1661,6 +1671,21 @@ class WebViewLoginActivity : AppCompatActivity() {
         )
     }
 
+    private fun redirectExpiredShenzhenSession(view: WebView, url: String): Boolean {
+        if (config.campus != EASToken.Campus.SHENZHEN || shenzhenReauthenticationStarted) {
+            return false
+        }
+        val destination = ShenzhenWebAutoLogin.reauthenticationUrl(
+            currentUrl = url,
+            directBaseUrl = CampusUrls.SHENZHEN_DIRECT_BASE,
+            proxyBaseUrl = CampusUrls.SHENZHEN_PROXY_BASE
+        ) ?: return false
+        shenzhenReauthenticationStarted = true
+        LogUtils.d("expired Shenzhen session page detected; opening CAS reauthentication")
+        view.loadUrl(destination)
+        return true
+    }
+
     private fun scheduleShenzhenAutoAdvance(view: WebView, url: String) {
         LogUtils.d(
             "SHENZHEN_AUTO schedule requested generation=$shenzhenAutoAdvanceGeneration " +
@@ -1751,7 +1776,14 @@ class WebViewLoginActivity : AppCompatActivity() {
         if (!needsDesktopUserAgent && shenzhenDesktopUserAgentApplied) {
             shenzhenDesktopUserAgentApplied = false
             view.settings.userAgentString = shenzhenMobileUserAgent
-            LogUtils.d("switching Shenzhen login navigation back to mobile user agent: host=$host")
+            // Software rendering is required by the desktop aTrust route, but on the mobile CAS
+            // form it offsets Chromium's native IME caret from the HTML input. Restore the normal
+            // hardware-composited WebView layer before reloading the mobile page.
+            view.setLayerType(View.LAYER_TYPE_NONE, null)
+            LogUtils.d(
+                "switching Shenzhen login navigation back to mobile user agent and default layer: " +
+                    "host=$host"
+            )
             view.stopLoading()
             view.post { if (!finished) view.loadUrl(url) }
             return true
@@ -1760,7 +1792,8 @@ class WebViewLoginActivity : AppCompatActivity() {
         if (needsDesktopUserAgent && !shenzhenDesktopUserAgentApplied) {
             shenzhenDesktopUserAgentApplied = true
             view.settings.userAgentString = SHENZHEN_DESKTOP_USER_AGENT
-            LogUtils.d("switching Shenzhen browser portal navigation to desktop user agent")
+            view.setLayerType(View.LAYER_TYPE_SOFTWARE, null)
+            LogUtils.d("switching Shenzhen browser portal navigation to desktop user agent and software layer")
             view.stopLoading()
             view.post { if (!finished) view.loadUrl(url) }
             return true
@@ -1795,6 +1828,7 @@ class WebViewLoginActivity : AppCompatActivity() {
         }
         shenzhenDesktopUserAgentApplied = true
         view.settings.userAgentString = SHENZHEN_DESKTOP_USER_AGENT
+        view.setLayerType(View.LAYER_TYPE_SOFTWARE, null)
         LogUtils.d("reloading Shenzhen proxy with desktop user agent")
         view.post { if (!finished) view.reload() }
         return true
@@ -2050,7 +2084,7 @@ class WebViewLoginActivity : AppCompatActivity() {
                 hasJsession && hasHit
             }
             EASToken.Campus.SHENZHEN ->
-                SHENZHEN_REQUIRED_COOKIES.all { cookies[it].orEmpty().isNotBlank() }
+                EASToken.hasShenzhenWebSessionCookies(cookies)
             EASToken.Campus.WEIHAI -> {
                 // 威海校区：需要 VPN ticket + JSESSIONID
                 val hasVpnTicket = hasWeihaiVpnTicket(cookies)
@@ -2209,7 +2243,9 @@ class WebViewLoginActivity : AppCompatActivity() {
                 }
             }
             EASToken.Campus.SHENZHEN -> {
-                SHENZHEN_REQUIRED_COOKIES.sorted().joinToString(prefix = "[", postfix = "]") { key ->
+                (SHENZHEN_DIRECT_SESSION_COOKIES + SHENZHEN_PROXY_SESSION_COOKIE)
+                    .sorted()
+                    .joinToString(prefix = "[", postfix = "]") { key ->
                     val value = cookies[key]
                     "$key=${value?.take(8) ?: "-"}"
                 }

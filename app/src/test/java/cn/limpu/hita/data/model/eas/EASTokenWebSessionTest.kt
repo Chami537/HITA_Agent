@@ -6,7 +6,7 @@ import org.junit.Test
 
 class EASTokenWebSessionTest {
     @Test
-    fun `Shenzhen web session requires route and JSESSIONID in dedicated jar`() {
+    fun `direct Shenzhen web session requires route and JSESSIONID in dedicated jar`() {
         val token = EASToken().apply {
             campus = EASToken.Campus.SHENZHEN
             cookies["JSESSIONID"] = "app-api-session"
@@ -18,6 +18,29 @@ class EASTokenWebSessionTest {
         token.webCookies["JSESSIONID"] = "web-session"
         token.webCookies["route"] = "web-route"
         assertTrue(token.hasShenzhenWebSession())
+    }
+
+    @Test
+    fun `proxied Shenzhen web session accepts the new SESSION cookie`() {
+        val token = EASToken().apply {
+            campus = EASToken.Campus.SHENZHEN
+            webBaseUrl = "https://jw-hitsz-edu-cn.hitsz.edu.cn"
+            webCookies["SESSION"] = "proxy-session"
+            webCookies["sdp_user_token"] = "proxy-user-token"
+        }
+
+        assertTrue(token.hasShenzhenWebSession())
+    }
+
+    @Test
+    fun `empty proxy SESSION cookie is rejected`() {
+        val token = EASToken().apply {
+            campus = EASToken.Campus.SHENZHEN
+            webCookies["SESSION"] = ""
+            webCookies["sdp_user_token"] = "proxy-user-token"
+        }
+
+        assertFalse(token.hasShenzhenWebSession())
     }
 
     @Test

@@ -39,4 +39,21 @@ class TermUtilsTest {
             result.map { it.id }
         )
     }
+
+    @Test
+    fun `course selection term can advance from current summer to next autumn`() {
+        val currentSummer = TermItem("2025-2026", "2025-2026", "3", "夏季")
+        val selectionAutumn = TermItem("2026-2027", "2026-2027", "1", "秋季").apply {
+            isCurrent = true
+        }
+
+        val result = TermUtils.filterTermsForStudent(
+            listOf(currentSummer, selectionAutumn),
+            grade = "2024级",
+            currentYear = 2026,
+            currentMonth = Calendar.JULY
+        )
+
+        assertEquals(listOf("2026-2027-1", "2025-2026-3"), result.map { it.id })
+    }
 }

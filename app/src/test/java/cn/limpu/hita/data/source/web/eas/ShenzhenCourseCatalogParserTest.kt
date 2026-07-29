@@ -25,7 +25,19 @@ class ShenzhenCourseCatalogParserTest {
     @Test
     fun `selection module current term overrides generic current term`() {
         val id = ShenzhenCourseCatalogParser.parseSelectionTermId(
-            """{"p_dqxn":"2025-2026","p_dqxq":"3","p_dqxnxq":"2025-20263"}"""
+            """{
+                "p_xn":"2026-2027","p_xq":"1","p_xnxq":"2026-20271",
+                "p_dqxn":"2025-2026","p_dqxq":"3","p_dqxnxq":"2025-20263"
+            }"""
+        )
+
+        assertEquals("2026-2027-1", id)
+    }
+
+    @Test
+    fun `selection term falls back to academic current term when target is blank`() {
+        val id = ShenzhenCourseCatalogParser.parseSelectionTermId(
+            """{"content":{"p_xn":"","p_xq":"","p_dqxn":"2025-2026","p_dqxq":"3"}}"""
         )
 
         assertEquals("2025-2026-3", id)
@@ -43,6 +55,19 @@ class ShenzhenCourseCatalogParserTest {
         assertEquals(2, terms.size)
         assertEquals("2025-2026-3", terms.last().id)
         assertTrue(terms.last().isCurrent)
+    }
+
+    @Test
+    fun `course selection dropdown parses nested lowercase terms including next autumn`() {
+        val terms = ShenzhenCourseCatalogParser.parseTerms(
+            """{"content":[
+                {"xn":"2026-2027","xq":"1","xnxq":"2026-20271","xnmc":"2026-2027学年","xqmc":"秋季学期"},
+                {"xn":"2025-2026","xq":"3","xnxq":"2025-20263","xnmc":"2025-2026学年","xqmc":"夏季学期"}
+            ]}"""
+        ).orEmpty()
+
+        assertEquals(listOf("2026-2027-1", "2025-2026-3"), terms.map { it.id })
+        assertEquals("2026-2027学年秋季学期", terms.first().name)
     }
 
     @Test
@@ -73,7 +98,8 @@ class ShenzhenCourseCatalogParserTest {
         assertEquals("程序设计", page.items.single().courseName)
         assertEquals("COURSE-1", page.items.single().courseId)
         assertEquals("TASK-1", page.items.single().taskNumber)
-        assertEquals("RW-1", page.items.single().taskId)
+        assertEquals("TASK-1", page.items.single().taskId)
+        assertEquals("RW-1", page.items.single().selectionRequestId)
         assertEquals(40, page.items.single().capacity)
         assertEquals(38, page.items.single().selectedCount)
         assertEquals("限选", page.items.single().selectionPoolName)
@@ -101,7 +127,8 @@ class ShenzhenCourseCatalogParserTest {
 
         requireNotNull(page)
         assertFalse(page.hasNextPage)
-        assertEquals("RW-2", page.items.single().taskId)
+        assertEquals("TASK-2", page.items.single().taskId)
+        assertEquals("RW-2", page.items.single().selectionRequestId)
         assertEquals(12, page.items.single().capacity)
         assertEquals(9, page.items.single().selectedCount)
     }
@@ -125,6 +152,54 @@ class ShenzhenCourseCatalogParserTest {
         assertTrue(page.items.single().hasConflict)
         assertEquals("与 已选课程 冲突", page.items.single().conflictDescription)
         assertEquals("1-16周,星期一第1-2节 T3401", page.items.single().schedule)
+        assertEquals((1..16).toList(), page.items.single().meetings.single().weeks)
+        assertEquals(1, page.items.single().meetings.single().weekday)
+        assertEquals(2, page.items.single().meetings.single().endPeriod)
+    }
+
+    @Test
+    fun `selected operation timestamp is not treated as a meeting`() {
+        val page = ShenzhenCourseCatalogParser.parsePage(
+            body = """{
+                "yxkcList":[{
+                    "id":"ROW-1","rwh":"TASK-1","kcdm":"COMP2001","kcmc":"算法",
+                    "xksj":"2026-07-26 10:30:00",
+                    "pkjgmx":"<p>1-8单周,星期三第3-4节 [T3401]</p>"
+                }]
+            }""",
+            source = ShenzhenCourseCatalogSource.AVAILABLE,
+            studentType = "1"
+        )
+
+        requireNotNull(page)
+        val item = page.items.single()
+        assertFalse(item.schedule.contains("2026-07-26"))
+        assertEquals(listOf(1, 3, 5, 7), item.meetings.single().weeks)
+        assertEquals(3, item.meetings.single().weekday)
+    }
+
+    @Test
+    fun `structured school meeting supports binary week mask`() {
+        val page = ShenzhenCourseCatalogParser.parsePage(
+            body = """{
+                "rwList":{"list":[{
+                    "rwh":"TASK-9","kcdm":"MATH1001","kcmc":"数学",
+                    "sksjList":[{
+                        "xqj":"5","ksjc":"7","jsjc":"8",
+                        "zc":"110100000000000000000000000000000",
+                        "skjs":"李老师","jasmc":"A101"
+                    }]
+                }]}
+            }""",
+            source = ShenzhenCourseCatalogSource.SCHOOL,
+            studentType = "1"
+        )
+
+        val meeting = requireNotNull(page).items.single().meetings.single()
+        assertEquals(listOf(1, 2, 4), meeting.weeks)
+        assertEquals(5, meeting.weekday)
+        assertEquals("A101", meeting.location)
+        assertTrue(page.items.single().isFollowable)
     }
 
     @Test

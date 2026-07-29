@@ -43,7 +43,7 @@ class AddTimetableArrangementTool : AgentTool<TimetableAgentInput, TimetableAgen
                     ?.let { repository.getTimetableByIdSync(it) }
                     ?: repository.getRecentTimetableSync()
                     ?: repository.ensureDefaultCustomTimetableSync()
-                    LogUtils.d("[DEBUG] Got timetable: id=${timetable.id}, name=${timetable.name}")
+                LogUtils.d("[DEBUG] Got timetable: id=${timetable.id}, name=${timetable.name}")
 
                 val result = ScheduleEventCreator.buildEvents(
                     timetable = timetable,

@@ -73,6 +73,7 @@ import cn.limpu.hita.utils.WeightedScoreCalculator
 import cn.limpu.hita.utils.formatCredits
 import com.limpu.style.widgets.PopUpCheckableList
 import dagger.hilt.android.AndroidEntryPoint
+import java.util.Locale
 
 @AndroidEntryPoint
 class ScoreInquiryActivity :
@@ -149,10 +150,8 @@ class ScoreInquiryActivity :
                 }
 
                 DataState.STATE.NOT_LOGGED_IN -> {
-                    if (scoreQueryInFlight) {
-                        if (!handleSessionExpired { retryCurrentScoreQuery() }) {
-                            scoreQueryInFlight = false
-                        }
+                    if (!handleSessionExpired { retryCurrentScoreQuery() }) {
+                        scoreQueryInFlight = false
                     }
                 }
 
@@ -484,10 +483,12 @@ private fun ScoreSummaryCard(
     val tokens = HitaTheme.tokens
     val weightedAverageRaw = summary?.weightedAverage?.ifBlank { "-" } ?: "-"
     val weightedAverage = weightedAverageRaw.toDoubleOrNull()
-        ?.let { String.format("%.2f", it) }
+        ?.let { String.format(Locale.ROOT, "%.2f", it) }
         ?: weightedAverageRaw
     val gpaRaw = summary?.gpa?.ifBlank { "-" } ?: "-"
-    val gpa = gpaRaw.toDoubleOrNull()?.let { String.format("%.2f", it) } ?: gpaRaw
+    val gpa = gpaRaw.toDoubleOrNull()
+        ?.let { String.format(Locale.ROOT, "%.2f", it) }
+        ?: gpaRaw
     val rank = summary?.rank?.ifBlank { "-" } ?: "-"
     val total = summary?.total?.ifBlank { "" } ?: ""
     val rankText = if (total.isNotBlank() && rank.isNotBlank() && rank != "-") "$rank / $total" else rank
@@ -539,7 +540,7 @@ private fun ScoreSummaryCard(
                 SummaryMetric(
                     label = stringResource(R.string.score_local_estimated_average),
                     value = if (hasLocalEstimate) {
-                        String.format("%.1f", localEstimate?.weightedAverage)
+                        String.format(Locale.ROOT, "%.1f", localEstimate?.weightedAverage)
                     } else "-",
                     primary = true,
                     modifier = Modifier.weight(1f)

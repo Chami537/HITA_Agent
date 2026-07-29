@@ -3,6 +3,7 @@ package cn.limpu.hita.data.source.web.eas
 import cn.limpu.hita.data.model.eas.ShenzhenCourseCatalogItem
 import cn.limpu.hita.data.model.eas.ShenzhenCourseCatalogPage
 import cn.limpu.hita.data.model.eas.ShenzhenCourseCatalogSource
+import cn.limpu.hita.data.model.eas.ShenzhenCourseMeeting
 import cn.limpu.hita.data.model.eas.ShenzhenCourseAttachment
 import cn.limpu.hita.data.model.eas.ShenzhenCourseAttachmentKind
 import cn.limpu.hita.data.model.eas.ShenzhenSelectionPool
@@ -33,35 +34,58 @@ internal object ShenzhenCourseCatalogParser {
     fun parseSelectionTermId(body: String): String? {
         val parsed = runCatching { JsonParser().parse(body) }.getOrNull()
             ?.takeIf { it.isJsonObject }?.asJsonObject ?: return null
-        val year = first(parsed, "p_dqxn", "p_xn")
-        val term = first(parsed, "p_dqxq", "p_xq")
+        val payload = parsed.get("content")?.takeIf { it.isJsonObject }?.asJsonObject
+            ?: parsed.get("data")?.takeIf { it.isJsonObject }?.asJsonObject
+            ?: parsed
+        // p_xn/p_xq are the actual course-selection term. p_dq* is only the
+        // academic calendar's current-term fallback (for example summer while
+        // autumn course selection is already open).
+        val yearKeys = arrayOf("p_xn", "xn", "XN", "p_dqxn", "dqxn")
+        val termKeys = arrayOf("p_xq", "xq", "XQ", "p_dqxq", "dqxq")
+        val year = first(payload, *yearKeys).ifBlank { first(parsed, *yearKeys) }
+        val term = first(payload, *termKeys).ifBlank { first(parsed, *termKeys) }
         return if (year.isBlank() || term.isBlank()) null else "$year-$term"
     }
 
     fun parseTerms(body: String): List<TermItem>? {
         val parsed: JsonElement = runCatching { JsonParser().parse(body) }.getOrNull() ?: return null
-        if (!parsed.isJsonArray) return null
-        val rows = parsed.asJsonArray
-        val result = buildList<TermItem> {
-            rows.forEach { element ->
-                val row = element.takeIf { it.isJsonObject }?.asJsonObject ?: return@forEach
-                val year = first(row, "XN")
-                val term = first(row, "XQ")
-                if (year.isBlank() || term.isBlank()) return@forEach
-                add(
-                    TermItem(
-                        yearCode = year,
-                        yearName = first(row, "XNMC").ifBlank { year },
-                        termCode = term,
-                        termName = first(row, "XQMC", "XNXQMC")
-                    ).apply {
-                        name = first(row, "XNXQMC").ifBlank { "$year-$term" }
-                        isCurrent = first(row, "SFDQXQ") == "1"
-                    }
-                )
+        val rows = mutableListOf<JsonObject>()
+        collectTermRows(parsed, rows)
+        val result = rows.mapNotNull { row ->
+            val year = first(row, "XN", "xn")
+            val term = first(row, "XQ", "xq")
+            if (year.isBlank() || term.isBlank()) return@mapNotNull null
+            val yearName = first(row, "XNMC", "xnmc").ifBlank { year }
+            val termName = first(row, "XQMC", "xqmc", "XNXQMC", "xnxqmc")
+            TermItem(
+                yearCode = year,
+                yearName = yearName,
+                termCode = term,
+                termName = termName
+            ).apply {
+                name = listOf(yearName, termName).joinToString("")
+                    .ifBlank { first(row, "XNXQMC", "xnxqmc", "XNXQ", "xnxq") }
+                    .ifBlank { "$year-$term" }
+                isCurrent = first(row, "SFDQXQ", "sfdqxq") == "1"
+            }
+        }.distinctBy { it.id }
+        return result.takeIf { it.isNotEmpty() }
+    }
+
+    private fun collectTermRows(element: JsonElement, rows: MutableList<JsonObject>) {
+        when {
+            element.isJsonArray -> element.asJsonArray.forEach { collectTermRows(it, rows) }
+            element.isJsonObject -> {
+                val row = element.asJsonObject
+                val hasTermIdentity = first(row, "XNXQ", "xnxq").isNotBlank() ||
+                    (first(row, "XN", "xn").isNotBlank() && first(row, "XQ", "xq").isNotBlank())
+                if (hasTermIdentity) {
+                    rows += row
+                } else {
+                    row.entrySet().forEach { (_, value) -> collectTermRows(value, rows) }
+                }
             }
         }
-        return result.takeIf { it.isNotEmpty() }
     }
 
     fun parsePage(
@@ -103,25 +127,33 @@ internal object ShenzhenCourseCatalogParser {
                 } else {
                     arrayOf("bksyxrs", "BKSYXRS", "yxzrs", "YXZRS")
                 }
+                val rawSchedule = first(row, "pkjgmx", "PKJGMX", "sksj", "SKSJ")
+                    .ifBlank {
+                        if (source == ShenzhenCourseCatalogSource.SCHOOL) {
+                            first(row, "xksj", "XKSJ")
+                        } else {
+                            ""
+                        }
+                    }
+                val teacher = first(row, "dgjsmc", "DGJSMC", "jsmc", "JSMC", "skjs", "SKJS")
                 add(
                     ShenzhenCourseCatalogItem(
                         id = first(row, "rwh", "RWH", "rwid", "RWID", "id", "ID")
                             .ifBlank { "$code-$index" },
-                        taskId = first(row, "rwid", "RWID", "id", "ID"),
+                        taskId = first(row, "rwh", "RWH", "rwid", "RWID"),
+                        selectionRequestId = first(row, "id", "ID", "rwid", "RWID"),
                         courseId = first(row, "kcid", "KCID"),
                         taskNumber = first(row, "rwh", "RWH"),
                         courseCode = code,
                         courseName = name,
-                        teacher = first(row, "dgjsmc", "DGJSMC", "jsmc", "JSMC"),
+                        teacher = teacher,
                         credits = first(row, "xf", "XF"),
                         totalHours = first(row, "zxs", "ZXS", "xszxs", "XSZXS"),
                         courseNature = first(row, "kcxzmc", "KCXZMC", "kcxz", "KCXZ"),
                         courseCategory = first(row, "kclbmc", "KCLBMC", "kclb", "KCLB"),
                         offeringCollege = first(row, "kkyxmc", "KKYXMC", "kkyx", "KKYX"),
                         campus = first(row, "xiaoqumc", "XIAOQUMC", "xiaoqu", "XIAOQU"),
-                        schedule = plainText(
-                            first(row, "xksj", "XKSJ", "sksj", "SKSJ", "pkjgmx", "PKJGMX")
-                        ),
+                        schedule = plainText(rawSchedule),
                         selectionRequirement = first(row, "xkyq", "XKYQ"),
                         teachingLanguage = first(row, "skyymc", "SKYYMC"),
                         trainingLevel = first(row, "pyccmc", "PYCCMC"),
@@ -133,6 +165,11 @@ internal object ShenzhenCourseCatalogParser {
                         selectionPoolName = selectionPoolName.ifBlank {
                             first(row, "xkfsmc", "XKFSMC")
                         },
+                        classNumber = first(
+                            row,
+                            "bjh", "BJH", "rwbh", "RWBH", "jxbh", "JXBH", "dgbjmc", "DGBJMC"
+                        ),
+                        meetings = parseMeetings(row, rawSchedule, teacher),
                         source = source
                     )
                 )
@@ -212,10 +249,143 @@ internal object ShenzhenCourseCatalogParser {
         return runCatching { value.asDouble.toInt() }.getOrNull()
     }
 
+    internal fun parseMeetings(
+        row: JsonObject,
+        rawSchedule: String,
+        fallbackTeacher: String = ""
+    ): List<ShenzhenCourseMeeting> {
+        val structured = sequenceOf("sksjList", "SKSJLIST", "timeList")
+            .mapNotNull { key -> row.get(key)?.takeIf { it.isJsonArray }?.asJsonArray }
+            .firstOrNull()
+            ?.mapNotNull { element ->
+                element.takeIf { it.isJsonObject }?.asJsonObject?.let { meeting ->
+                    parseStructuredMeeting(meeting, row, fallbackTeacher)
+                }
+            }
+            .orEmpty()
+        if (structured.isNotEmpty()) return structured.distinct()
+
+        parseStructuredMeeting(row, row, fallbackTeacher)?.let { return listOf(it) }
+        if (rawSchedule.isBlank()) return emptyList()
+
+        val fragments = Jsoup.parseBodyFragment(rawSchedule).body()
+            .select("p, li")
+            .map { it.text() }
+            .ifEmpty {
+                plainText(rawSchedule).split(Regex("[;；\\n]+"))
+            }
+        return fragments.mapNotNull { fragment ->
+            val weekday = parseWeekday(fragment) ?: return@mapNotNull null
+            val period = PERIOD_REGEX.find(fragment) ?: return@mapNotNull null
+            val begin = period.groupValues[1].toIntOrNull() ?: return@mapNotNull null
+            val end = period.groupValues[2].toIntOrNull() ?: begin
+            val weeks = parseWeeks(fragment)
+            if (weeks.isEmpty()) return@mapNotNull null
+            val location = fragment.substringAfter("节", "")
+                .trim(' ', ',', '，', ';', '；', '[', ']', '【', '】')
+            ShenzhenCourseMeeting(
+                weeks = weeks,
+                weekday = weekday,
+                beginPeriod = begin,
+                endPeriod = end,
+                teacher = fallbackTeacher,
+                location = location
+            )
+        }.distinct()
+    }
+
+    private fun parseStructuredMeeting(
+        row: JsonObject,
+        fallback: JsonObject,
+        fallbackTeacher: String
+    ): ShenzhenCourseMeeting? {
+        if (first(row, "key", "KEY").equals("bz", ignoreCase = true)) return null
+        val weekday = parseWeekday(firstNonBlank(row, fallback, "xqj", "XQJ", "xq", "XQ", "weekday"))
+            ?: return null
+        val begin = firstNonBlank(row, fallback, "ksjc", "KSJC", "qsjc", "QSJC", "beginPeriod")
+            .toDoubleOrNull()?.toInt() ?: return null
+        val end = firstNonBlank(row, fallback, "jsjc", "JSJC", "zzjc", "ZZJC", "endPeriod")
+            .toDoubleOrNull()?.toInt() ?: begin
+        val weeks = parseWeeks(firstNonBlank(row, fallback, "zc", "ZC", "skzc", "SKZC", "weeks"))
+        if (weeks.isEmpty()) return null
+        return ShenzhenCourseMeeting(
+            weeks = weeks,
+            weekday = weekday,
+            beginPeriod = begin,
+            endPeriod = end,
+            teacher = firstNonBlank(row, fallback, "skjs", "SKJS", "jsxm", "JSXM", "teacher")
+                .ifBlank { fallbackTeacher },
+            location = firstNonBlank(
+                row,
+                fallback,
+                "jasmc", "JASMC", "cdmc", "CDMC", "skdd", "SKDD", "location"
+            )
+        )
+    }
+
+    private fun firstNonBlank(primary: JsonObject, fallback: JsonObject, vararg keys: String): String =
+        first(primary, *keys).ifBlank { first(fallback, *keys) }
+
+    internal fun parseWeeks(raw: String): List<Int> {
+        val normalized = raw.trim()
+            .replace('－', '-')
+            .replace('—', '-')
+            .replace('~', '-')
+            .replace("至", "-")
+        if (normalized.length in 33..34 && normalized.all { it == '0' || it == '1' }) {
+            return normalized.takeLast(33).mapIndexedNotNull { index, value ->
+                if (value == '1') index + 1 else null
+            }
+        }
+        val expression = WEEK_REGEX.find(normalized)?.groupValues?.getOrNull(1) ?: normalized
+        val parity = when {
+            normalized.contains('单') -> 1
+            normalized.contains('双') -> 0
+            else -> null
+        }
+        return buildSet {
+            expression.split(',', '，', '、').forEach { component ->
+                val numbers = NUMBER_REGEX.findAll(component).mapNotNull { it.value.toIntOrNull() }.toList()
+                when {
+                    numbers.size >= 2 && component.contains('-') -> {
+                        val first = numbers[0]
+                        val last = numbers[1]
+                        if (first <= last) {
+                            (first..last).filterTo(this) { week ->
+                                week in 1..33 && (parity == null || week % 2 == parity)
+                            }
+                        }
+                    }
+                    numbers.isNotEmpty() -> numbers.filterTo(this) { week ->
+                        week in 1..33 && (parity == null || week % 2 == parity)
+                    }
+                }
+            }
+        }.sorted()
+    }
+
+    private fun parseWeekday(raw: String): Int? {
+        raw.trim().toIntOrNull()?.takeIf { it in 1..7 }?.let { return it }
+        return when {
+            raw.contains("星期一") || raw.contains("周一") -> 1
+            raw.contains("星期二") || raw.contains("周二") -> 2
+            raw.contains("星期三") || raw.contains("周三") -> 3
+            raw.contains("星期四") || raw.contains("周四") -> 4
+            raw.contains("星期五") || raw.contains("周五") -> 5
+            raw.contains("星期六") || raw.contains("周六") -> 6
+            raw.contains("星期日") || raw.contains("星期天") || raw.contains("周日") || raw.contains("周天") -> 7
+            else -> null
+        }
+    }
+
     private fun plainText(value: String): String {
         if (value.isBlank()) return ""
         return Jsoup.parseBodyFragment(value).text()
             .replace(Regex("\\s+"), " ")
             .trim()
     }
+
+    private val WEEK_REGEX = Regex("(?:第)?([0-9、,，\\-~至单双]+)周")
+    private val PERIOD_REGEX = Regex("(?:第)?(\\d{1,2})(?:[-~至](\\d{1,2}))?节")
+    private val NUMBER_REGEX = Regex("\\d+")
 }

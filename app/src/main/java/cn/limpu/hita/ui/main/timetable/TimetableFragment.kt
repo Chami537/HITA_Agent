@@ -593,6 +593,41 @@ private fun TimetableWeekContent(
 }
 
 @Composable
+internal fun ReadOnlyTimetableWeek(
+    startDate: Long,
+    events: List<EventItem>,
+    scheduleStructure: List<TimePeriodInDay>,
+    onPreviousWeek: () -> Unit = {},
+    onNextWeek: () -> Unit = {},
+    onEventClick: (EventItem) -> Unit = {}
+) {
+    val firstPeriod = scheduleStructure.firstOrNull()
+    val lastPeriod = scheduleStructure.lastOrNull()
+    val startTime = firstPeriod?.from?.let { it.hour * 100 + it.minute } ?: 800
+    val endHour = lastPeriod?.to?.let {
+        it.hour + if (it.minute > 0) 1 else 0
+    }?.coerceAtLeast(startTime / 100 + 1) ?: 22
+    TimetableWeekContent(
+        startDate = startDate,
+        events = events,
+        style = TimetableStyleSheet(
+            usePeriodLabel = true,
+            startTime = startTime,
+            endHour = endHour,
+            drawNowLine = false
+        ),
+        scheduleStructure = scheduleStructure,
+        dateColor = MaterialTheme.colorScheme.onSurface,
+        labelColor = MaterialTheme.colorScheme.onSurfaceVariant,
+        onPrevWeek = onPreviousWeek,
+        onNextWeek = onNextWeek,
+        onEventClick = onEventClick,
+        onEventLongClick = { _, _ -> },
+        onAddClick = { _, _ -> }
+    )
+}
+
+@Composable
 private fun TimetableDowHeader(startDate: Long, monthColor: Color) {
     val months = stringArrayResource(R.array.months)
     val dows = listOf(

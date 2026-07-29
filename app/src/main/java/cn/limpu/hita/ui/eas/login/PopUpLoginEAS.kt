@@ -79,6 +79,7 @@ class PopUpLoginEAS : BottomSheetDialogFragment() {
     private var pendingWebViewCampus: EASToken.Campus? = null
     private var autoLaunchTriggered = false
     private var silentWebLoginTried = false
+    private var pendingNonSilentCampus by mutableStateOf<EASToken.Campus?>(null)
     private var loginInProgress by mutableStateOf(false)
 
     private val viewModel: LoginEASViewModel by viewModels()
@@ -113,6 +114,12 @@ class PopUpLoginEAS : BottomSheetDialogFragment() {
                         contract = ActivityResultContracts.StartActivityForResult()
                     ) { result ->
                         handleWebViewResult(result.resultCode, result.data)
+                    }
+
+                    LaunchedEffect(pendingNonSilentCampus) {
+                        val campus = pendingNonSilentCampus ?: return@LaunchedEffect
+                        pendingNonSilentCampus = null
+                        launchCampusWebLogin(campus, silentMode = false, webViewLauncher)
                     }
 
                     LoginEASScreen(
@@ -204,8 +211,9 @@ class PopUpLoginEAS : BottomSheetDialogFragment() {
                     EASToken.Campus.SHENZHEN
                 )
             ) {
-                LogUtils.i("retry non-silent login")
+                LogUtils.i("silent session recovery needs interaction; opening visible login")
                 silentWebLoginTried = false
+                pendingNonSilentCampus = campus
             } else {
                 LogUtils.e("WebView login FAILED")
                 onResponseListener?.onFailed(this)

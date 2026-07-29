@@ -4,6 +4,15 @@ import java.util.*
 
 class EASToken {
 
+    companion object {
+        fun hasShenzhenWebSessionCookies(cookies: Map<String, String>): Boolean {
+            val hasDirectSession = cookies["JSESSIONID"].orEmpty().isNotBlank() &&
+                cookies["route"].orEmpty().isNotBlank()
+            val hasProxySession = cookies["SESSION"].orEmpty().isNotBlank()
+            return hasDirectSession || hasProxySession
+        }
+    }
+
     enum class TYPE { UNDERGRAD, GRAD }
 
     enum class Campus {
@@ -19,7 +28,8 @@ class EASToken {
     var cookies = HashMap<String, String>()
 
     // --- 深圳 Web 教务 (jw.hitsz.edu.cn) 独立 Cookie 会话 ---
-    // 与 mjw App API 的 JSESSIONID/route 同名但不同域，必须分开保存，禁止互相覆盖。
+    // 直连旧会话使用 JSESSIONID/route；网页代理新会话使用 SESSION，并通常同时携带
+    // sdp_user_token。它们都必须与 mjw App API 的 Cookie 分开保存，禁止互相覆盖。
     var webCookies = HashMap<String, String>()
     // 校外通过 hitsz.edu.cn 网页代理访问时记录代理根地址；旧会话为空时仍使用直连地址。
     var webBaseUrl: String? = null
@@ -58,9 +68,7 @@ class EASToken {
     }
 
     fun hasShenzhenWebSession(): Boolean {
-        return campus == Campus.SHENZHEN &&
-            webCookies["JSESSIONID"].orEmpty().isNotBlank() &&
-            webCookies["route"].orEmpty().isNotBlank()
+        return campus == Campus.SHENZHEN && hasShenzhenWebSessionCookies(webCookies)
     }
 
     override fun toString(): String {

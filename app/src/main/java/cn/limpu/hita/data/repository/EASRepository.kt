@@ -75,6 +75,7 @@ class EASRepository @Inject constructor(
     private var timetableDao = AppDatabase.getDatabase(application).timetableDao()
     private var subjectDao = AppDatabase.getDatabase(application).subjectDao()
     private var classroomCacheDao = AppDatabase.getDatabase(application).classroomCacheDao()
+    private val timetableSnapshotStore = TimetableSnapshotStore(appContext)
     private val easTokenLiveData = MutableLiveData(easPreferenceSource.getEasToken())
 
     companion object {
@@ -748,6 +749,13 @@ class EASRepository @Inject constructor(
                                     return@Thread
                                 }
                                 LogUtils.d( "import: saving ${events.size} events for term=${term.getCode()}")
+                                val snapshotOwnerKey = FollowedTeachingSectionStore.ownerKey(easToken)
+                                timetableSnapshotStore.capture(
+                                    snapshotOwnerKey,
+                                    term,
+                                    timetable,
+                                    TimetableSnapshotKind.BEFORE_REFRESH
+                                )
                                 eventItemDao.deleteCourseFromTimetable(timetable.id)
                                 subjectDao.saveSubjectsSync(pendingSubjects.values.toList())
                                 eventItemDao.saveEvents(events)
@@ -759,6 +767,12 @@ class EASRepository @Inject constructor(
                                 timetable.code = timetableCode
                                 timetable.scheduleStructure = safeSchedule
                                 timetableDao.saveTimetableSync(timetable)
+                                timetableSnapshotStore.capture(
+                                    snapshotOwnerKey,
+                                    term,
+                                    timetable,
+                                    TimetableSnapshotKind.IMPORTED
+                                )
                                 cleanupDefaultDuplicateTimetablesAfterImport(timetable.id)
 
                                 if (finished.compareAndSet(false, true)) {
@@ -1180,6 +1194,25 @@ class EASRepository @Inject constructor(
         }
     }
 
+    fun getShenzhenSelectedCourses(
+        term: TermItem
+    ): LiveData<DataState<List<ShenzhenCourseCatalogItem>>> =
+        shenzhenService.getShenzhenSelectedCourses(easPreferenceSource.getEasToken(), term)
+
+    fun getShenzhenCoursePlanningStartDate(term: TermItem): LiveData<DataState<Calendar>> =
+        shenzhenService.getShenzhenCoursePlanningStartDate(
+            easPreferenceSource.getEasToken(),
+            term
+        )
+
+    fun getShenzhenCoursePlanningScheduleStructure(
+        term: TermItem
+    ): LiveData<DataState<MutableList<TimePeriodInDay>>> =
+        shenzhenService.getShenzhenCoursePlanningScheduleStructure(
+            easPreferenceSource.getEasToken(),
+            term
+        )
+
     fun getShenzhenRecommendationTracks(): LiveData<DataState<List<ShenzhenRecommendationTrack>>> {
         return shenzhenService.getShenzhenCreditProgress(
             easPreferenceSource.getEasToken(),
@@ -1332,6 +1365,42 @@ class EASRepository @Inject constructor(
 
     fun getEasToken(): EASToken {
         return easPreferenceSource.getEasToken()
+    }
+
+    fun getTimetableSnapshots(term: TermItem): LiveData<DataState<List<TimetableVersionSnapshot>>> {
+        val result = MutableLiveData<DataState<List<TimetableVersionSnapshot>>>(
+            DataState(DataState.STATE.NOTHING)
+        )
+        thread(name = "timetable-snapshot-list") {
+            runCatching {
+                val token = easPreferenceSource.getEasToken()
+                val ownerKey = FollowedTeachingSectionStore.ownerKey(token)
+                timetableSnapshotStore.snapshots(ownerKey, term.id)
+            }.onSuccess {
+                result.postValue(DataState(it, DataState.STATE.SUCCESS))
+            }.onFailure { error ->
+                result.postValue(DataState(DataState.STATE.FETCH_FAILED, error.message))
+            }
+        }
+        return result
+    }
+
+    fun restoreTimetableSnapshot(snapshotId: String): LiveData<DataState<TimetableVersionSnapshot>> {
+        val result = MutableLiveData<DataState<TimetableVersionSnapshot>>(
+            DataState(DataState.STATE.NOTHING)
+        )
+        thread(name = "timetable-snapshot-restore") {
+            runCatching {
+                val token = easPreferenceSource.getEasToken()
+                val ownerKey = FollowedTeachingSectionStore.ownerKey(token)
+                timetableSnapshotStore.restore(ownerKey, snapshotId)
+            }.onSuccess {
+                result.postValue(DataState(it, DataState.STATE.SUCCESS))
+            }.onFailure { error ->
+                result.postValue(DataState(DataState.STATE.FETCH_FAILED, error.message))
+            }
+        }
+        return result
     }
 
     fun observeEasToken(): LiveData<EASToken> {

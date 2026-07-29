@@ -8,6 +8,7 @@ enum class ShenzhenCourseCatalogSource {
 data class ShenzhenCourseCatalogItem(
     val id: String,
     val taskId: String = "",
+    val selectionRequestId: String = "",
     val courseId: String = "",
     val taskNumber: String = "",
     val courseCode: String,
@@ -28,10 +29,28 @@ data class ShenzhenCourseCatalogItem(
     val hasConflict: Boolean = false,
     val conflictDescription: String = "",
     val selectionPoolName: String = "",
+    val classNumber: String = "",
+    val meetings: List<ShenzhenCourseMeeting> = emptyList(),
     val source: ShenzhenCourseCatalogSource
 ) {
     val remainingSeats: Int?
         get() = if (capacity != null && selectedCount != null) capacity - selectedCount else null
+
+    val isFollowable: Boolean
+        get() = source == ShenzhenCourseCatalogSource.SCHOOL &&
+            meetings.isNotEmpty() && meetings.all(ShenzhenCourseMeeting::isStructurallyComplete)
+}
+
+data class ShenzhenCourseMeeting(
+    val weeks: List<Int>,
+    val weekday: Int,
+    val beginPeriod: Int,
+    val endPeriod: Int,
+    val teacher: String = "",
+    val location: String = ""
+) {
+    fun isStructurallyComplete(): Boolean =
+        weeks.isNotEmpty() && weekday in 1..7 && beginPeriod > 0 && endPeriod >= beginPeriod
 }
 
 data class ShenzhenCourseCatalogPage(

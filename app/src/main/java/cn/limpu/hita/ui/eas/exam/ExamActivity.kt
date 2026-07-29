@@ -103,17 +103,12 @@ class ExamActivity : EASActivity<ExamViewModel, ComposeViewBinding>() {
                     showEmpty = true
                 }
             } else if (data.state == DataState.STATE.NOT_LOGGED_IN) {
-                if (viewModel.hasExamMemos()) {
-                    isRefreshing = false
-                    showEmpty = false
-                    return@observe
-                }
                 if (!handleSessionExpired {
                         refresh()
                         true
                     }) {
                     isRefreshing = false
-                    showEmpty = true
+                    showEmpty = !viewModel.hasExamMemos()
                 }
             } else {
                 isRefreshing = false

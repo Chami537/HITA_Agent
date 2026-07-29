@@ -1,5 +1,7 @@
 package cn.limpu.hita.ui.eas.login
 
+import java.net.URI
+
 /** Pure helpers for advancing the Shenzhen Web login without storing credentials. */
 internal object ShenzhenWebAutoLogin {
     const val UNDERGRAD = "1"
@@ -11,6 +13,24 @@ internal object ShenzhenWebAutoLogin {
     fun isProxyRoot(url: String, proxyBaseUrl: String): Boolean {
         val normalizedUrl = url.substringBefore('#').substringBefore('?').trimEnd('/')
         return normalizedUrl.equals(proxyBaseUrl.trimEnd('/'), ignoreCase = true)
+    }
+
+    fun reauthenticationUrl(
+        currentUrl: String,
+        directBaseUrl: String,
+        proxyBaseUrl: String
+    ): String? {
+        val current = runCatching { URI(currentUrl) }.getOrNull() ?: return null
+        val direct = runCatching { URI(directBaseUrl) }.getOrNull() ?: return null
+        val proxy = runCatching { URI(proxyBaseUrl) }.getOrNull() ?: return null
+        val path = current.path.orEmpty().lowercase()
+        return when {
+            current.host.equals(direct.host, ignoreCase = true) &&
+                path.contains("/authentication/require") -> "${directBaseUrl.trimEnd('/')}/cas"
+            current.host.equals(proxy.host, ignoreCase = true) &&
+                path.contains("/session/invalid") -> "${proxyBaseUrl.trimEnd('/')}/cas"
+            else -> null
+        }
     }
 
     fun buildClickScript(

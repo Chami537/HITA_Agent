@@ -20,11 +20,43 @@ class ShenzhenWebAcademicParserTest {
     }
 
     @Test
+    fun `week dates accept new portal date field aliases`() {
+        val currentDate = ShenzhenWebAcademicParser.parseStartDate(
+            """{"code":200,"content":[
+                {"XQJ":2,"DQRQ":"2026-09-08T00:00:00.000+08:00"},
+                {"XQJ":1,"DQRQ":"2026-09-07T00:00:00.000+08:00"}
+            ]}"""
+        )
+        val alternateDate = ShenzhenWebAcademicParser.parseStartDate(
+            """{"content":[{"xqj":1,"rq1":"2026-09-07"}]}"""
+        )
+
+        assertEquals("2026-09-07", currentDate.toString())
+        assertEquals("2026-09-07", alternateDate.toString())
+    }
+
+    @Test
     fun `period response preserves official start and end times`() {
         val periods = ShenzhenWebAcademicParser.parseScheduleStructure(
             """{"code":0,"content":[
                 {"ks":"2","kssj":"9:25","jssj":"10:15"},
                 {"ks":"1","kssj":"8:30","jssj":"9:20"}
+            ]}"""
+        ).orEmpty()
+
+        assertEquals(2, periods.size)
+        assertEquals(8, periods.first().from.hour)
+        assertEquals(30, periods.first().from.minute)
+        assertEquals(10, periods.last().to.hour)
+        assertEquals(15, periods.last().to.minute)
+    }
+
+    @Test
+    fun `course selection response exposes official periods in Shenzhen local time`() {
+        val periods = ShenzhenWebAcademicParser.parseScheduleStructure(
+            """{"kbjclist":[
+                {"XJ":2,"KSSJ":"2026-06-01T01:25:00.000+00:00","JSSJ":"2026-06-01T02:15:00.000+00:00"},
+                {"XJ":1,"KSSJ":"2026-06-01T00:30:00.000+00:00","JSSJ":"2026-06-01T01:20:00.000+00:00"}
             ]}"""
         ).orEmpty()
 

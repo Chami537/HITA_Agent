@@ -237,7 +237,7 @@ class FloatingPillTabBar @JvmOverloads constructor(
                     newItem.scaleY = activeScale
                     newIcon.alpha = 1f
                     newLabel.alpha = 1f
-                    newLabel.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD, false)
+                    newLabel.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
                     isAnimating = false
                 }
             })
@@ -260,7 +260,7 @@ class FloatingPillTabBar @JvmOverloads constructor(
         icon.alpha = 1f
         val label = labelViews[pos]
         label.alpha = 1f
-        label.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD, false)
+        label.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
     }
 
     private fun applyInactiveFull(pos: Int) {

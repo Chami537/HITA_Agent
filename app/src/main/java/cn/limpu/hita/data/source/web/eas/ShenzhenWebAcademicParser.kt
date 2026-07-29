@@ -21,12 +21,20 @@ import java.time.ZoneId
 /** Pure parsers for the read-only Shenzhen Web EAS endpoints. */
 internal object ShenzhenWebAcademicParser {
     fun parseStartDate(body: String): LocalDate? = rows(body)
-        .mapNotNull { first(it, "RQ", "rq").toLocalDateOrNull() }
+        .mapNotNull {
+            first(
+                it,
+                "RQ", "rq",
+                "DQRQ", "dqrq",
+                "RQ1", "rq1",
+                "KSRQ", "ksrq"
+            ).toLocalDateOrNull()
+        }
         .minOrNull()
 
     fun parseScheduleStructure(body: String): MutableList<TimePeriodInDay>? {
         val result = rows(body).mapNotNull { row ->
-            val order = first(row, "KS", "ks", "XJ", "xj", "DJ", "dj").toIntOrNull()
+            val order = first(row, "XJ", "xj", "KS", "ks", "DJ", "dj").toIntOrNull()
                 ?: return@mapNotNull null
             val start = parseTime(first(row, "KSSJ", "kssj")) ?: return@mapNotNull null
             val end = parseTime(first(row, "JSSJ", "jssj")) ?: return@mapNotNull null
@@ -222,6 +230,7 @@ internal object ShenzhenWebAcademicParser {
         if (content?.isJsonObject == true && content.asJsonObject.get("list")?.isJsonArray == true) {
             return content.asJsonObject.getAsJsonArray("list")
         }
+        if (obj.get("kbjclist")?.isJsonArray == true) return obj.getAsJsonArray("kbjclist")
         return JsonArray()
     }
 
@@ -236,6 +245,14 @@ internal object ShenzhenWebAcademicParser {
     }
 
     private fun parseTime(raw: String): TimeInDay? {
+        val timestampTime = runCatching {
+            OffsetDateTime.parse(raw)
+                .atZoneSameInstant(ZoneId.of("Asia/Shanghai"))
+                .toLocalTime()
+        }.getOrNull()
+        if (timestampTime != null) {
+            return TimeInDay(timestampTime.hour, timestampTime.minute)
+        }
         val parts = raw.split(':')
         val hour = parts.getOrNull(0)?.toIntOrNull() ?: return null
         val minute = parts.getOrNull(1)?.toIntOrNull() ?: return null
