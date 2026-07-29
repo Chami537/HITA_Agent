@@ -74,12 +74,13 @@ fun Modifier.hitaPersonaCardModifier(
  * 课程块的 P5 错位底板色。
  *
  * 浅色页面统一用黑色压住彩色卡片；OLED 深色页面不能继续用黑色（会消失），
- * 因此红色卡片配警示黄，其余亮色卡片配怪盗红。颜色仍只来自 P5 固定色组。
+ * 因此亮红与深红互为错位底板，保持课程块只使用两档正红。
  */
 internal fun personaCourseShadowColor(courseColor: Color, isDark: Boolean): Color {
     if (!isDark) return Color(0xFF101010)
-    val isRedFamily = courseColor.red > 0.55f &&
-        courseColor.red > courseColor.green * 1.55f &&
-        courseColor.red > courseColor.blue * 1.25f
-    return if (isRedFamily) Color(0xFFFFD400) else Color(0xFFE60012)
+    return if (courseColor == Color(0xFFE60012)) {
+        Color(0xFFB50020)
+    } else {
+        Color(0xFFE60012)
+    }
 }

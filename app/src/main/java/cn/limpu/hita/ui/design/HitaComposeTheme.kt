@@ -22,6 +22,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.colorResource
 import androidx.compose.ui.res.dimensionResource
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import cn.limpu.hita.R
@@ -128,6 +129,19 @@ private val LocalHitaThemeState = staticCompositionLocalOf {
     )
 }
 
+private val defaultTypography = Typography()
+private val hitaTypography = Typography(
+    displayLarge = defaultTypography.displayLarge.copy(fontFamily = FontFamily.Serif),
+    displayMedium = defaultTypography.displayMedium.copy(fontFamily = FontFamily.Serif),
+    displaySmall = defaultTypography.displaySmall.copy(fontFamily = FontFamily.Serif),
+    headlineLarge = defaultTypography.headlineLarge.copy(fontFamily = FontFamily.Serif),
+    headlineMedium = defaultTypography.headlineMedium.copy(fontFamily = FontFamily.Serif),
+    headlineSmall = defaultTypography.headlineSmall.copy(fontFamily = FontFamily.Serif),
+    titleLarge = defaultTypography.titleLarge.copy(fontFamily = FontFamily.Serif),
+    titleMedium = defaultTypography.titleMedium.copy(fontFamily = FontFamily.Serif),
+    titleSmall = defaultTypography.titleSmall.copy(fontFamily = FontFamily.Serif),
+)
+
 object HitaTheme {
     val tokens: HitaDesignTokens
         @Composable
@@ -207,7 +221,7 @@ fun HitaComposeTheme(
                 colorPreset = colorPreset,
                 darkTheme = actualDarkTheme
             ),
-            typography = Typography(),
+            typography = hitaTypography,
             shapes = Shapes(),
             content = content
         )
@@ -387,10 +401,10 @@ private fun hitaColorScheme(
             )
         }
         HitaThemeStyle.Persona5 -> base.copy(
-            primary = if (darkTheme) Color(0xFFFF2A3C) else Color(0xFFD5000F),
+            primary = Color(0xFFE60012),
             onPrimary = Color.White,
-            primaryContainer = if (darkTheme) Color(0xFF5A0010) else Color(0xFFFFDAD6),
-            onPrimaryContainer = if (darkTheme) Color(0xFFFFD9DE) else Color(0xFF410003),
+            primaryContainer = Color(0xFFB50020),
+            onPrimaryContainer = Color.White,
             secondary = if (darkTheme) Color(0xFFF5F5F5) else Color(0xFF101010),
             tertiary = Color(0xFFFFC400),
             background = if (darkTheme) Color(0xFF0B0B0C) else Color(0xFFF4F4F4),

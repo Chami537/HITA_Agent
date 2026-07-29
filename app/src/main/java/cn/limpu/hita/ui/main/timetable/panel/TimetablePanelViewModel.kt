@@ -6,7 +6,6 @@ import com.limpu.component.data.SharedPreferenceBooleanLiveData
 import com.limpu.component.data.SharedPreferenceIntLiveData
 import cn.limpu.hita.data.repository.EASRepository
 import cn.limpu.hita.data.repository.EasSettingsRepository
-import cn.limpu.hita.data.repository.SubjectRepository
 import cn.limpu.hita.data.repository.TimetableRepository
 import cn.limpu.hita.data.repository.TimetableStyleRepository
 import cn.limpu.hita.data.repository.KEY_COLOR_ENABLE
@@ -25,7 +24,6 @@ import javax.inject.Inject
 class TimetablePanelViewModel @Inject constructor(
     private val timetableStyleRepository: TimetableStyleRepository,
     private val easSettingsRepository: EasSettingsRepository,
-    private val subjectRepository: SubjectRepository,
     private val timetableRepository: TimetableRepository,
     private val easRepository: EASRepository,
 ) : ViewModel() {
@@ -93,9 +91,5 @@ class TimetablePanelViewModel @Inject constructor(
                 easSettingsRepository.setLastAutoReimportTs(System.currentTimeMillis())
             }
         }
-    }
-
-    fun startResetColor(){
-        subjectRepository.actionResetRecentSubjectColors()
     }
 }

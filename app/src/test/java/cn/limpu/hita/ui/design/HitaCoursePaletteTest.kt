@@ -91,7 +91,7 @@ class HitaCoursePaletteTest {
     }
 
     @Test
-    fun personaPaletteKeepsBrandColorsAcrossDisplayModes() {
+    fun personaPaletteUsesOnlyBrightAndDeepRedAcrossDisplayModes() {
         val light = hitaCoursePaletteFor(
             style = HitaThemeStyle.Persona5,
             preset = ThemeTools.COLOR_PRESET.CLASSIC,
@@ -104,31 +104,31 @@ class HitaCoursePaletteTest {
         )
 
         assertEquals(light, dark)
-        assertTrue(light.contains(androidx.compose.ui.graphics.Color(0xFFE60012)))
-        assertTrue(light.contains(androidx.compose.ui.graphics.Color(0xFFFFD400)))
-        assertTrue(light.contains(androidx.compose.ui.graphics.Color(0xFFF5F1E8)))
-        assertTrue(
-            "black and gray are structural colors, not course fills",
-            light.none { color -> color.red < 0.45f && color.green < 0.45f && color.blue < 0.45f },
+        assertEquals(
+            listOf(
+                androidx.compose.ui.graphics.Color(0xFFE60012),
+                androidx.compose.ui.graphics.Color(0xFFB50020),
+            ),
+            light,
         )
     }
 
     @Test
-    fun personaCourseShadowStaysVisibleInLightAndDarkModes() {
-        val red = androidx.compose.ui.graphics.Color(0xFFE60012)
-        val paper = androidx.compose.ui.graphics.Color(0xFFF5F1E8)
+    fun personaCourseShadowUsesTheOtherRedStepInDarkMode() {
+        val brightRed = androidx.compose.ui.graphics.Color(0xFFE60012)
+        val deepRed = androidx.compose.ui.graphics.Color(0xFFB50020)
 
         assertEquals(
             androidx.compose.ui.graphics.Color(0xFF101010),
-            personaCourseShadowColor(red, isDark = false),
+            personaCourseShadowColor(brightRed, isDark = false),
         )
         assertEquals(
-            androidx.compose.ui.graphics.Color(0xFFFFD400),
-            personaCourseShadowColor(red, isDark = true),
+            deepRed,
+            personaCourseShadowColor(brightRed, isDark = true),
         )
         assertEquals(
-            androidx.compose.ui.graphics.Color(0xFFE60012),
-            personaCourseShadowColor(paper, isDark = true),
+            brightRed,
+            personaCourseShadowColor(deepRed, isDark = true),
         )
     }
 
@@ -182,5 +182,35 @@ class HitaCoursePaletteTest {
             androidx.compose.ui.graphics.Color(0xFFF4ECD9),
             soraCloudCourseContentColor(isDark = true),
         )
+    }
+
+    @Test
+    fun sumiCourseBubblesAlwaysUseBambooGreen() {
+        val expected = androidx.compose.ui.graphics.Color(0xFF3F5F54)
+        val light = hitaCoursePaletteFor(
+            style = HitaThemeStyle.Sumi,
+            preset = ThemeTools.COLOR_PRESET.CLASSIC,
+            isDark = false,
+        )
+        val dark = hitaCoursePaletteFor(
+            style = HitaThemeStyle.Sumi,
+            preset = ThemeTools.COLOR_PRESET.HIGH_CONTRAST,
+            isDark = true,
+        )
+
+        assertEquals(listOf(expected), light)
+        assertEquals(light, dark)
+        listOf("计算机设计与实践", "软件构造实践", "高等数学").forEach { courseKey ->
+            assertEquals(
+                expected,
+                resolveHitaCourseColor(
+                    style = HitaThemeStyle.Sumi,
+                    preset = ThemeTools.COLOR_PRESET.CLASSIC,
+                    isDark = false,
+                    courseKey = courseKey,
+                    storedColor = 0xFF8C4A5A.toInt(),
+                ),
+            )
+        }
     }
 }

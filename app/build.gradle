@@ -6,14 +6,40 @@ plugins {
     id 'dagger.hilt.android.plugin'
 }
 
-def appVersionCodeValue = 2026072901
-def appVersionNameValue = "2.5.3"
+def appVersionCodeValue = 2026072902
+def appVersionNameValue = "2.5.4"
 
 def keystorePropertiesFile = rootProject.file("keystore.properties")
 def keystoreProperties = new Properties()
 if (keystorePropertiesFile.exists()) {
     keystoreProperties.load(new FileInputStream(keystorePropertiesFile))
 }
+
+def localPropertiesFile = rootProject.file("local.properties")
+def localProperties = new Properties()
+if (localPropertiesFile.exists()) {
+    localProperties.load(new FileInputStream(localPropertiesFile))
+}
+
+def resolveSecret = { String propertyName, String environmentName ->
+    def candidates = [
+        keystoreProperties.getProperty(propertyName),
+        keystoreProperties.getProperty(environmentName),
+        localProperties.getProperty(propertyName),
+        localProperties.getProperty(environmentName),
+        project.findProperty(propertyName)?.toString(),
+        project.findProperty(environmentName)?.toString(),
+        System.getenv(environmentName),
+    ]
+    candidates.find { it != null && !it.trim().isEmpty() }?.trim() ?: ""
+}
+
+def buildConfigString = { String value ->
+    "\"${value.replace("\\", "\\\\").replace("\"", "\\\"")}\""
+}
+
+def deepSeekApiKey = resolveSecret("deepseekApiKey", "DEEPSEEK_API_KEY")
+def zhipuApiKey = resolveSecret("zhipuApiKey", "ZHIPU_API_KEY")
 
 android {
     signingConfigs {
@@ -52,8 +78,8 @@ android {
         buildConfigField "long", "UPDATE_VERSION_CODE", "${appVersionCodeValue}L"
         buildConfigField "String", "UPDATE_LOG", '""'
         buildConfigField "boolean", "UPDATE_ALLOW_PRERELEASE", "true"
-        buildConfigField "String", "DEEPSEEK_API_KEY", "\"${keystoreProperties.getProperty('deepseekApiKey', '')}\""
-        buildConfigField "String", "ZHIPU_API_KEY", "\"${keystoreProperties.getProperty('zhipuApiKey', '')}\""
+        buildConfigField "String", "DEEPSEEK_API_KEY", buildConfigString(deepSeekApiKey)
+        buildConfigField "String", "ZHIPU_API_KEY", buildConfigString(zhipuApiKey)
     }
 
     buildFeatures {

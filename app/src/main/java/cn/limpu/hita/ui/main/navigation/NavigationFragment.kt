@@ -66,6 +66,7 @@ import cn.limpu.hita.data.work.CourseReminderScheduler
 import cn.limpu.hita.ui.credit.CreditStatsActivity
 import cn.limpu.hita.ui.design.HitaComposeTheme
 import cn.limpu.hita.ui.design.HitaTheme
+import cn.limpu.hita.ui.design.HitaThemeStyle
 import cn.limpu.hita.ui.design.hitaGlassCardBorder
 import cn.limpu.hita.ui.design.hitaGlassCardColors
 import cn.limpu.hita.ui.design.hitaGlassCardModifier
@@ -704,6 +705,11 @@ private fun NavigationRow(
 
 @Composable
 private fun CircleIcon(icon: Int) {
+    val iconTint = if (HitaTheme.style == HitaThemeStyle.Persona5) {
+        Color(0xFFFF6675)
+    } else {
+        MaterialTheme.colorScheme.primary
+    }
     Box(
         modifier = Modifier
             .size(40.dp)
@@ -713,7 +719,7 @@ private fun CircleIcon(icon: Int) {
         Icon(
             painter = painterResource(icon),
             contentDescription = null,
-            tint = MaterialTheme.colorScheme.primary,
+            tint = iconTint,
             modifier = Modifier.size(22.dp)
         )
     }

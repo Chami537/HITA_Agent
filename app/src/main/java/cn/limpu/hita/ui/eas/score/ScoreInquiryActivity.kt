@@ -80,6 +80,7 @@ class ScoreInquiryActivity :
     EASActivity<ScoreInquiryViewModel, ComposeViewBinding>() {
 
     override val viewModel: ScoreInquiryViewModel by viewModels()
+    override val autoLaunchWebLoginForSessionRecovery = false
     private lateinit var scoreReminderStore: ScoreReminderStore
     private var scoreQueryInFlight = false
     private var isRefreshing by mutableStateOf(false)

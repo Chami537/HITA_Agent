@@ -1765,6 +1765,26 @@ private fun MainDrawer(
                         fontSize = 13.sp,
                         modifier = Modifier.clickable(onClick = onGitHubProject)
                     )
+                    Text(
+                        text = " | ",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.3f),
+                        fontSize = 13.sp
+                    )
+                    Text(
+                        text = stringResource(R.string.main_drawer_developer_mingyu),
+                        color = MaterialTheme.colorScheme.primary,
+                        fontSize = 13.sp
+                    )
+                    Text(
+                        text = " | ",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.3f),
+                        fontSize = 13.sp
+                    )
+                    Text(
+                        text = stringResource(R.string.main_drawer_developer_ruannuo),
+                        color = MaterialTheme.colorScheme.primary,
+                        fontSize = 13.sp
+                    )
                 }
                 Spacer(Modifier.height(24.dp))
             }

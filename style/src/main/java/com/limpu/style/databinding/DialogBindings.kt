@@ -15,6 +15,7 @@ import android.widget.EditText
 import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.LinearLayout
+import android.widget.ScrollView
 import android.widget.TextView
 import androidx.cardview.widget.CardView
 import androidx.core.content.ContextCompat
@@ -300,7 +301,9 @@ private object DialogUiFactory {
     }
 
     fun createUpdate(context: Context): DialogBottomUpdateBinding {
-        val root = bottomSheetRoot(context)
+        val root = bottomSheetRoot(context).apply {
+            layoutParams = ViewGroup.LayoutParams(match, match)
+        }
         val title = titleView(context).also { it.id = ID_TITLE }
         val text = TextView(context).apply {
             id = ID_TEXT
@@ -309,10 +312,16 @@ private object DialogUiFactory {
             setHintTextColor(attrColor(context, R.attr.textColorSecondary))
             setTextSize(TypedValue.COMPLEX_UNIT_SP, 16f)
             setPadding(dp(context, 24), dp(context, 24), dp(context, 24), dp(context, 24))
-            layoutParams = LinearLayout.LayoutParams(match, wrap).apply { topMargin = -dp(context, 16) }
+        }
+        val textScroller = ScrollView(context).apply {
+            isFillViewport = true
+            layoutParams = LinearLayout.LayoutParams(match, 0, 1f).apply {
+                topMargin = -dp(context, 16)
+            }
+            addView(text, ViewGroup.LayoutParams(match, wrap))
         }
         root.addView(title)
-        root.addView(text)
+        root.addView(textScroller)
         root.addView(horizontalButtons(context, ID_CANCEL to R.string.cancel, ID_SKIP to R.string.skip, ID_CONFIRM to R.string.confirm))
         return bindUpdate(root)
     }

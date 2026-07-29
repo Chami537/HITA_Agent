@@ -17,6 +17,8 @@ import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.Observer
 import androidx.lifecycle.map
 import androidx.lifecycle.switchMap
+import com.google.gson.Gson
+import com.google.gson.reflect.TypeToken
 import com.limpu.component.data.DataState
 import cn.limpu.hita.R
 import cn.limpu.hita.data.AppDatabase
@@ -41,6 +43,7 @@ import cn.limpu.hita.utils.CourseCodeUtils
 import cn.limpu.hita.utils.ColorTools
 import cn.limpu.hita.utils.CourseNameUtils
 import java.sql.Timestamp
+import java.lang.reflect.Type
 import java.util.*
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
@@ -75,14 +78,19 @@ class EASRepository @Inject constructor(
     private var timetableDao = AppDatabase.getDatabase(application).timetableDao()
     private var subjectDao = AppDatabase.getDatabase(application).subjectDao()
     private var classroomCacheDao = AppDatabase.getDatabase(application).classroomCacheDao()
+    private var scoreCacheDao = AppDatabase.getDatabase(application).scoreCacheDao()
     private val timetableSnapshotStore = TimetableSnapshotStore(appContext)
     private val easTokenLiveData = MutableLiveData(easPreferenceSource.getEasToken())
+    private val gson = Gson()
+    private val scoreListType = object : TypeToken<List<CourseScoreItem>>() {}.type
+    private val shenzhenGradeCourseListType = object : TypeToken<List<ShenzhenGradeCourse>>() {}.type
 
     companion object {
         private const val LOGIN_ENRICH_MAX_RETRIES = 3
         private const val LOGIN_ENRICH_RETRY_DELAY_MS = 800L
         private const val JW_DIRECT_BASE_URL = "https://jw.hitsz.edu.cn"
         private const val JW_PROXY_BASE_URL = "https://jw-hitsz-edu-cn.hitsz.edu.cn"
+        private const val SCORE_CACHE_RETENTION_MS = 365L * 24L * 60L * 60L * 1000L
     }
 
     /**
@@ -288,14 +296,57 @@ class EASRepository @Inject constructor(
     /**
      * 进行获取学年学期
      */
-    fun getAllTerms(): LiveData<DataState<List<TermItem>>> {
+    fun getAllTerms(useCache: Boolean = true): LiveData<DataState<List<TermItem>>> {
         val easToken = easPreferenceSource.getEasToken()
         LogUtils.d("getAllTerms: isLogin=${easToken.isLogin()}, campus=${easToken.campus}")
+        if (!useCache) {
+            return getOnlineTerms(easToken)
+        }
+        val ownerKey = scoreCacheOwnerKey(easToken)
+        if (ownerKey == null) {
+            return getOnlineTerms(easToken)
+        }
+
+        val result = MediatorLiveData<DataState<List<TermItem>>>()
+        val hasCachedResult = AtomicBoolean(false)
+        thread(name = "score-term-cache-load") {
+            val cachedTerms = scoreCacheDao.getTermsSync(ownerKey).map { it.toTermItem() }
+            hasCachedResult.set(cachedTerms.isNotEmpty())
+            if (cachedTerms.isNotEmpty()) {
+                result.postValue(DataState(cachedTerms, DataState.STATE.SUCCESS).setFromCache(true))
+            }
+
+            if (!easToken.isLogin()) {
+                if (!hasCachedResult.get()) {
+                    result.postValue(DataState(DataState.STATE.NOT_LOGGED_IN))
+                }
+                return@thread
+            }
+
+            val remote = getService(easToken.campus).getAllTerms(easToken)
+            Handler(Looper.getMainLooper()).post {
+                result.addSource(remote) { state ->
+                    if (state.state == DataState.STATE.SUCCESS && state.data != null) {
+                        val terms = state.data.orEmpty()
+                        result.value = state
+                        thread(name = "score-term-cache-save") {
+                            saveScoreTermsCache(ownerKey, terms)
+                        }
+                    } else if (!hasCachedResult.get()) {
+                        result.value = state
+                    }
+                }
+            }
+        }
+        return result
+    }
+
+    private fun getOnlineTerms(easToken: EASToken): LiveData<DataState<List<TermItem>>> {
         if (easToken.isLogin()) {
             return getService(easToken.campus).getAllTerms(easToken)
         }
         LogUtils.w("getAllTerms: not logged in")
-        return LiveDataUtils.getMutableLiveData<DataState<List<TermItem>>>(DataState(DataState.STATE.NOT_LOGGED_IN))
+        return LiveDataUtils.getMutableLiveData(DataState(DataState.STATE.NOT_LOGGED_IN))
     }
 
     /**
@@ -432,21 +483,71 @@ class EASRepository @Inject constructor(
         term: TermItem,
         testType: EASService.TestType
     ): LiveData<DataState<List<CourseScoreItem>>> {
-        val easToken = easPreferenceSource.getEasToken()
-        LogUtils.d("getPersonalScores: isLogin=${easToken.isLogin()}, term=${term.getCode()}")
-        if (easToken.isLogin()) {
-            return getService(easToken.campus).getPersonalScores(term, easToken, testType)
+        return getPersonalScoresWithSummary(term, testType).map { state ->
+            DataState(state.data?.items ?: emptyList(), state.state).apply {
+                message = state.message
+                fromCache = state.fromCache
+            }
         }
-        LogUtils.w("getPersonalScores: not logged in")
-        return LiveDataUtils.getMutableLiveData(DataState(DataState.STATE.NOT_LOGGED_IN))
     }
 
     fun getPersonalScoresWithSummary(
         term: TermItem,
-        testType: EASService.TestType
+        testType: EASService.TestType,
+        useCache: Boolean = true,
     ): LiveData<DataState<ScoreQueryResult>> {
         val easToken = easPreferenceSource.getEasToken()
         LogUtils.d("getPersonalScoresWithSummary: isLogin=${easToken.isLogin()}, term=${term.getCode()}")
+        if (!useCache) {
+            return getOnlinePersonalScoresWithSummary(term, testType, easToken)
+        }
+        val ownerKey = scoreCacheOwnerKey(easToken)
+        if (ownerKey == null) {
+            return getOnlinePersonalScoresWithSummary(term, testType, easToken)
+        }
+
+        val result = MediatorLiveData<DataState<ScoreQueryResult>>()
+        val hasCachedResult = AtomicBoolean(false)
+        thread(name = "score-cache-load") {
+            scoreCacheDao.getScoreSync(
+                ownerKey = ownerKey,
+                termYearCode = term.yearCode,
+                termTermCode = term.termCode,
+                testType = testType.name
+            )?.toScoreQueryResultOrNull()?.let { cached ->
+                hasCachedResult.set(true)
+                result.postValue(DataState(cached, DataState.STATE.SUCCESS).setFromCache(true))
+            }
+
+            if (!easToken.isLogin()) {
+                if (!hasCachedResult.get()) {
+                    result.postValue(DataState(DataState.STATE.NOT_LOGGED_IN))
+                }
+                return@thread
+            }
+
+            val remote = getOnlinePersonalScoresWithSummary(term, testType, easToken)
+            Handler(Looper.getMainLooper()).post {
+                result.addSource(remote) { state ->
+                    if (state.state == DataState.STATE.SUCCESS && state.data != null) {
+                        result.value = state
+                        thread(name = "score-cache-save") {
+                            saveScoreCache(ownerKey, term, testType, state.data!!)
+                        }
+                    } else if (!hasCachedResult.get()) {
+                        result.value = state
+                    }
+                }
+            }
+        }
+        return result
+    }
+
+    private fun getOnlinePersonalScoresWithSummary(
+        term: TermItem,
+        testType: EASService.TestType,
+        easToken: EASToken,
+    ): LiveData<DataState<ScoreQueryResult>> {
         if (!easToken.isLogin()) {
             return LiveDataUtils.getMutableLiveData(DataState(DataState.STATE.NOT_LOGGED_IN))
         }
@@ -463,6 +564,76 @@ class EASRepository @Inject constructor(
                 }
             }
         }
+    }
+
+    private fun scoreCacheOwnerKey(token: EASToken): String? {
+        val identity = token.stuId
+            ?.trim()
+            ?.takeIf { it.isNotEmpty() }
+            ?: token.id?.trim()?.takeIf { it.isNotEmpty() }
+            ?: token.username?.trim()?.takeIf { it.isNotEmpty() }
+            ?: return null
+        return "${token.campus.name}:$identity"
+    }
+
+    private fun saveScoreTermsCache(ownerKey: String, terms: List<TermItem>) {
+        val cachedAt = System.currentTimeMillis()
+        scoreCacheDao.deleteTermsByOwnerSync(ownerKey)
+        if (terms.isNotEmpty()) {
+            scoreCacheDao.saveTermsSync(
+                terms.map { term ->
+                    ScoreTermCacheEntity(
+                        ownerKey = ownerKey,
+                        termYearCode = term.yearCode,
+                        yearName = term.yearName,
+                        termTermCode = term.termCode,
+                        termName = term.termName,
+                        isCurrent = term.isCurrent,
+                        cachedAt = cachedAt,
+                    )
+                }
+            )
+        }
+        scoreCacheDao.deleteOldTermsSync(cachedAt - SCORE_CACHE_RETENTION_MS)
+    }
+
+    private fun saveScoreCache(
+        ownerKey: String,
+        term: TermItem,
+        testType: EASService.TestType,
+        result: ScoreQueryResult,
+    ) {
+        val cachedAt = System.currentTimeMillis()
+        scoreCacheDao.saveScoreSync(
+            ScoreCacheEntity(
+                ownerKey = ownerKey,
+                termYearCode = term.yearCode,
+                termTermCode = term.termCode,
+                testType = testType.name,
+                scoresJson = gson.toJson(result.items),
+                summaryJson = result.summary?.let(gson::toJson),
+                cachedAt = cachedAt,
+            )
+        )
+        scoreCacheDao.deleteOldScoresSync(cachedAt - SCORE_CACHE_RETENTION_MS)
+    }
+
+    private fun ScoreCacheEntity.toScoreQueryResultOrNull(): ScoreQueryResult? {
+        return runCatching {
+            ScoreQueryResult(
+                items = gson.fromJson<List<CourseScoreItem>>(scoresJson, scoreListType).orEmpty(),
+                summary = summaryJson?.let { gson.fromJson(it, ScoreSummary::class.java) }
+            )
+        }.getOrNull()
+    }
+
+    private fun ScoreTermCacheEntity.toTermItem(): TermItem {
+        return TermItem(
+            yearCode = termYearCode,
+            yearName = yearName,
+            termCode = termTermCode,
+            termName = termName,
+        ).also { it.isCurrent = isCurrent }
     }
 
     /**
@@ -1254,19 +1425,95 @@ class EASRepository @Inject constructor(
     fun getShenzhenGradeCourses(
         term: TermItem
     ): LiveData<DataState<List<ShenzhenGradeCourse>>> {
-        return shenzhenService.getShenzhenGradeCourses(
-            easPreferenceSource.getEasToken(),
-            term
+        val token = easPreferenceSource.getEasToken()
+        val ownerKey = scoreCacheOwnerKey(token)
+            ?: return shenzhenService.getShenzhenGradeCourses(token, term)
+        return getCachedScoreDetail(
+            ownerKey = ownerKey,
+            cacheKey = "grade-courses:${term.id}",
+            payloadType = shenzhenGradeCourseListType,
+            canRefreshRemotely = token.isLogin(),
+            remote = { shenzhenService.getShenzhenGradeCourses(token, term) }
         )
     }
 
     fun getShenzhenGradeAnalysis(
         course: ShenzhenGradeCourse
     ): LiveData<DataState<ShenzhenGradeAnalysis>> {
-        return shenzhenService.getShenzhenGradeAnalysis(
-            easPreferenceSource.getEasToken(),
-            course
+        val token = easPreferenceSource.getEasToken()
+        val ownerKey = scoreCacheOwnerKey(token)
+            ?: return shenzhenService.getShenzhenGradeAnalysis(token, course)
+        return getCachedScoreDetail(
+            ownerKey = ownerKey,
+            cacheKey = gradeAnalysisCacheKey(course),
+            payloadType = ShenzhenGradeAnalysis::class.java,
+            canRefreshRemotely = token.isLogin(),
+            remote = { shenzhenService.getShenzhenGradeAnalysis(token, course) }
         )
+    }
+
+    private fun gradeAnalysisCacheKey(course: ShenzhenGradeCourse): String {
+        return listOf(
+            "grade-analysis",
+            course.termCode,
+            course.taskId,
+            course.courseCode,
+        ).joinToString(":")
+    }
+
+    private fun <T : Any> getCachedScoreDetail(
+        ownerKey: String,
+        cacheKey: String,
+        payloadType: Type,
+        canRefreshRemotely: Boolean,
+        remote: () -> LiveData<DataState<T>>,
+    ): LiveData<DataState<T>> {
+        val result = MediatorLiveData<DataState<T>>()
+        val hasCachedResult = AtomicBoolean(false)
+        thread(name = "score-detail-cache-load") {
+            scoreCacheDao.getDetailSync(ownerKey, cacheKey)
+                ?.payloadJson
+                ?.let { payload -> runCatching { gson.fromJson<T>(payload, payloadType) }.getOrNull() }
+                ?.let { cached ->
+                    hasCachedResult.set(true)
+                    result.postValue(DataState(cached, DataState.STATE.SUCCESS).setFromCache(true))
+                }
+
+            if (!canRefreshRemotely) {
+                if (!hasCachedResult.get()) {
+                    result.postValue(DataState(DataState.STATE.NOT_LOGGED_IN))
+                }
+                return@thread
+            }
+
+            val remoteSource = remote()
+            Handler(Looper.getMainLooper()).post {
+                result.addSource(remoteSource) { state ->
+                    if (state.state == DataState.STATE.SUCCESS && state.data != null) {
+                        result.value = state
+                        thread(name = "score-detail-cache-save") {
+                            saveScoreDetailCache(ownerKey, cacheKey, state.data!!)
+                        }
+                    } else if (!hasCachedResult.get()) {
+                        result.value = state
+                    }
+                }
+            }
+        }
+        return result
+    }
+
+    private fun saveScoreDetailCache(ownerKey: String, cacheKey: String, payload: Any) {
+        val cachedAt = System.currentTimeMillis()
+        scoreCacheDao.saveDetailSync(
+            ScoreDetailCacheEntity(
+                ownerKey = ownerKey,
+                cacheKey = cacheKey,
+                payloadJson = gson.toJson(payload),
+                cachedAt = cachedAt,
+            )
+        )
+        scoreCacheDao.deleteOldDetailsSync(cachedAt - SCORE_CACHE_RETENTION_MS)
     }
 
     fun getShenzhenHistoricalTeacherFailureRates(
@@ -1500,6 +1747,13 @@ class EASRepository @Inject constructor(
             acceptServiceTokenRefresh = false
             easPreferenceSource.clearEasToken()
             publishEasToken(easPreferenceSource.getEasToken())
+        }
+        scoreCacheOwnerKey(previousToken)?.let { ownerKey ->
+            thread(name = "score-cache-clear") {
+                scoreCacheDao.deleteScoresByOwnerSync(ownerKey)
+                scoreCacheDao.deleteTermsByOwnerSync(ownerKey)
+                scoreCacheDao.deleteDetailsByOwnerSync(ownerKey)
+            }
         }
         clearShenzhenWebViewCookies(previousToken)
     }

@@ -33,13 +33,14 @@ import androidx.compose.material3.Slider
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.livedata.observeAsState
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.ComposeView
-import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -55,7 +56,6 @@ import cn.limpu.hita.data.model.timetable.TimeInDay
 import cn.limpu.hita.ui.design.HitaComposeTheme
 import cn.limpu.hita.ui.design.HitaTheme
 import cn.limpu.hita.ui.design.HitaThemeStyle
-import cn.limpu.hita.ui.design.hitaCoursePalette
 import cn.limpu.hita.ui.design.hitaCoursePaletteFor
 import cn.limpu.hita.ui.design.hitaIsPersona
 import cn.limpu.hita.ui.main.timetable.CourseBubbleStyle
@@ -137,6 +137,12 @@ private fun TimetablePanelScreen(
     val bubbleStyle = CourseBubbleStyle.fromStorage(bubbleStyleValue)
     val isPersona = hitaIsPersona()
     val isClassic = HitaTheme.preferenceStyle == ThemeTools.STYLE.CLASSIC
+    val isSumi = HitaTheme.preferenceStyle == ThemeTools.STYLE.SUMI
+    val currentColorPreset = HitaTheme.colorPreset
+    var selectedColorPreset by remember { mutableStateOf(currentColorPreset) }
+    LaunchedEffect(currentColorPreset) {
+        selectedColorPreset = currentColorPreset
+    }
 
     Column(
         modifier = Modifier
@@ -176,13 +182,12 @@ private fun TimetablePanelScreen(
             SectionTitle("基础配色")
             SettingHint("基础配色会同时改变界面主色和课程气泡色板。")
             ColorPresetSelector(
-                selected = HitaTheme.colorPreset,
-                onSelected = onColorPresetSelected
+                selected = selectedColorPreset,
+                onSelected = { preset ->
+                    selectedColorPreset = preset
+                    onColorPresetSelected(preset)
+                }
             )
-        } else {
-            SectionTitle("风格固定配色")
-            SettingHint("${fixedPaletteStyleName(HitaTheme.style)}使用专属固定色板，界面与课程气泡会同步适配。")
-            FixedCoursePalettePreview(colors = hitaCoursePalette())
         }
 
         SectionTitle("课程气泡")
@@ -213,20 +218,14 @@ private fun TimetablePanelScreen(
                 checked = fadeEnable,
                 onCheckedChange = viewModel::setFadeEnable
             )
-            if (isClassic) {
-                SettingRow(
-                    title = "科目颜色",
-                    trailing = {
-                        ResetColorButton(onClick = viewModel::startResetColor)
-                    }
+            if (!isSumi) {
+                SliderSetting(
+                    title = "课程气泡对比度",
+                    value = cardOpacity,
+                    valueRange = 20f..100f,
+                    onValueChangeFinished = viewModel::setCardOpacity
                 )
             }
-            SliderSetting(
-                title = "课程气泡对比度",
-                value = cardOpacity,
-                valueRange = 20f..100f,
-                onValueChangeFinished = viewModel::setCardOpacity
-            )
         }
 
         SectionTitle("背景与标尺")
@@ -339,45 +338,6 @@ private fun ColorPresetSelector(
             }
         }
     }
-}
-
-@Composable
-private fun FixedCoursePalettePreview(colors: List<Color>) {
-    Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = HitaTheme.tokens.spacing.xl),
-        shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
-        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(HitaTheme.tokens.spacing.md),
-            horizontalArrangement = Arrangement.spacedBy(HitaTheme.tokens.spacing.sm),
-        ) {
-            colors.forEach { color ->
-                Box(
-                    modifier = Modifier
-                        .weight(1f)
-                        .height(32.dp)
-                        .background(color, RoundedCornerShape(9.dp))
-                )
-            }
-        }
-    }
-}
-
-private fun fixedPaletteStyleName(style: HitaThemeStyle): String = when (style) {
-    HitaThemeStyle.Classic -> "经典搭配"
-    HitaThemeStyle.AppleGlass -> "玻璃艺术"
-    HitaThemeStyle.Cyber -> "赛博朋克"
-    HitaThemeStyle.SoraCloud -> "日映构成"
-    HitaThemeStyle.Persona5 -> "波普涂鸦"
-    HitaThemeStyle.DeepSpace -> "深空星野"
-    HitaThemeStyle.Sumi -> "水墨宣纸"
 }
 
 @Composable
@@ -498,44 +458,6 @@ private fun SwitchSettingRow(
 ) {
     SettingRow(title = title) {
         Switch(checked = checked, onCheckedChange = onCheckedChange)
-    }
-}
-
-@Composable
-private fun ResetColorButton(onClick: () -> Unit) {
-    val view = LocalView.current
-    Card(
-        modifier = Modifier.clickable {
-            view.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
-            onClick()
-        },
-        shape = RoundedCornerShape(20.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primary),
-        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
-    ) {
-        Row(
-            modifier = Modifier.padding(
-                start = HitaTheme.tokens.spacing.sm,
-                top = HitaTheme.tokens.spacing.xs,
-                end = HitaTheme.tokens.spacing.md,
-                bottom = HitaTheme.tokens.spacing.xs
-            ),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Icon(
-                painter = painterResource(R.drawable.ic_baseline_color_lens_24),
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.onPrimary,
-                modifier = Modifier.size(22.dp)
-            )
-            Spacer(modifier = Modifier.width(HitaTheme.tokens.spacing.xs))
-            Text(
-                text = stringResource(R.string.curriculum_manager_randomly_allocate_color),
-                color = MaterialTheme.colorScheme.onPrimary,
-                fontSize = 13.sp,
-                fontWeight = FontWeight.Bold
-            )
-        }
     }
 }
 

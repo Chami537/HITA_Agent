@@ -34,13 +34,17 @@ class ScoreReminderWorker(appContext: Context, params: WorkerParameters) : Worke
         val repository = EASRepository(app, EasPreferenceSource(applicationContext), TimetablePreferenceSource(applicationContext))
         if (!repository.getEasToken().isLogin()) return Result.success()
 
-        val termsState = awaitLiveData(repository.getAllTerms(), 6)
+        val termsState = awaitLiveData(repository.getAllTerms(useCache = false), 6)
         if (termsState.state != DataState.STATE.SUCCESS || termsState.data.isNullOrEmpty()) {
             return Result.retry()
         }
         val term = selectTerm(termsState.data!!)
         val scoresState = awaitLiveData(
-            repository.getPersonalScoresWithSummary(term, EASService.TestType.NORMAL),
+            repository.getPersonalScoresWithSummary(
+                term,
+                EASService.TestType.NORMAL,
+                useCache = false
+            ),
             12
         )
         if (scoresState.state != DataState.STATE.SUCCESS || scoresState.data == null) {

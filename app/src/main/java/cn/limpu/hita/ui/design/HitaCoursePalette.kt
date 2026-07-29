@@ -96,16 +96,11 @@ fun hitaCoursePaletteFor(
             0xFF486F7A, // 暮蓝
             0xFFB8773D, // 陶土
         )
-        // P5 的黑色是轮廓和版式骨架，不拿来当课程填充色。否则某些课程会退化成
-        // 一整块暗褐黑，只剩一条红边。品牌色板在深浅模式保持一致，切换模式只改变
-        // 页面承载背景和卡片的结构色。
+        // 波普涂鸦的课程填充只使用一明一暗两档正红。黑色留给结构轮廓，避免课程卡
+        // 混入偏粉的高光色或其他杂色。
         HitaThemeStyle.Persona5 -> colors(
             0xFFE60012, // 怪盗红
-            0xFFFF3347, // 信号红
-            0xFFFFD400, // 警示黄
-            0xFFF5F1E8, // 拼贴纸白
             0xFFB50020, // 深绯红
-            0xFFFF6675, // 高光红
         )
         // 深空课程色取自星野：星砂金、星云紫、玫瑰星云，全部哑光，不出现电光蓝
         HitaThemeStyle.DeepSpace -> colors(
@@ -116,15 +111,9 @@ fun hitaCoursePaletteFor(
             0xFF7FA0BD, // 柔星蓝
             0xFF8A94AE, // 陨石灰蓝
         )
-        // 水墨课程色即传统彩墨：朱砂、赭石、黛青、藤黄、松烟、胭脂
-        HitaThemeStyle.Sumi -> colors(
-            0xFFA63B2A, // 朱砂
-            0xFFB8773D, // 赭石
-            0xFF4E5A65, // 黛青
-            0xFFC9A227, // 藤黄
-            0xFF3F5F54, // 松烟墨绿
-            0xFF8C4A5A, // 胭脂
-        )
+        // 水墨宣纸的课程卡统一使用松烟墨绿，让卡面与修竹纹样形成一体，
+        // 不再因课程哈希落入朱砂、胭脂等彩墨色。
+        HitaThemeStyle.Sumi -> colors(0xFF3F5F54)
     }
 }
 

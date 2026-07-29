@@ -26,7 +26,7 @@ class ScoreQueryStatePolicyTest {
 
         val state = ScoreQueryStatePolicy.sessionExpired(successful)
 
-        assertEquals(DataState.STATE.NOT_LOGGED_IN, state.state)
+        assertEquals(DataState.STATE.SUCCESS, state.state)
         assertEquals(listOf("程序设计"), state.data?.items.orEmpty().map { it.courseName })
         assertEquals(apiSummary, state.data?.summary)
         assertEquals("深圳 Web 会话已失效", state.message)

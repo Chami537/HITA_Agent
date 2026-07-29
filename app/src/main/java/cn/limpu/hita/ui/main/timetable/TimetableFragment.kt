@@ -1133,7 +1133,8 @@ private fun TimetableEventCard(
     } else {
         MaterialTheme.colorScheme.primary
     }
-    val baseAlpha = style.cardOpacity.coerceIn(20, 100) / 100f
+    // Sumi cards stay at their lightest ink wash; denser fills break the paper treatment.
+    val baseAlpha = (if (isSumi) 20 else style.cardOpacity).coerceIn(20, 100) / 100f
     val bubbleStyle = style.courseBubbleStyle
     val backgroundAlpha = if (isAppleGlass) {
         if (isBottomCascadeCard) {
@@ -1178,11 +1179,8 @@ private fun TimetableEventCard(
     }
     val borderWidth = if (bubbleStyle == CourseBubbleStyle.OUTLINE && !isPersona) 1.25.dp else 0.5.dp
     val cardShape = hitaStyleCardShape(HitaTheme.tokens.radius.md, 10.dp)
-    val effectiveBg = if (isSoraCloud) {
-        background.compositeOver(MaterialTheme.colorScheme.surface).toArgb()
-    } else {
-        background.toArgb()
-    }
+    // Text contrast must use the visible composite, especially for translucent cyber cards.
+    val effectiveBg = background.compositeOver(MaterialTheme.colorScheme.surface).toArgb()
     val titleColor = if (isSoraCloud) {
         if (bubbleStyle == CourseBubbleStyle.SOLID) {
             Color(ColorContrast.contrastText(courseTint.toArgb()))

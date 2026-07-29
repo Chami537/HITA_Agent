@@ -191,6 +191,7 @@
 
     <style name="Toolbar_Light_TitleStyle" parent="TextAppearance.Widget.AppCompat.Toolbar.Title">
         <item name="android:textColor">#ffffff</item>
+        <item name="android:fontFamily">sans-serif-medium</item>
     </style>
 
     <!-- ==========================================
@@ -205,13 +206,13 @@
     <style name="text_style_18sp_bold_white">
         <item name="android:textSize">18sp</item>
         <item name="android:textColor">@color/white</item>
-        <item name="android:fontFamily">sans-serif-black</item>
+        <item name="android:fontFamily">sans-serif-medium</item>
     </style>
 
     <style name="text_style_28sp_bold_white">
         <item name="android:textSize">28sp</item>
         <item name="android:textColor">@color/white</item>
-        <item name="android:fontFamily">sans-serif-black</item>
+        <item name="android:fontFamily">sans-serif-medium</item>
     </style>
 
     <style name="text_style_18sp_bold_primary">
@@ -223,7 +224,7 @@
     <style name="text_style_30sp_bold_primary">
         <item name="android:textSize">30sp</item>
         <item name="android:textColor">?attr/textColorPrimary</item>
-        <item name="android:fontFamily">sans-serif-black</item>
+        <item name="android:fontFamily">sans-serif-medium</item>
     </style>
 
     <!-- ==========================================

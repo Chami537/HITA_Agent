@@ -102,28 +102,15 @@ object LlmClient {
 
     fun chatCompletion(context: Context, request: ChatCompletionRequest): Response<ChatCompletionResponse> {
         val settings = AiSettingsRepository(context).getSettings()
-        return when (settings.chatProvider) {
-            AiChatProvider.CUSTOM_DEEPSEEK -> directService.chatCompletion(
-                authHeader(requireCustomDeepSeekKey(settings)),
-                request,
-            ).execute()
-            AiChatProvider.BUILTIN_DEEPSEEK -> directService.chatCompletion(
-                authHeader(requireBuiltInDeepSeekKey()),
-                request,
-            ).execute()
-        }
-    }
-
-    private fun requireBuiltInDeepSeekKey(): String {
-        return BuildConfig.DEEPSEEK_API_KEY.trim().ifBlank {
-            throw IllegalStateException("未配置内置 DeepSeek API Key")
-        }
-    }
-
-    private fun requireCustomDeepSeekKey(settings: AiSettings): String {
-        return settings.customDeepSeekApiKey.trim().ifBlank {
-            throw IllegalStateException("请先在 AI 设置中填写 DeepSeek API Key")
-        }
+        val apiKey = resolveDeepSeekApiKey(
+            chatProvider = settings.chatProvider,
+            builtInKey = BuildConfig.DEEPSEEK_API_KEY,
+            customKey = settings.customDeepSeekApiKey,
+        )
+        return directService.chatCompletion(
+            authHeader(apiKey),
+            request,
+        ).execute()
     }
 
     private fun authHeader(apiKeyOrToken: String): String {
@@ -131,6 +118,23 @@ object LlmClient {
             apiKeyOrToken
         } else {
             "Bearer $apiKeyOrToken"
+        }
+    }
+}
+
+internal fun resolveDeepSeekApiKey(
+    chatProvider: AiChatProvider,
+    builtInKey: String,
+    customKey: String,
+): String {
+    val builtIn = builtInKey.trim()
+    val custom = customKey.trim()
+    return when (chatProvider) {
+        AiChatProvider.CUSTOM_DEEPSEEK -> custom.ifBlank {
+            throw IllegalStateException("请先在 AI 设置中填写 DeepSeek API Key")
+        }
+        AiChatProvider.BUILTIN_DEEPSEEK -> builtIn.ifBlank { custom }.ifBlank {
+            throw IllegalStateException("未配置内置 DeepSeek API Key，请在 AI 设置中填写自定义 Key")
         }
     }
 }

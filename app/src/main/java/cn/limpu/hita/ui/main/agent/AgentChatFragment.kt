@@ -82,6 +82,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.fragment.app.viewModels
+import cn.limpu.hita.BuildConfig
 import cn.limpu.hita.R
 import cn.limpu.hita.agent.core.AgentProvider
 import cn.limpu.hita.agent.core.AgentSession
@@ -189,6 +190,7 @@ class AgentChatFragment : androidx.fragment.app.Fragment() {
         val repo = AiSettingsRepository(ctx)
         val settings = repo.getSettings()
         val padding = (16 * ctx.resources.displayMetrics.density).toInt()
+        val hasBuiltInKey = BuildConfig.DEEPSEEK_API_KEY.isNotBlank()
 
         val container = LinearLayout(ctx).apply {
             orientation = LinearLayout.VERTICAL
@@ -196,7 +198,11 @@ class AgentChatFragment : androidx.fragment.app.Fragment() {
         }
 
         container.addView(TextView(ctx).apply {
-            text = "AI 将由应用端直连模型服务。默认使用内置 DeepSeek；自定义 Key 只保存在本机。"
+            text = if (hasBuiltInKey) {
+                "AI 将由应用端直连模型服务；自定义 Key 只保存在本机。"
+            } else {
+                "此版本未配置内置 Key。请填写自定义 DeepSeek Key；它只保存在本机。"
+            }
             textSize = 13f
         })
 
@@ -206,16 +212,18 @@ class AgentChatFragment : androidx.fragment.app.Fragment() {
             orientation = RadioGroup.VERTICAL
             addView(RadioButton(ctx).apply {
                 id = builtInId
-                text = "内置 DeepSeek"
+                text = if (hasBuiltInKey) "内置 DeepSeek" else "内置 DeepSeek（当前不可用）"
+                isEnabled = hasBuiltInKey
             })
             addView(RadioButton(ctx).apply {
                 id = customId
                 text = "自定义 DeepSeek Key"
             })
             check(
-                when (settings.chatProvider) {
-                    AiChatProvider.BUILTIN_DEEPSEEK -> builtInId
-                    AiChatProvider.CUSTOM_DEEPSEEK -> customId
+                when {
+                    !hasBuiltInKey -> customId
+                    settings.chatProvider == AiChatProvider.CUSTOM_DEEPSEEK -> customId
+                    else -> builtInId
                 }
             )
         }

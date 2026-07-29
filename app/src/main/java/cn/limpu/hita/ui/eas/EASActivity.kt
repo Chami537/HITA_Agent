@@ -33,6 +33,9 @@ abstract class EASActivity<T : EASViewModel, V : ViewBinding> : HiltBaseActivity
 
     protected open fun shouldCheckLoginOnStart(): Boolean = false
 
+    /** Most academic pages need Web access for recovery; score queries can use the API alone. */
+    protected open val autoLaunchWebLoginForSessionRecovery: Boolean = true
+
     override fun onStart() {
         super.onStart()
         if (shouldRefreshOnStart()) {
@@ -64,7 +67,7 @@ abstract class EASActivity<T : EASViewModel, V : ViewBinding> : HiltBaseActivity
             this,
             easRepository,
             directTo = null,
-            autoLaunchWebLogin = true,
+            autoLaunchWebLogin = autoLaunchWebLoginForSessionRecovery,
             preferredCampus = tokenCampus,
             onResponseListener = object : PopUpLoginEAS.OnResponseListener {
                 override fun onSuccess(window: PopUpLoginEAS) {

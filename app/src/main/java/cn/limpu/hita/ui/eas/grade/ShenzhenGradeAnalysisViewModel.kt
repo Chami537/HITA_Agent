@@ -22,7 +22,7 @@ class ShenzhenGradeAnalysisViewModel @Inject constructor(
 ) : EASViewModel(easRepo) {
     private val termRefresh = MutableLiveData<Trigger>()
     val terms: LiveData<DataState<List<TermItem>>> = termRefresh.switchMap {
-        easRepo.getShenzhenWebTerms()
+        easRepo.getAllTerms()
     }
 
     val selectedTerm = MutableLiveData<TermItem>()
