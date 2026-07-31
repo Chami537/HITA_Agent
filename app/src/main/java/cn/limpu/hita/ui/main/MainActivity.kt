@@ -318,7 +318,7 @@ class MainActivity : HiltBaseActivity<ComposeViewBinding>(),
                     onThemeStyle = { showThemeStyleMenu() },
                     onDrawerAgreement = { UserAgreementDialog().show(supportFragmentManager, "ua") },
                     onDrawerAbout = { ActivityUtils.startActivity(getThis(), ActivityAbout::class.java) },
-                    onGitHubUser = { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/Chami537"))) },
+                    onGitHubUser = { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://chami537.github.io/"))) },
                     onGitHubProject = { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/LiPu-jpg"))) },
                     onGitHubMingyu = { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/orgs/HIT-A/people/SpeechlessPanda"))) },
                     onGitHubRuannuo = { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/orgs/HIT-A/people/StrayRN"))) },
@@ -1127,7 +1127,7 @@ private fun ToolbarTitle(title: String, textColor: Color = MaterialTheme.colorSc
             color = textColor,
             fontSize = 24.sp,
             fontWeight = FontWeight.Bold,
-            fontFamily = hitaPersonaTitleFont() ?: hitaSoraTitleFont() ?: hitaSumiTitleFont(),
+            fontFamily = HitaTheme.fonts.display,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis
         )
@@ -1177,7 +1177,7 @@ private fun TimetableToolbarTitle(
                 color = titleColor,
                 fontSize = 24.sp,
                 fontWeight = FontWeight.Bold,
-                fontFamily = hitaPersonaTitleFont() ?: hitaSoraTitleFont() ?: hitaSumiTitleFont(),
+                fontFamily = HitaTheme.fonts.display,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
@@ -1878,7 +1878,7 @@ private fun DrawerHeader(drawerState: DrawerUserState, onClick: () -> Unit, onAv
             color = MaterialTheme.colorScheme.onSurface,
             fontSize = 20.sp,
             fontWeight = FontWeight.Bold,
-            fontFamily = hitaPersonaTitleFont() ?: hitaSumiTitleFont(),
+            fontFamily = HitaTheme.fonts.display,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier.padding(

@@ -130,16 +130,22 @@ private val LocalHitaThemeState = staticCompositionLocalOf {
 }
 
 private val defaultTypography = Typography()
-private val hitaTypography = Typography(
-    displayLarge = defaultTypography.displayLarge.copy(fontFamily = FontFamily.Serif),
-    displayMedium = defaultTypography.displayMedium.copy(fontFamily = FontFamily.Serif),
-    displaySmall = defaultTypography.displaySmall.copy(fontFamily = FontFamily.Serif),
-    headlineLarge = defaultTypography.headlineLarge.copy(fontFamily = FontFamily.Serif),
-    headlineMedium = defaultTypography.headlineMedium.copy(fontFamily = FontFamily.Serif),
-    headlineSmall = defaultTypography.headlineSmall.copy(fontFamily = FontFamily.Serif),
-    titleLarge = defaultTypography.titleLarge.copy(fontFamily = FontFamily.Serif),
-    titleMedium = defaultTypography.titleMedium.copy(fontFamily = FontFamily.Serif),
-    titleSmall = defaultTypography.titleSmall.copy(fontFamily = FontFamily.Serif),
+internal fun hitaTypographyFor(fonts: HitaFontScheme): Typography = defaultTypography.copy(
+    displayLarge = defaultTypography.displayLarge.copy(fontFamily = fonts.display),
+    displayMedium = defaultTypography.displayMedium.copy(fontFamily = fonts.display),
+    displaySmall = defaultTypography.displaySmall.copy(fontFamily = fonts.display),
+    headlineLarge = defaultTypography.headlineLarge.copy(fontFamily = fonts.display),
+    headlineMedium = defaultTypography.headlineMedium.copy(fontFamily = fonts.display),
+    headlineSmall = defaultTypography.headlineSmall.copy(fontFamily = fonts.display),
+    titleLarge = defaultTypography.titleLarge.copy(fontFamily = fonts.display),
+    titleMedium = defaultTypography.titleMedium.copy(fontFamily = fonts.display),
+    titleSmall = defaultTypography.titleSmall.copy(fontFamily = fonts.display),
+    bodyLarge = defaultTypography.bodyLarge.copy(fontFamily = fonts.primary),
+    bodyMedium = defaultTypography.bodyMedium.copy(fontFamily = fonts.primary),
+    bodySmall = defaultTypography.bodySmall.copy(fontFamily = fonts.primary),
+    labelLarge = defaultTypography.labelLarge.copy(fontFamily = fonts.primary),
+    labelMedium = defaultTypography.labelMedium.copy(fontFamily = fonts.primary),
+    labelSmall = defaultTypography.labelSmall.copy(fontFamily = fonts.primary),
 )
 
 object HitaTheme {
@@ -172,6 +178,11 @@ object HitaTheme {
         @Composable
         @ReadOnlyComposable
         get() = LocalHitaThemeState.current.isDark
+
+    val fonts: HitaFontScheme
+        @Composable
+        @ReadOnlyComposable
+        get() = hitaFontSchemeFor(LocalHitaThemeState.current.style)
 }
 
 @Composable
@@ -211,6 +222,7 @@ fun HitaComposeTheme(
         style = actualStyle,
         isDark = actualDarkTheme,
     )
+    val fontScheme = hitaFontSchemeFor(actualStyle)
     CompositionLocalProvider(
         LocalHitaDesignTokens provides tokens,
         LocalHitaThemeState provides themeState,
@@ -221,7 +233,7 @@ fun HitaComposeTheme(
                 colorPreset = colorPreset,
                 darkTheme = actualDarkTheme
             ),
-            typography = hitaTypography,
+            typography = hitaTypographyFor(fontScheme),
             shapes = Shapes(),
             content = content
         )
