@@ -108,6 +108,7 @@ class ShenzhenGradeAnalysisActivity :
     }
 
     override val viewModel: ShenzhenGradeAnalysisViewModel by viewModels()
+    override val autoLaunchWebLoginForSessionRecovery = false
     private var allTerms: List<TermItem> = emptyList()
     private var externalCourseOpened = false
     private var peerComparisonDialog by mutableStateOf<PeerComparisonDialogState?>(null)
@@ -151,21 +152,15 @@ class ShenzhenGradeAnalysisActivity :
                 )
                 viewModel.reconcileTerms(allTerms)
                 resetSessionRetryState()
-            } else if (state.state == DataState.STATE.NOT_LOGGED_IN) {
-                handleSessionExpired { refresh(); true }
             }
         }
         viewModel.courses.observe(this) { state ->
-            if (state.state == DataState.STATE.NOT_LOGGED_IN) {
-                handleSessionExpired(viewModel::retryCourses)
-            } else if (state.state == DataState.STATE.SUCCESS) {
+            if (state.state == DataState.STATE.SUCCESS) {
                 resetSessionRetryState()
             }
         }
         viewModel.analysis.observe(this) { state ->
-            if (state.state == DataState.STATE.NOT_LOGGED_IN) {
-                handleSessionExpired(viewModel::retryAnalysis)
-            } else if (state.state == DataState.STATE.SUCCESS) {
+            if (state.state == DataState.STATE.SUCCESS) {
                 resetSessionRetryState()
             }
         }
@@ -181,19 +176,10 @@ class ShenzhenGradeAnalysisActivity :
                     resetSessionRetryState()
                 }
                 DataState.STATE.NOT_LOGGED_IN -> {
-                    if (!handleSessionExpired {
-                            peerComparisonDialog = peerComparisonDialog?.copy(
-                                loading = true,
-                                error = null
-                            )
-                            viewModel.retryPeerTeacherComparison()
-                        }
-                    ) {
-                        peerComparisonDialog = dialog.copy(
-                            loading = false,
-                            error = state.message ?: "深圳 Web 会话已失效"
-                        )
-                    }
+                    peerComparisonDialog = dialog.copy(
+                        loading = false,
+                        error = state.message ?: "请先连接深圳 Web 教务"
+                    )
                 }
                 DataState.STATE.FETCH_FAILED -> {
                     peerComparisonDialog = dialog.copy(
@@ -373,6 +359,13 @@ private fun GradeScreen(
                 AnalysisContent(
                     analysis = requireNotNull(analysisState?.data)
                 )
+            selectedCourse == null &&
+                termsState?.state == DataState.STATE.SUCCESS &&
+                selectedTerm == null -> StateCard(
+                    message = "没有可用学期",
+                    action = "刷新",
+                    onAction = onRefresh
+                )
             selectedCourse == null && coursesState?.state == DataState.STATE.SUCCESS ->
                 CourseList(
                     term = selectedTerm,
@@ -395,11 +388,41 @@ private fun CourseList(
     onCourseClick: (ShenzhenGradeCourse) -> Unit
 ) {
     val tokens = HitaTheme.tokens
+    val scoredCourses = courses.mapNotNull { course ->
+        val credits = course.credits?.takeIf { it > 0.0 } ?: return@mapNotNull null
+        val score = course.myScore?.takeIf { it in 0.0..100.0 } ?: return@mapNotNull null
+        credits to score
+    }
+    val includedCredits = scoredCourses.sumOf { it.first }
+    val weightedAverage = scoredCourses
+        .takeIf { it.isNotEmpty() }
+        ?.let { items ->
+            items.sumOf { (credits, score) -> credits * score } / items.sumOf { it.first }
+        }
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
         contentPadding = PaddingValues(tokens.spacing.lg),
         verticalArrangement = Arrangement.spacedBy(tokens.spacing.sm)
     ) {
+        item {
+            GradeCard {
+                Text("成绩汇总", fontWeight = FontWeight.Bold)
+                Spacer(Modifier.height(12.dp))
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                    Metric("加权均分", weightedAverage?.let(::format) ?: "--")
+                    Metric("课程数", courses.size.toString())
+                    Metric("计入学分", format(includedCredits))
+                }
+                if (scoredCourses.isEmpty() && courses.isNotEmpty()) {
+                    Text(
+                        "教务暂未返回个人数字成绩，暂时无法计算加权均分和计入学分。",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        fontSize = 12.sp,
+                        modifier = Modifier.padding(top = 10.dp)
+                    )
+                }
+            }
+        }
         item {
             OutlinedButton(onClick = onSelectTerm, modifier = Modifier.fillMaxWidth()) {
                 Text(term?.let(TermNameFormatter::fullTermName) ?: "选择学期")

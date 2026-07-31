@@ -54,6 +54,8 @@ import androidx.compose.foundation.layout.windowInsetsTopHeight
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.CutCornerShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.DropdownMenu
@@ -318,6 +320,8 @@ class MainActivity : HiltBaseActivity<ComposeViewBinding>(),
                     onDrawerAbout = { ActivityUtils.startActivity(getThis(), ActivityAbout::class.java) },
                     onGitHubUser = { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/Chami537"))) },
                     onGitHubProject = { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/LiPu-jpg"))) },
+                    onGitHubMingyu = { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/orgs/HIT-A/people/SpeechlessPanda"))) },
+                    onGitHubRuannuo = { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/orgs/HIT-A/people/StrayRN"))) },
                     fragmentFactory = { position ->
                         when (position) {
                             0 -> FragmentTimeLine()
@@ -726,6 +730,8 @@ private fun MainScreen(
     onDrawerAbout: () -> Unit,
     onGitHubUser: () -> Unit,
     onGitHubProject: () -> Unit,
+    onGitHubMingyu: () -> Unit,
+    onGitHubRuannuo: () -> Unit,
     fragmentFactory: (Int) -> Fragment,
 ) {
     val density = LocalDensity.current
@@ -776,6 +782,7 @@ private fun MainScreen(
         animationSpec = spring(dampingRatio = 0.9f, stiffness = 300f),
         label = "wallpaper_alpha"
     )
+    var showRewardCode by remember { mutableStateOf(false) }
 
     Box(
         modifier = Modifier
@@ -915,6 +922,9 @@ private fun MainScreen(
             onAbout = onDrawerAbout,
             onGitHubUser = onGitHubUser,
             onGitHubProject = onGitHubProject,
+            onGitHubMingyu = onGitHubMingyu,
+            onGitHubRuannuo = onGitHubRuannuo,
+            onRewardCode = { showRewardCode = true },
             modifier = Modifier
                 .align(Alignment.CenterEnd)
                 .width(drawerWidth)
@@ -924,6 +934,26 @@ private fun MainScreen(
                     alpha = if (isAppleGlass) 0.88f + 0.12f * drawerProgress else 1f
                 }
         )
+
+        if (showRewardCode) {
+            AlertDialog(
+                onDismissRequest = { showRewardCode = false },
+                title = { Text(stringResource(R.string.about_reward_code_title)) },
+                text = {
+                    Image(
+                        painter = painterResource(R.drawable.limpu_reward_code),
+                        contentDescription = stringResource(R.string.about_reward_code_title),
+                        contentScale = ContentScale.Fit,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                },
+                confirmButton = {
+                    Button(onClick = { showRewardCode = false }) {
+                        Text(stringResource(R.string.about_reward_code_close))
+                    }
+                }
+            )
+        }
     }
 }
 
@@ -1587,6 +1617,9 @@ private fun MainDrawer(
     onAbout: () -> Unit,
     onGitHubUser: () -> Unit,
     onGitHubProject: () -> Unit,
+    onGitHubMingyu: () -> Unit,
+    onGitHubRuannuo: () -> Unit,
+    onRewardCode: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val isAppleGlass = themeStyle == ThemeTools.STYLE.APPLE_GLASS
@@ -1773,7 +1806,8 @@ private fun MainDrawer(
                     Text(
                         text = stringResource(R.string.main_drawer_developer_mingyu),
                         color = MaterialTheme.colorScheme.primary,
-                        fontSize = 13.sp
+                        fontSize = 13.sp,
+                        modifier = Modifier.clickable(onClick = onGitHubMingyu)
                     )
                     Text(
                         text = " | ",
@@ -1783,9 +1817,21 @@ private fun MainDrawer(
                     Text(
                         text = stringResource(R.string.main_drawer_developer_ruannuo),
                         color = MaterialTheme.colorScheme.primary,
-                        fontSize = 13.sp
+                        fontSize = 13.sp,
+                        modifier = Modifier.clickable(onClick = onGitHubRuannuo)
                     )
                 }
+                Spacer(Modifier.height(10.dp))
+                Text(
+                    text = stringResource(R.string.about_reward_code_entry),
+                    color = MaterialTheme.colorScheme.primary,
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable(onClick = onRewardCode),
+                    textAlign = TextAlign.Center
+                )
                 Spacer(Modifier.height(24.dp))
             }
         }

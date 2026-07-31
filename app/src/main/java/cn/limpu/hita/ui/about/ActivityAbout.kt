@@ -36,6 +36,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -58,6 +59,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.colorResource
@@ -158,6 +160,7 @@ private fun AboutScreen(
     val checkState by viewModel.checkUpdateResult.observeAsState()
     var aboutHtml by remember { mutableStateOf("") }
     var buttonState by remember { mutableStateOf(UpdateButtonState.Idle) }
+    var showRewardCode by remember { mutableStateOf(false) }
 
     LaunchedEffect(aboutState) {
         aboutState?.data?.let { aboutHtml = it }
@@ -296,7 +299,10 @@ private fun AboutScreen(
                         Text(
                             text = stringResource(R.string.main_drawer_developer_mingyu),
                             color = MaterialTheme.colorScheme.primary,
-                            fontSize = 13.sp
+                            fontSize = 13.sp,
+                            modifier = Modifier.clickable {
+                                context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/orgs/HIT-A/people/SpeechlessPanda")))
+                            }
                         )
                         Text(
                             text = " | ",
@@ -306,9 +312,23 @@ private fun AboutScreen(
                         Text(
                             text = stringResource(R.string.main_drawer_developer_ruannuo),
                             color = MaterialTheme.colorScheme.primary,
-                            fontSize = 13.sp
+                            fontSize = 13.sp,
+                            modifier = Modifier.clickable {
+                                context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/orgs/HIT-A/people/StrayRN")))
+                            }
                         )
                     }
+                    Spacer(Modifier.height(14.dp))
+                    Text(
+                        text = stringResource(R.string.about_reward_code_entry),
+                        color = MaterialTheme.colorScheme.primary,
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { showRewardCode = true },
+                        textAlign = TextAlign.Center
+                    )
                 }
             }
         }
@@ -325,6 +345,26 @@ private fun AboutScreen(
                 .navigationBarsPadding()
                 .padding(tokens.spacing.xl)
         )
+
+        if (showRewardCode) {
+            AlertDialog(
+                onDismissRequest = { showRewardCode = false },
+                title = { Text(stringResource(R.string.about_reward_code_title)) },
+                text = {
+                    Image(
+                        painter = painterResource(R.drawable.limpu_reward_code),
+                        contentDescription = stringResource(R.string.about_reward_code_title),
+                        contentScale = ContentScale.Fit,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                },
+                confirmButton = {
+                    Button(onClick = { showRewardCode = false }) {
+                        Text(stringResource(R.string.about_reward_code_close))
+                    }
+                }
+            )
+        }
     }
 }
 
