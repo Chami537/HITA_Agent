@@ -10,6 +10,9 @@ import com.limpu.hitauser.data.model.UserProfile
 import cn.limpu.hita.data.model.chat.ChatMessageEntity
 import cn.limpu.hita.data.model.chat.ChatSession
 import cn.limpu.hita.data.model.classroom.ClassroomCacheEntity
+import cn.limpu.hita.data.model.eas.ScoreCacheEntity
+import cn.limpu.hita.data.model.eas.ScoreDetailCacheEntity
+import cn.limpu.hita.data.model.eas.ScoreTermCacheEntity
 import cn.limpu.hita.data.model.timetable.EventItem
 import cn.limpu.hita.data.model.timetable.TermSubject
 import cn.limpu.hita.data.model.timetable.Timetable
@@ -17,13 +20,14 @@ import cn.limpu.hita.data.source.dao.ChatMessageDao
 import cn.limpu.hita.data.source.dao.ChatSessionDao
 import cn.limpu.hita.data.source.dao.ClassroomCacheDao
 import cn.limpu.hita.data.source.dao.EventItemDao
+import cn.limpu.hita.data.source.dao.ScoreCacheDao
 import cn.limpu.hita.data.source.dao.SubjectDao
 import cn.limpu.hita.data.source.dao.TimetableDao
 import com.limpu.hitauser.data.source.dao.UserProfileDao
 
 @Database(
-    entities = [EventItem::class, TermSubject::class, Timetable::class, ChatSession::class, ChatMessageEntity::class, ClassroomCacheEntity::class],
-    version = 9
+    entities = [EventItem::class, TermSubject::class, Timetable::class, ChatSession::class, ChatMessageEntity::class, ClassroomCacheEntity::class, ScoreCacheEntity::class, ScoreTermCacheEntity::class, ScoreDetailCacheEntity::class],
+    version = 11
 )
 @androidx.room.TypeConverters(TypeConverters::class)
 abstract class AppDatabase : RoomDatabase() {
@@ -33,6 +37,7 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun chatSessionDao(): ChatSessionDao
     abstract fun chatMessageDao(): ChatMessageDao
     abstract fun classroomCacheDao(): ClassroomCacheDao
+    abstract fun scoreCacheDao(): ScoreCacheDao
 
     companion object {
         @Volatile
@@ -46,8 +51,8 @@ abstract class AppDatabase : RoomDatabase() {
                         INSTANCE = Room.databaseBuilder(
                             context.applicationContext,
                             AppDatabase::class.java, "hita"
-                        ).addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9)
-                            .fallbackToDestructiveMigration()
+                        ).addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11)
+                            .fallbackToDestructiveMigration(true)
                             .build()
                     }
                 }
@@ -103,6 +108,22 @@ abstract class AppDatabase : RoomDatabase() {
         private val MIGRATION_8_9 = object : Migration(8, 9) {
             override fun migrate(db: SupportSQLiteDatabase) {
                 db.execSQL("ALTER TABLE chat_message ADD COLUMN resourceCardsJson TEXT NOT NULL DEFAULT ''")
+            }
+        }
+
+        private val MIGRATION_9_10 = object : Migration(9, 10) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("CREATE TABLE IF NOT EXISTS score_cache (ownerKey TEXT NOT NULL, termYearCode TEXT NOT NULL, termTermCode TEXT NOT NULL, testType TEXT NOT NULL, scoresJson TEXT NOT NULL, summaryJson TEXT, cachedAt INTEGER NOT NULL, PRIMARY KEY(ownerKey, termYearCode, termTermCode, testType))")
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_score_cache_ownerKey_cachedAt ON score_cache(ownerKey, cachedAt)")
+                db.execSQL("CREATE TABLE IF NOT EXISTS score_term_cache (ownerKey TEXT NOT NULL, termYearCode TEXT NOT NULL, yearName TEXT NOT NULL, termTermCode TEXT NOT NULL, termName TEXT NOT NULL, isCurrent INTEGER NOT NULL, cachedAt INTEGER NOT NULL, PRIMARY KEY(ownerKey, termYearCode, termTermCode))")
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_score_term_cache_ownerKey_cachedAt ON score_term_cache(ownerKey, cachedAt)")
+            }
+        }
+
+        private val MIGRATION_10_11 = object : Migration(10, 11) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("CREATE TABLE IF NOT EXISTS score_detail_cache (ownerKey TEXT NOT NULL, cacheKey TEXT NOT NULL, payloadJson TEXT NOT NULL, cachedAt INTEGER NOT NULL, PRIMARY KEY(ownerKey, cacheKey))")
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_score_detail_cache_ownerKey_cachedAt ON score_detail_cache(ownerKey, cachedAt)")
             }
         }
     }

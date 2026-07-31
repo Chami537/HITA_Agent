@@ -11,26 +11,42 @@ import cn.limpu.hita.ui.timetable.detail.TeacherInfo
 
 @Dao
 interface EventItemDao {
+    /**
+     * 批量保存事件。
+     *
+     * EventItem.id 是主键；导入链路会先生成稳定事件集合，再用 REPLACE 写入。
+     */
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     fun saveEvents(data: List<EventItem>)
 
 
-    @Query("DELETE FROM events WHERE timetableId is :timetableId AND source is 'EAS_IMPORT' AND (type is 'CLASS' OR type is 'EXAM')")
+    /**
+     * 重新导入某个 EAS 学期课表时，只替换课程事件。
+     *
+     * 不删除考试：考试导入可能来自独立入口，且考试不一定随课程重新导入。
+     * 不删除手动事件：用户自行添加的活动必须保留。
+     */
+    @Query("DELETE FROM events WHERE timetableId is :timetableId AND source is 'EAS_IMPORT' AND type is 'CLASS'")
     fun deleteCourseFromTimetable(timetableId: String)
 
+    /**
+     * 主课表 / 时间线使用的跨课表时间范围查询。
+     *
+     * 注意：这里故意不限制 timetableId；显示层或 Repository 需要根据当前场景做去重/过滤。
+     */
     @Query("SELECT * FROM events WHERE `from` < :toT AND `to` > :fromT")
     fun getEventsDuring(fromT: Long, toT: Long): LiveData<List<EventItem>>
 
     @Query("SELECT * FROM events WHERE `from` >= :fromT order by `from` asc LIMIT :limit")
     fun getEventsAfter(fromT: Long, limit: Int): LiveData<List<EventItem>>
 
-    @Query("SELECT * FROM events WHERE `from` >= :fromT AND `from` < :toT AND (type is 'EXAM' OR name LIKE '[考试]%') order by `from` asc")
+    @Query("SELECT * FROM events WHERE `from` >= :fromT AND `from` < :toT AND type is 'EXAM' order by `from` asc")
     fun getExamsDuring(fromT: Long, toT: Long): LiveData<List<EventItem>>
 
     @Query("SELECT * FROM events WHERE `from` < :toT AND `to` > :fromT")
     fun getEventsDuringSync(fromT: Long, toT: Long): List<EventItem>
 
-    @Query("SELECT * FROM events WHERE `from` >= :fromT AND `from` < :toT AND (type is 'EXAM' OR name LIKE '[考试]%') order by `from` asc")
+    @Query("SELECT * FROM events WHERE `from` >= :fromT AND `from` < :toT AND type is 'EXAM' order by `from` asc")
     fun getExamsDuringSync(fromT: Long, toT: Long): List<EventItem>
 
     @Query("SELECT * FROM events WHERE `from` < :toT AND `to` > :fromT")
@@ -73,6 +89,27 @@ interface EventItemDao {
 
     @Query("select * from events where timetableId is :timetableId")
     fun getEventsOfTimetableSync(timetableId: String):List<EventItem>
+
+    /** 历史默认课表清理使用：判断一个课表是否为空。 */
+    @Query("select count(*) from events where timetableId is :timetableId")
+    fun countEventsOfTimetableSync(timetableId: String): Int
+
+    /**
+     * 历史默认课表清理使用。
+     *
+     * 如果一个默认课表里存在手动事件、考试或非 EAS 课程，就不能自动删除；
+     * 只有纯 EAS 课程重复表才允许被清理。
+     */
+    @Query("select count(*) from events where timetableId is :timetableId and not (source is 'EAS_IMPORT' and type is 'CLASS')")
+    fun countNonImportedClassEventsOfTimetableSync(timetableId: String): Int
+
+    /** 历史默认课表清理和显示去重使用：只取 EAS 导入课程。 */
+    @Query("select * from events where timetableId is :timetableId and source is 'EAS_IMPORT' and type is 'CLASS'")
+    fun getImportedClassEventsOfTimetableSync(timetableId: String): List<EventItem>
+
+    /** 考试去重跨课表判断，避免同一场考试被导入到多张课表后重复提醒。 */
+    @Query("SELECT * FROM events WHERE type is 'EXAM'")
+    fun getExamEventsSync(): List<EventItem>
 
     @Query("select * from events where timetableId is :timetableId order by name asc, `from` asc")
     fun getEventsOfTimetable(timetableId: String): LiveData<List<EventItem>>

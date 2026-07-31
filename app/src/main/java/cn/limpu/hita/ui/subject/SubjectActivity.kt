@@ -408,6 +408,7 @@ class SubjectActivity : HiltBaseActivity<ComposeViewBinding>() {
             "loadReadmeForSubject: subjectId=${subject.id} code=${subject.code} name=${subject.name} " +
                 "candidateCount=${candidates.size} candidates=${candidates.take(8).joinToString { "${it.repoType}|${it.repoName}|${it.courseCode}|${it.courseName}" }}"
         )
+        backfillCourseCodeFromHoa(subject, candidates)
         hoaCandidates = candidates
         candidateExpanded.clear()
         candidateReadmeStates.clear()
@@ -419,6 +420,18 @@ class SubjectActivity : HiltBaseActivity<ComposeViewBinding>() {
             showReadmeMessage("点击上方卡片查看深圳资源")
         }
         clearReadmeObserver()
+    }
+
+    private fun backfillCourseCodeFromHoa(
+        subject: TermSubject,
+        candidates: List<CourseResourceItem>
+    ) {
+        if (!subject.code.isNullOrBlank()) return
+        val code = CourseResourceLinker.uniqueExactCourseCodeForName(candidates, subject.name)
+            ?: return
+        subject.code = code
+        viewModel.startSaveSubject()
+        LogUtils.d("backfillCourseCodeFromHoa: subjectId=${subject.id} code=$code")
     }
 
     private fun toggleHoaCandidate(item: CourseResourceItem) {
@@ -1955,7 +1968,14 @@ private fun itemKey(item: ExternalCourseItem): String {
 private fun subjectCategoryDisplay(subject: TermSubject): String {
     val line1 = subject.selectCategory?.takeIf { it.isNotBlank() } ?: "无"
     val line2 = subject.field?.takeIf { it.isNotBlank() } ?: "无"
-    val line3 = subject.nature?.takeIf { it.isNotBlank() } ?: subject.type.name
+    val line3 = subject.nature?.takeIf { it.isNotBlank() } ?: when (subject.type) {
+        TermSubject.TYPE.COM_A -> "必修 · 考试"
+        TermSubject.TYPE.COM_B -> "必修 · 考查"
+        TermSubject.TYPE.OPT_A -> "选修 · 专选"
+        TermSubject.TYPE.OPT_B -> "选修 · 任选"
+        TermSubject.TYPE.MOOC -> "MOOC"
+        TermSubject.TYPE.TAG -> "标签"
+    }
     return listOf(line1, line2, line3).joinToString("\n")
 }
 

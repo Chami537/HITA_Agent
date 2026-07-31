@@ -11,7 +11,7 @@ class RagSearchTool : ReActTool {
             }
             AgentBackendClient.ragQuerySync(query) ?: "无法执行 RAG 查询"
         } catch (e: Exception) {
-            "Error: ${e.message}"
+            "RAG 查询失败：${e.message ?: "未知错误"}"
         }
     }
 

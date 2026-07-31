@@ -12,6 +12,8 @@ import cn.limpu.hita.R
 import cn.limpu.hita.utils.LogUtils
 import cn.limpu.hita.data.AppDatabase
 import cn.limpu.hita.data.model.eas.TermItem
+import cn.limpu.hita.data.model.eas.EASToken
+import cn.limpu.hita.data.model.eas.ShenzhenCourseCatalogItem
 import cn.limpu.hita.data.model.timetable.EventItem
 import cn.limpu.hita.data.model.timetable.SubjectColor
 import cn.limpu.hita.data.model.timetable.TimePeriodInDay
@@ -19,6 +21,7 @@ import cn.limpu.hita.data.model.timetable.Timetable
 import cn.limpu.hita.data.source.preference.EasPreferenceSource
 import cn.limpu.hita.ui.main.timetable.TimetableFragment.Companion.WEEK_MILLS
 import cn.limpu.hita.utils.TimeTools
+import cn.limpu.hita.utils.ColorTools
 import java.lang.NumberFormatException
 import java.util.*
 import java.util.concurrent.Executors
@@ -58,19 +61,27 @@ class TimetableRepository @Inject constructor(val application: Application) {
     private val easPreferenceSource by lazy {
         EasPreferenceSource(application.applicationContext)
     }
+    private val followedTeachingSectionStore by lazy {
+        FollowedTeachingSectionStore(application.applicationContext)
+    }
+    private val courseSelectionDraftStore by lazy {
+        CourseSelectionDraftStore(application.applicationContext)
+    }
 
     /**
      * 获取[from,to)内的事件
      */
     fun getEventsDuring(from: Long, to: Long): LiveData<List<EventItem>> {
-        return eventItemDao.getEventsDuring(from, to)
+        return MTransformations.map(eventItemDao.getEventsDuring(from, to), ::dedupeDisplayEvents)
     }
 
     /**
      * 获取[from,...)内的至多limit个事件
      */
     fun getEventsAfter(from: Long,limit:Int): LiveData<List<EventItem>> {
-        return eventItemDao.getEventsAfter(from,limit)
+        return MTransformations.map(eventItemDao.getEventsAfter(from, limit * 3)) { events ->
+            dedupeDisplayEvents(events).sortedBy { it.from.time }.take(limit)
+        }
     }
 
     fun getUpcomingExamsWithinReminderWindow(from: Long): LiveData<List<EventItem>> {
@@ -97,13 +108,13 @@ class TimetableRepository @Inject constructor(val application: Application) {
         val from = now.timeInMillis
         now.add(Calendar.DATE,1)
         val to = now.timeInMillis
-        return eventItemDao.getEventsDuringSync(from, to)
+        return dedupeDisplayEvents(eventItemDao.getEventsDuringSync(from, to))
             .sortedBy { it.from.time }
     }
 
     @WorkerThread
     fun getUpcomingEventsSync(from: Long, to: Long): List<EventItem> {
-        return eventItemDao.getEventsDuringSync(from, to)
+        return dedupeDisplayEvents(eventItemDao.getEventsDuringSync(from, to))
             .sortedBy { it.from.time }
     }
 
@@ -120,11 +131,16 @@ class TimetableRepository @Inject constructor(val application: Application) {
     }
     /**
      * 获取[from,to)内的事件，包含颜色
+     *
+     * 这是主课表显示入口，底层 DAO 会返回所有课表的事件。
+     * 为兼容历史版本产生的重复默认课表，这里对完全相同的 EAS 课程做显示层去重；
+     * 手动活动、考试、ICS 导入等非 EAS 课程不在这里合并。
      */
     fun getEventsDuringWithColor(from: Long, to: Long): LiveData<List<EventItem>> {
         return MTransformations.switchMap(eventItemDao.getEventsDuring(from, to)) { events ->
+            val displayEvents = dedupeDisplayEvents(events)
             val subjects = mutableSetOf<String>()
-            for (e in events) {
+            for (e in displayEvents) {
                 if (e.subjectId.isNotBlank()) {
                     subjects.add(e.subjectId)
                 }
@@ -135,7 +151,7 @@ class TimetableRepository @Inject constructor(val application: Application) {
                 for (color in colors) {
                     map[color.id] = color.color
                 }
-                for (e in events) {
+                for (e in displayEvents) {
                     map[e.subjectId]?.let {
                         e.color = it
                     } ?: run {
@@ -144,7 +160,7 @@ class TimetableRepository @Inject constructor(val application: Application) {
                         }
                     }
                 }
-                events
+                displayEvents
             }
         }
     }
@@ -272,6 +288,396 @@ class TimetableRepository @Inject constructor(val application: Application) {
         }
     }
 
+    fun followedSchoolSectionIds(term: TermItem): Set<String> {
+        val ownerKey = FollowedTeachingSectionStore.ownerKey(easPreferenceSource.getEasToken())
+        return followedTeachingSectionStore.snapshots(ownerKey, term.id).mapTo(mutableSetOf()) { it.id }
+    }
+
+    fun setSchoolSectionFollowed(
+        course: ShenzhenCourseCatalogItem,
+        term: TermItem,
+        termStartMillis: Long,
+        schedule: List<TimePeriodInDay>,
+        followed: Boolean
+    ): LiveData<DataState<Boolean>> {
+        val result = MutableLiveData<DataState<Boolean>>(DataState(DataState.STATE.NOTHING))
+        executor.execute {
+            runCatching {
+                val token = easPreferenceSource.getEasToken()
+                check(token.campus == EASToken.Campus.SHENZHEN) { "仅深圳校区支持关注全校教学班" }
+                val ownerKey = FollowedTeachingSectionStore.ownerKey(token)
+                val stableId = course.taskId.ifBlank { course.id }
+                if (followed) {
+                    check(course.isFollowable) { "该教学班缺少完整周次或节次，暂不能关注" }
+                    check(schedule.isNotEmpty()) { "未获取到本学期作息时间" }
+                    followedTeachingSectionStore.save(
+                        FollowedTeachingSectionSnapshot.create(
+                            ownerKey = ownerKey,
+                            term = term,
+                            course = course,
+                            termStartMillis = TimeTools.getMonday(termStartMillis).timeInMillis,
+                            schedule = schedule
+                        )
+                    )
+                } else {
+                    followedTeachingSectionStore.remove(ownerKey, term.id, stableId)
+                }
+                syncFollowedProjection(ownerKey, term.id)
+                true
+            }.onSuccess {
+                result.postValue(DataState(it, DataState.STATE.SUCCESS))
+            }.onFailure { error ->
+                result.postValue(DataState(DataState.STATE.FETCH_FAILED, error.message))
+            }
+        }
+        return result
+    }
+
+    fun courseSelectionDraft(term: TermItem): CourseSelectionDraft {
+        val ownerKey = FollowedTeachingSectionStore.ownerKey(easPreferenceSource.getEasToken())
+        return courseSelectionDraftStore.draft(ownerKey, term.id)
+    }
+
+    data class CoursePlanProjectionResult(
+        val draft: CourseSelectionDraft,
+        val timetableId: String?
+    )
+
+    fun setCoursePlanCourse(
+        course: ShenzhenCourseCatalogItem,
+        term: TermItem,
+        termStartMillis: Long?,
+        schedule: List<TimePeriodInDay>?,
+        selectedCourses: List<ShenzhenCourseCatalogItem>,
+        included: Boolean
+    ): LiveData<DataState<CourseSelectionDraft>> = updateCourseSelectionDraft(term) { ownerKey ->
+        var draft = courseSelectionDraftStore.setCourse(ownerKey, term.id, course, included)
+        if (draft.projectionEnabled && termStartMillis != null && !schedule.isNullOrEmpty()) {
+            if (
+                CoursePlanProjectionPolicy.projectableCourses(
+                    selectedCourses + draft.courses,
+                    schedule.size
+                ).isEmpty()
+            ) {
+                draft = courseSelectionDraftStore.setProjectionEnabled(ownerKey, term.id, false)
+            }
+            syncCoursePlanProjection(ownerKey, term, termStartMillis, schedule, selectedCourses, draft)
+        }
+        draft
+    }
+
+    fun setCoursePlanProjectionEnabled(
+        term: TermItem,
+        termStartMillis: Long?,
+        schedule: List<TimePeriodInDay>?,
+        selectedCourses: List<ShenzhenCourseCatalogItem>,
+        enabled: Boolean
+    ): LiveData<DataState<CoursePlanProjectionResult>> {
+        val result = MutableLiveData<DataState<CoursePlanProjectionResult>>(
+            DataState(DataState.STATE.NOTHING)
+        )
+        executor.execute {
+            runCatching {
+                val ownerKey = FollowedTeachingSectionStore.ownerKey(easPreferenceSource.getEasToken())
+                val current = courseSelectionDraftStore.draft(ownerKey, term.id)
+                if (enabled) {
+                    val effectiveCourses = selectedCourses + current.courses
+                    val validationError = when {
+                        effectiveCourses.isEmpty() -> "本学期没有已选课程，请先加入要预览的课程"
+                        termStartMillis == null ->
+                            "尚未获取到本学期第一教学周日期，暂时无法生成课表预览"
+                        schedule.isNullOrEmpty() ->
+                            "尚未获取到本学期作息时间，暂时无法生成课表预览"
+                        CoursePlanProjectionPolicy.projectableCourses(
+                            effectiveCourses,
+                            schedule.size
+                        ).isEmpty() ->
+                            "已加入课程没有可解析的上课时间，暂时只能查看草稿清单，无法生成课表"
+                        else -> null
+                    }
+                    if (validationError != null) {
+                        if (current.projectionEnabled) {
+                            val disabled = current.copy(projectionEnabled = false)
+                            syncCoursePlanProjection(
+                                ownerKey,
+                                term,
+                                termStartMillis ?: 0L,
+                                schedule.orEmpty(),
+                                selectedCourses,
+                                disabled
+                            )
+                            courseSelectionDraftStore.setProjectionEnabled(ownerKey, term.id, false)
+                        }
+                        error(validationError)
+                    }
+                }
+
+                val proposed = current.copy(projectionEnabled = enabled)
+                val timetableId = syncCoursePlanProjection(
+                    ownerKey,
+                    term,
+                    termStartMillis ?: 0L,
+                    schedule.orEmpty(),
+                    selectedCourses,
+                    proposed
+                )
+                val persisted = runCatching {
+                    courseSelectionDraftStore.setProjectionEnabled(ownerKey, term.id, enabled)
+                }.getOrElse { error ->
+                    runCatching {
+                        syncCoursePlanProjection(
+                            ownerKey,
+                            term,
+                            termStartMillis ?: 0L,
+                            schedule.orEmpty(),
+                            selectedCourses,
+                            current
+                        )
+                    }
+                    throw error
+                }
+                CoursePlanProjectionResult(persisted, timetableId)
+            }.onSuccess {
+                result.postValue(DataState(it, DataState.STATE.SUCCESS))
+            }.onFailure { error ->
+                result.postValue(DataState(DataState.STATE.FETCH_FAILED, error.message))
+            }
+        }
+        return result
+    }
+
+    fun clearCourseSelectionDraft(
+        term: TermItem,
+        termStartMillis: Long?,
+        schedule: List<TimePeriodInDay>?,
+        selectedCourses: List<ShenzhenCourseCatalogItem>
+    ): LiveData<DataState<CourseSelectionDraft>> = updateCourseSelectionDraft(term) { ownerKey ->
+        var draft = courseSelectionDraftStore.clear(ownerKey, term.id)
+        if (
+            draft.projectionEnabled &&
+            CoursePlanProjectionPolicy.projectableCourses(
+                selectedCourses,
+                schedule.orEmpty().size
+            ).isEmpty()
+        ) {
+            draft = courseSelectionDraftStore.setProjectionEnabled(ownerKey, term.id, false)
+        }
+        syncCoursePlanProjection(
+            ownerKey,
+            term,
+            termStartMillis ?: 0L,
+            schedule.orEmpty(),
+            selectedCourses,
+            draft
+        )
+        draft
+    }
+
+    private fun updateCourseSelectionDraft(
+        @Suppress("UNUSED_PARAMETER") term: TermItem,
+        block: (String) -> CourseSelectionDraft
+    ): LiveData<DataState<CourseSelectionDraft>> {
+        val result = MutableLiveData<DataState<CourseSelectionDraft>>(DataState(DataState.STATE.NOTHING))
+        executor.execute {
+            runCatching {
+                val ownerKey = FollowedTeachingSectionStore.ownerKey(easPreferenceSource.getEasToken())
+                block(ownerKey)
+            }.onSuccess {
+                result.postValue(DataState(it, DataState.STATE.SUCCESS))
+            }.onFailure { error ->
+                result.postValue(DataState(DataState.STATE.FETCH_FAILED, error.message))
+            }
+        }
+        return result
+    }
+
+    @WorkerThread
+    private fun syncCoursePlanProjection(
+        ownerKey: String,
+        term: TermItem,
+        termStartMillis: Long,
+        schedule: List<TimePeriodInDay>,
+        selectedCourses: List<ShenzhenCourseCatalogItem>,
+        draft: CourseSelectionDraft
+    ): String? {
+        val timetableCode = "COURSE_PLAN:$ownerKey:${term.id}"
+        val existing = timetableDao.getTimetableByEASCodeSync(timetableCode)
+        val courses = CoursePlanProjectionPolicy.projectableCourses(
+            selectedCourses + draft.courses,
+            schedule.size
+        )
+        if (!draft.projectionEnabled || courses.isEmpty()) {
+            existing?.let {
+                timetableDao.deleteTimetablesSync(listOf(it))
+                eventItemDao.deleteEventsFromTimetablesSync(listOf(it.id))
+                subjectDao.deleteSubjectsFromTimetablesSync(listOf(it.id))
+            }
+            return null
+        }
+
+        val projection = existing ?: Timetable()
+        projection.code = timetableCode
+        projection.name = "选课预览 · ${term.yearCode}-${term.termCode}"
+        projection.startTime = java.sql.Timestamp(TimeTools.getMonday(termStartMillis).timeInMillis)
+        projection.scheduleStructure = schedule
+        val subjects = mutableListOf<cn.limpu.hita.data.model.timetable.TermSubject>()
+        val events = mutableListOf<EventItem>()
+        courses.forEach { course ->
+            val courseId = course.taskId.ifBlank { course.id }
+            val subjectId = stableUuid("$timetableCode:subject:$courseId")
+            subjects += cn.limpu.hita.data.model.timetable.TermSubject().apply {
+                id = subjectId
+                name = course.courseName
+                timetableId = projection.id
+                code = course.courseCode.ifBlank { null }
+                key = courseId
+                credit = course.credits.toFloatOrNull() ?: 0f
+                school = course.offeringCollege.ifBlank { null }
+                nature = course.courseNature.ifBlank { null }
+                selectCategory = course.selectionPoolName.ifBlank { null }
+                color = ColorTools.colorForName(course.courseName)
+            }
+            course.meetings.forEachIndexed { meetingIndex, meeting ->
+                if (!meeting.isStructurallyComplete() ||
+                    meeting.beginPeriod - 1 !in schedule.indices ||
+                    meeting.endPeriod - 1 !in schedule.indices
+                ) return@forEachIndexed
+                meeting.weeks.forEach { week ->
+                    val timestamps = projection.getTimestamps(
+                        week,
+                        meeting.weekday,
+                        meeting.beginPeriod,
+                        meeting.endPeriod
+                    )
+                    events += EventItem().apply {
+                        id = stableUuid("$timetableCode:event:$courseId:$meetingIndex:$week")
+                        type = EventItem.TYPE.CLASS
+                        source = "${EventItem.SOURCE_COURSE_PLAN}:$ownerKey"
+                        name = course.courseName
+                        place = meeting.location
+                        teacher = meeting.teacher.ifBlank { course.teacher }
+                        this.subjectId = subjectId
+                        timetableId = projection.id
+                        from.time = timestamps[0]
+                        to.time = timestamps[1]
+                        fromNumber = meeting.beginPeriod
+                        lastNumber = meeting.endPeriod - meeting.beginPeriod + 1
+                    }
+                }
+            }
+        }
+        projection.endTime = java.sql.Timestamp(
+            events.maxOfOrNull { it.to.time } ?: (projection.startTime.time + 18L * WEEK_MILLS)
+        )
+        eventItemDao.deleteEventsFromTimetablesSync(listOf(projection.id))
+        subjectDao.deleteSubjectsFromTimetablesSync(listOf(projection.id))
+        timetableDao.saveTimetableSync(projection)
+        subjectDao.saveSubjectsSync(subjects)
+        eventItemDao.saveEvents(events)
+        return projection.id
+    }
+
+    @WorkerThread
+    private fun syncFollowedProjection(ownerKey: String, termId: String) {
+        val snapshots = followedTeachingSectionStore.snapshots(ownerKey, termId)
+        val timetableCode = "FOLLOWED:$ownerKey:$termId"
+        var timetable = timetableDao.getTimetableByEASCodeSync(timetableCode)
+
+        if (snapshots.isEmpty()) {
+            timetable?.let {
+                timetableDao.deleteTimetablesSync(listOf(it))
+                eventItemDao.deleteEventsFromTimetablesSync(listOf(it.id))
+                subjectDao.deleteSubjectsFromTimetablesSync(listOf(it.id))
+            }
+            return
+        }
+
+        val first = snapshots.first()
+        val projection = timetable ?: Timetable()
+        projection.code = timetableCode
+        projection.name = "关注课程 · ${first.yearCode}-${first.termCode}"
+        projection.startTime = java.sql.Timestamp(first.termStartMillis)
+        projection.scheduleStructure = first.scheduleStructure()
+
+        val subjects = mutableListOf<cn.limpu.hita.data.model.timetable.TermSubject>()
+        val events = mutableListOf<EventItem>()
+        snapshots.forEach { snapshot ->
+            val subjectId = stableUuid("$timetableCode:subject:${snapshot.id}")
+            val subject = cn.limpu.hita.data.model.timetable.TermSubject().apply {
+                id = subjectId
+                name = snapshot.courseName
+                timetableId = projection.id
+                code = snapshot.courseCode.ifBlank { null }
+                key = snapshot.taskId.ifBlank { snapshot.id }
+                credit = snapshot.credits.toFloatOrNull() ?: 0f
+                school = snapshot.offeringCollege.ifBlank { null }
+                color = ColorTools.colorForName(snapshot.courseName)
+            }
+            subjects += subject
+
+            snapshot.meetings.forEachIndexed { meetingIndex, meeting ->
+                val startIndex = meeting.beginPeriod - 1
+                val endIndex = meeting.endPeriod - 1
+                if (startIndex !in projection.scheduleStructure.indices ||
+                    endIndex !in projection.scheduleStructure.indices
+                ) return@forEachIndexed
+                meeting.weeks.forEach { week ->
+                    val from = projection.getTimestamps(
+                        week,
+                        meeting.weekday,
+                        meeting.beginPeriod,
+                        meeting.endPeriod
+                    )
+                    if (from.size != 2) return@forEach
+                    events += EventItem().apply {
+                        id = stableUuid("$timetableCode:event:${snapshot.id}:$meetingIndex:$week")
+                        type = EventItem.TYPE.CLASS
+                        source = "${EventItem.SOURCE_FOLLOWED_SCHOOL}:$ownerKey"
+                        name = snapshot.courseName
+                        place = meeting.location
+                        teacher = meeting.teacher.ifBlank { snapshot.teacher }
+                        this.subjectId = subjectId
+                        timetableId = projection.id
+                        this.from.time = from[0]
+                        to.time = from[1]
+                        fromNumber = meeting.beginPeriod
+                        lastNumber = meeting.endPeriod - meeting.beginPeriod + 1
+                    }
+                }
+            }
+        }
+
+        projection.endTime = java.sql.Timestamp(
+            events.maxOfOrNull { it.to.time }
+                ?: (projection.startTime.time + 18L * WEEK_MILLS)
+        )
+        eventItemDao.deleteEventsFromTimetablesSync(listOf(projection.id))
+        subjectDao.deleteSubjectsFromTimetablesSync(listOf(projection.id))
+        timetableDao.saveTimetableSync(projection)
+        subjectDao.saveSubjectsSync(subjects)
+        eventItemDao.saveEvents(events)
+    }
+
+    private fun stableUuid(value: String): String = UUID.nameUUIDFromBytes(
+        value.toByteArray(Charsets.UTF_8)
+    ).toString()
+
+    /**
+     * 进入主页/课表管理页前的轻量维护动作。
+     *
+     * 顺序很重要：
+     * 1. 先清理历史遗留的纯重复默认课表；
+     * 2. 如果数据库完全没有课表，再创建一个默认自定义课表。
+     *
+     * 这样不会在已有 EAS 学期课表时额外造一张空“默认课表”。
+     */
+    fun actionPrepareTimetableList() {
+        executor.execute {
+            cleanupDefaultDuplicateTimetablesSync()
+            ensureDefaultCustomTimetableSync()
+        }
+    }
+
     fun ensureDefaultCustomTimetableAsync() {
         executor.execute {
             ensureDefaultCustomTimetableSync()
@@ -283,9 +689,53 @@ class TimetableRepository @Inject constructor(val application: Application) {
         val existing = timetableDao.getFirstCustomTimetableSync()
         if (existing != null) return existing
 
+        val firstTimetable = timetableDao.getTimetablesSync().firstOrNull()
+        if (firstTimetable != null) return firstTimetable
+
         val newTable = buildNextDefaultTimetableSync()
         timetableDao.saveTimetableSync(newTable)
         return newTable
+    }
+
+    @WorkerThread
+    fun cleanupDefaultDuplicateTimetablesSync() {
+        val defaultPrefix = application.getString(R.string.default_timetable_name)
+        val defaults = timetableDao.getDefaultNamedCustomTimetablesSync("$defaultPrefix%")
+        if (defaults.isEmpty()) return
+
+        val easTables = timetableDao.getTimetablesSync()
+            .filter { !it.code.isNullOrBlank() }
+        if (easTables.isEmpty()) return
+
+        val easEventKeys = easTables.associate { timetable ->
+            timetable.id to eventItemDao.getImportedClassEventsOfTimetableSync(timetable.id)
+                .mapTo(mutableSetOf()) { importedClassEventIdentityKey(it) }
+        }
+
+        val deleteIds = defaults.mapNotNull { timetable ->
+            val eventCount = eventItemDao.countEventsOfTimetableSync(timetable.id)
+            if (eventCount == 0) {
+                return@mapNotNull timetable.id
+            }
+
+            val nonImportedClassCount = eventItemDao.countNonImportedClassEventsOfTimetableSync(timetable.id)
+            if (nonImportedClassCount > 0) {
+                return@mapNotNull null
+            }
+
+            val defaultKeys = eventItemDao.getImportedClassEventsOfTimetableSync(timetable.id)
+                .mapTo(mutableSetOf()) { importedClassEventIdentityKey(it) }
+            val duplicatedByEas = defaultKeys.isNotEmpty() && easEventKeys.values.any { easKeys ->
+                easKeys.isNotEmpty() && easKeys.containsAll(defaultKeys)
+            }
+            if (duplicatedByEas) timetable.id else null
+        }
+        if (deleteIds.isEmpty()) return
+
+        LogUtils.d("cleanupDefaultDuplicateTimetables: deleting defaults=$deleteIds")
+        timetableDao.deleteTimetablesInIdsSync(deleteIds)
+        eventItemDao.deleteEventsFromTimetablesSync(deleteIds)
+        subjectDao.deleteSubjectsFromTimetablesSync(deleteIds)
     }
 
     @WorkerThread
@@ -519,6 +969,45 @@ class TimetableRepository @Inject constructor(val application: Application) {
             subjectDao.clear()
             timetableDao.clear()
         }
+    }
+
+    private fun dedupeDisplayEvents(events: List<EventItem>): List<EventItem> {
+        val seenImportedClasses = mutableSetOf<String>()
+        val currentOwnerKey = FollowedTeachingSectionStore.ownerKey(easPreferenceSource.getEasToken())
+        return events.filter { event ->
+            when {
+                event.source.startsWith("${EventItem.SOURCE_FOLLOWED_SCHOOL}:") ||
+                    event.source.startsWith("${EventItem.SOURCE_COURSE_PLAN}:") ->
+                    event.source.substringAfterLast(':') == currentOwnerKey
+                else -> true
+            }
+        }.sortedBy { event ->
+            when {
+                event.source == EventItem.SOURCE_EAS_IMPORT -> 0
+                event.source.startsWith(EventItem.SOURCE_FOLLOWED_SCHOOL) -> 1
+                event.source.startsWith(EventItem.SOURCE_COURSE_PLAN) -> 2
+                else -> 3
+            }
+        }.filter { event ->
+            val shouldDedupe = event.type == EventItem.TYPE.CLASS && (
+                event.source == EventItem.SOURCE_EAS_IMPORT ||
+                    event.source.startsWith(EventItem.SOURCE_FOLLOWED_SCHOOL) ||
+                    event.source.startsWith(EventItem.SOURCE_COURSE_PLAN)
+                )
+            !shouldDedupe || seenImportedClasses.add(importedClassEventIdentityKey(event))
+        }
+    }
+
+    private fun importedClassEventIdentityKey(event: EventItem): String {
+        return listOf(
+            event.name.trim(),
+            event.place.orEmpty().trim(),
+            event.teacher.orEmpty().trim(),
+            event.from.time.toString(),
+            event.to.time.toString(),
+            event.fromNumber.toString(),
+            event.lastNumber.toString(),
+        ).joinToString("|")
     }
 
 }

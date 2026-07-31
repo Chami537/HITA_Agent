@@ -6,7 +6,6 @@ import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
-import android.text.Html
 import android.text.method.LinkMovementMethod
 import android.view.HapticFeedbackConstants
 import android.widget.TextView
@@ -37,6 +36,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -59,6 +59,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.colorResource
@@ -70,6 +71,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.core.content.pm.PackageInfoCompat
+import androidx.core.text.HtmlCompat
 import com.limpu.component.data.DataState
 import cn.limpu.hita.BuildConfig
 import cn.limpu.hita.R
@@ -157,6 +160,7 @@ private fun AboutScreen(
     val checkState by viewModel.checkUpdateResult.observeAsState()
     var aboutHtml by remember { mutableStateOf("") }
     var buttonState by remember { mutableStateOf(UpdateButtonState.Idle) }
+    var showRewardCode by remember { mutableStateOf(false) }
 
     LaunchedEffect(aboutState) {
         aboutState?.data?.let { aboutHtml = it }
@@ -287,7 +291,44 @@ private fun AboutScreen(
                                 context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/LiPu-jpg")))
                             }
                         )
+                        Text(
+                            text = " | ",
+                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.3f),
+                            fontSize = 13.sp
+                        )
+                        Text(
+                            text = stringResource(R.string.main_drawer_developer_mingyu),
+                            color = MaterialTheme.colorScheme.primary,
+                            fontSize = 13.sp,
+                            modifier = Modifier.clickable {
+                                context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/orgs/HIT-A/people/SpeechlessPanda")))
+                            }
+                        )
+                        Text(
+                            text = " | ",
+                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.3f),
+                            fontSize = 13.sp
+                        )
+                        Text(
+                            text = stringResource(R.string.main_drawer_developer_ruannuo),
+                            color = MaterialTheme.colorScheme.primary,
+                            fontSize = 13.sp,
+                            modifier = Modifier.clickable {
+                                context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/orgs/HIT-A/people/StrayRN")))
+                            }
+                        )
                     }
+                    Spacer(Modifier.height(14.dp))
+                    Text(
+                        text = stringResource(R.string.about_reward_code_entry),
+                        color = MaterialTheme.colorScheme.primary,
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { showRewardCode = true },
+                        textAlign = TextAlign.Center
+                    )
                 }
             }
         }
@@ -304,6 +345,26 @@ private fun AboutScreen(
                 .navigationBarsPadding()
                 .padding(tokens.spacing.xl)
         )
+
+        if (showRewardCode) {
+            AlertDialog(
+                onDismissRequest = { showRewardCode = false },
+                title = { Text(stringResource(R.string.about_reward_code_title)) },
+                text = {
+                    Image(
+                        painter = painterResource(R.drawable.limpu_reward_code),
+                        contentDescription = stringResource(R.string.about_reward_code_title),
+                        contentScale = ContentScale.Fit,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                },
+                confirmButton = {
+                    Button(onClick = { showRewardCode = false }) {
+                        Text(stringResource(R.string.about_reward_code_close))
+                    }
+                }
+            )
+        }
     }
 }
 
@@ -416,7 +477,7 @@ private fun HtmlText(
         },
         update = { textView ->
             textView.setTextColor(color.toArgbCompat())
-            textView.text = Html.fromHtml(html)
+            textView.text = HtmlCompat.fromHtml(html, HtmlCompat.FROM_HTML_MODE_LEGACY)
         }
     )
 }
@@ -578,11 +639,7 @@ private fun CheckUpdateButton(
 
 private fun currentVersionCode(context: android.content.Context): Long {
     val packageInfo = context.packageManager.getPackageInfo(context.packageName, 0)
-    return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-        packageInfo.longVersionCode
-    } else {
-        packageInfo.versionCode.toLong()
-    }
+    return PackageInfoCompat.getLongVersionCode(packageInfo)
 }
 
 private fun Color.toArgbCompat(): Int {

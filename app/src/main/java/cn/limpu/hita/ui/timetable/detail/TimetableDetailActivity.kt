@@ -55,6 +55,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -69,7 +70,9 @@ import cn.limpu.hita.data.model.timetable.TimePeriodInDay
 import cn.limpu.hita.ui.base.ComposeViewBinding
 import cn.limpu.hita.ui.base.HiltBaseActivity
 import cn.limpu.hita.ui.design.HitaComposeTheme
+import cn.limpu.hita.ui.design.HitaCoursePaletteDialog
 import cn.limpu.hita.ui.design.HitaTheme
+import cn.limpu.hita.ui.design.hitaCourseColor
 import cn.limpu.hita.ui.event.add.PopupAddEvent
 import cn.limpu.hita.ui.widgets.PopUpCalendarPicker
 import cn.limpu.hita.ui.widgets.PopUpTimePeriodPicker
@@ -77,7 +80,7 @@ import cn.limpu.hita.utils.ActivityUtils
 import cn.limpu.hita.utils.FileProviderUtils
 import cn.limpu.hita.utils.ShareUtils
 import cn.limpu.hita.utils.TextTools
-import com.limpu.style.widgets.PopUpColorPicker
+import com.limpu.style.ThemeTools
 import com.limpu.style.widgets.PopUpEditText
 import com.limpu.style.widgets.PopUpText
 import dagger.hilt.android.AndroidEntryPoint
@@ -141,13 +144,8 @@ class TimetableDetailActivity : HiltBaseActivity<ComposeViewBinding>() {
                             selectedSubjectIds = selectedSubjectIds + subject.id
                         }
                     },
-                    onPickSubjectColor = { subject ->
-                        PopUpColorPicker().setOnColorSelectListener(object :
-                            PopUpColorPicker.OnColorSelectedListener {
-                            override fun onSelected(color: Int) {
-                                viewModel.startChangeSubjectColor(subject.id, color)
-                            }
-                        }).initColor(subject.color).show(supportFragmentManager, "pickColor")
+                    onPickSubjectColor = { subject, color ->
+                        viewModel.startChangeSubjectColor(subject.id, color)
                     },
                     onClearSelection = { selectedSubjectIds = emptySet() },
                     onDeleteSelected = { subjects ->
@@ -253,7 +251,7 @@ private fun TimetableDetailScreen(
     onOpenSubject: (TermSubject) -> Unit,
     onToggleSubjectSelection: (TermSubject) -> Unit,
     onStartSubjectSelection: (TermSubject) -> Unit,
-    onPickSubjectColor: (TermSubject) -> Unit,
+    onPickSubjectColor: (TermSubject, Int) -> Unit,
     onClearSelection: () -> Unit,
     onDeleteSelected: (List<TermSubject>) -> Unit,
     onAddSubject: () -> Unit,
@@ -261,10 +259,12 @@ private fun TimetableDetailScreen(
     onEditPeriod: (TimePeriodInDay, Int) -> Unit
 ) {
     val tokens = HitaTheme.tokens
+    val canEditCourseColors = HitaTheme.preferenceStyle == ThemeTools.STYLE.CLASSIC
     val timetable by viewModel.timetableLiveData.observeAsState()
     val subjects by viewModel.subjectsLiveData.observeAsState(emptyList())
     val teachers by viewModel.teacherInfoLiveData.observeAsState(emptyList())
     val selectionMode = selectedSubjectIds.isNotEmpty()
+    var colorSubject by remember { mutableStateOf<TermSubject?>(null) }
 
     Column(
         modifier = Modifier
@@ -400,7 +400,8 @@ private fun TimetableDetailScreen(
                 SectionTitleWithActions(
                     text = stringResource(R.string.title_subjects),
                     onAdd = onAddSubject,
-                    onResetColors = onResetColors
+                    onResetColors = onResetColors,
+                    showResetColors = canEditCourseColors,
                 )
             }
             items(subjects, key = { it.id }) { subject ->
@@ -416,7 +417,8 @@ private fun TimetableDetailScreen(
                             if (selectionMode) onToggleSubjectSelection(subject) else onOpenSubject(subject)
                         },
                         onLongClick = { onStartSubjectSelection(subject) },
-                        onColorClick = { onPickSubjectColor(subject) }
+                        onColorClick = { colorSubject = subject },
+                        canEditColor = canEditCourseColors,
                     )
                 }
             }
@@ -431,6 +433,20 @@ private fun TimetableDetailScreen(
                 )
             }
         }
+    }
+
+    colorSubject?.let { subject ->
+        HitaCoursePaletteDialog(
+            selectedColor = hitaCourseColor(
+                courseKey = subject.id.ifBlank { subject.name },
+                storedColor = subject.color,
+            ),
+            onSelected = { color ->
+                onPickSubjectColor(subject, color.toArgb())
+                colorSubject = null
+            },
+            onDismiss = { colorSubject = null },
+        )
     }
 }
 
@@ -530,7 +546,8 @@ private fun SectionTitle(text: String) {
 private fun SectionTitleWithActions(
     text: String,
     onAdd: () -> Unit,
-    onResetColors: () -> Unit
+    onResetColors: () -> Unit,
+    showResetColors: Boolean,
 ) {
     Row(
         modifier = Modifier
@@ -554,12 +571,14 @@ private fun SectionTitleWithActions(
                 tint = MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
-        IconButton(onClick = onResetColors, modifier = Modifier.padding(end = HitaTheme.tokens.spacing.lg)) {
-            Icon(
-                painter = painterResource(R.drawable.ic_baseline_color_lens_24),
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.onSurfaceVariant
-            )
+        if (showResetColors) {
+            IconButton(onClick = onResetColors, modifier = Modifier.padding(end = HitaTheme.tokens.spacing.lg)) {
+                Icon(
+                    painter = painterResource(R.drawable.ic_baseline_color_lens_24),
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
         }
     }
 }
@@ -633,7 +652,8 @@ private fun SubjectCard(
     selectionMode: Boolean,
     onClick: () -> Unit,
     onLongClick: () -> Unit,
-    onColorClick: () -> Unit
+    onColorClick: (Int) -> Unit,
+    canEditColor: Boolean,
 ) {
     val tokens = HitaTheme.tokens
     val progressLiveData = remember(subject.id) { viewModel.getSubjectProgress(subject.id) }
@@ -642,6 +662,10 @@ private fun SubjectCard(
         val total = progressPair.second.coerceAtLeast(1)
         (progressPair.first / total.toFloat()).coerceIn(0f, 1f)
     }
+    val courseColor = hitaCourseColor(
+        courseKey = subject.id.ifBlank { subject.name },
+        storedColor = subject.color,
+    )
     Card(
         modifier = Modifier
             .fillMaxWidth()
@@ -681,14 +705,16 @@ private fun SubjectCard(
                         .fillMaxWidth()
                         .padding(top = tokens.spacing.sm, end = tokens.spacing.lg)
                         .height(8.dp),
-                    color = Color(subject.color),
-                    trackColor = Color(subject.color).copy(alpha = 0.2f)
+                    color = courseColor,
+                    trackColor = courseColor.copy(alpha = 0.2f)
                 )
             }
             Box(
                 modifier = Modifier
                     .size(56.dp)
-                    .clickable(enabled = !selectionMode, onClick = onColorClick),
+                    .clickable(enabled = !selectionMode && canEditColor) {
+                        onColorClick(courseColor.toArgb())
+                    },
                 contentAlignment = Alignment.Center
             ) {
                 if (selectionMode) {
@@ -697,7 +723,7 @@ private fun SubjectCard(
                     Surface(
                         modifier = Modifier.size(28.dp),
                         shape = CircleShape,
-                        color = Color(subject.color).copy(alpha = 0.8f)
+                        color = courseColor.copy(alpha = 0.8f)
                     ) {}
                 }
             }

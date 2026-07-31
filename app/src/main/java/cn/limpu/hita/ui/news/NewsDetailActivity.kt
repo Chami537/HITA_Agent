@@ -2,7 +2,6 @@ package cn.limpu.hita.ui.news
 
 import android.annotation.SuppressLint
 import android.os.Bundle
-import android.text.Html
 import android.webkit.WebChromeClient
 import android.webkit.WebSettings
 import android.webkit.WebView
@@ -35,6 +34,7 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.core.text.HtmlCompat
 import cn.limpu.hita.R
 import cn.limpu.hita.ui.design.HitaComposeTheme
 import cn.limpu.hita.ui.design.HitaTheme
@@ -80,7 +80,7 @@ private fun NewsDetailScreen(
     val tokens = HitaTheme.tokens
     val metaState by viewModel.metaData.observeAsState()
     val timeText = metaState?.data?.get("time")?.toString()?.let {
-        Html.fromHtml(it).toString()
+        HtmlCompat.fromHtml(it, HtmlCompat.FROM_HTML_MODE_LEGACY).toString()
     }.orEmpty()
     val url = "http://www.hitsz.edu.cn$link"
 

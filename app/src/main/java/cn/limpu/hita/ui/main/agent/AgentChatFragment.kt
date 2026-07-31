@@ -6,10 +6,15 @@ import android.graphics.Rect
 import android.net.Uri
 import android.os.Bundle
 import android.provider.OpenableColumns
+import android.text.InputType
 import android.text.method.LinkMovementMethod
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import android.widget.EditText
+import android.widget.LinearLayout
+import android.widget.RadioButton
+import android.widget.RadioGroup
 import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
@@ -77,12 +82,16 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.fragment.app.viewModels
+import cn.limpu.hita.BuildConfig
 import cn.limpu.hita.R
 import cn.limpu.hita.agent.core.AgentProvider
 import cn.limpu.hita.agent.core.AgentSession
 import cn.limpu.hita.agent.timetable.TimetableAgentInput
 import cn.limpu.hita.agent.timetable.TimetableAgentOutput
 import cn.limpu.hita.agent.tools.SearchExternalResourceTool
+import cn.limpu.hita.data.repository.AiChatProvider
+import cn.limpu.hita.data.repository.AiSettings
+import cn.limpu.hita.data.repository.AiSettingsRepository
 import cn.limpu.hita.data.model.chat.ChatSession
 import cn.limpu.hita.data.model.resource.AgentResourceCard
 import cn.limpu.hita.ui.design.HitaComposeTheme
@@ -90,7 +99,9 @@ import cn.limpu.hita.ui.design.HitaTheme
 import cn.limpu.hita.ui.design.hitaGlassCardBorder
 import cn.limpu.hita.ui.design.hitaGlassCardColors
 import cn.limpu.hita.ui.design.hitaGlassCardModifier
+import cn.limpu.hita.ui.design.hitaUsesMainBackdrop
 import cn.limpu.hita.ui.design.hitaIsAppleGlassSurface
+import cn.limpu.hita.ui.design.hitaStyleCardShape
 import cn.limpu.hita.ui.resource.UnifiedResourceSearchActivity
 import cn.limpu.hita.utils.ActivityUtils
 import cn.limpu.hita.utils.LogUtils
@@ -134,6 +145,7 @@ class AgentChatFragment : androidx.fragment.app.Fragment() {
                         onDeleteSession = ::showDeleteSessionDialog,
                         onSwitchSession = { viewModel.switchToSession(it.id) },
                         onOpenResourceCard = ::openResourceCard,
+                        onOpenAiSettings = ::showAiSettingsDialog,
                     )
                 }
             }
@@ -171,6 +183,102 @@ class AgentChatFragment : androidx.fragment.app.Fragment() {
             }
             .setNegativeButton("取消", null)
             .show()
+    }
+
+    private fun showAiSettingsDialog() {
+        val ctx = context ?: return
+        val repo = AiSettingsRepository(ctx)
+        val settings = repo.getSettings()
+        val padding = (16 * ctx.resources.displayMetrics.density).toInt()
+        val hasBuiltInKey = BuildConfig.DEEPSEEK_API_KEY.isNotBlank()
+
+        val container = LinearLayout(ctx).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(padding, padding / 2, padding, 0)
+        }
+
+        container.addView(TextView(ctx).apply {
+            text = if (hasBuiltInKey) {
+                "AI 将由应用端直连模型服务；自定义 Key 只保存在本机。"
+            } else {
+                "此版本未配置内置 Key。请填写自定义 DeepSeek Key；它只保存在本机。"
+            }
+            textSize = 13f
+        })
+
+        val builtInId = View.generateViewId()
+        val customId = View.generateViewId()
+        val providerGroup = RadioGroup(ctx).apply {
+            orientation = RadioGroup.VERTICAL
+            addView(RadioButton(ctx).apply {
+                id = builtInId
+                text = if (hasBuiltInKey) "内置 DeepSeek" else "内置 DeepSeek（当前不可用）"
+                isEnabled = hasBuiltInKey
+            })
+            addView(RadioButton(ctx).apply {
+                id = customId
+                text = "自定义 DeepSeek Key"
+            })
+            check(
+                when {
+                    !hasBuiltInKey -> customId
+                    settings.chatProvider == AiChatProvider.CUSTOM_DEEPSEEK -> customId
+                    else -> builtInId
+                }
+            )
+        }
+        container.addView(providerGroup)
+
+        val deepSeekInput = settingsEditText(
+            initialValue = settings.customDeepSeekApiKey,
+            hint = "自定义 DeepSeek API Key（sk-...）",
+            isSecret = true,
+        )
+        container.addView(deepSeekInput)
+
+        val zhipuInput = settingsEditText(
+            initialValue = settings.customZhipuApiKey,
+            hint = "自定义智谱 API Key（附件识别，可留空）",
+            isSecret = true,
+        )
+        container.addView(zhipuInput)
+
+        AlertDialog.Builder(ctx)
+            .setTitle("AI 设置")
+            .setView(container)
+            .setNegativeButton("取消", null)
+            .setPositiveButton("保存") { _, _ ->
+                val provider = when (providerGroup.checkedRadioButtonId) {
+                    customId -> AiChatProvider.CUSTOM_DEEPSEEK
+                    else -> AiChatProvider.BUILTIN_DEEPSEEK
+                }
+                repo.saveSettings(
+                    AiSettings(
+                        chatProvider = provider,
+                        customDeepSeekApiKey = deepSeekInput.text?.toString().orEmpty(),
+                        customZhipuApiKey = zhipuInput.text?.toString().orEmpty(),
+                    )
+                )
+                Toast.makeText(ctx, "AI 设置已保存", Toast.LENGTH_SHORT).show()
+            }
+            .show()
+    }
+
+    private fun settingsEditText(
+        initialValue: String,
+        hint: String,
+        isSecret: Boolean,
+    ): EditText {
+        return EditText(requireContext()).apply {
+            setText(initialValue)
+            this.hint = hint
+            setSingleLine(true)
+            inputType = if (isSecret) {
+                InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD
+            } else {
+                InputType.TYPE_CLASS_TEXT
+            }
+        }
     }
 
     private fun openFilePicker() {
@@ -223,6 +331,7 @@ private fun AgentChatScreen(
     onDeleteSession: (ChatSession) -> Unit,
     onSwitchSession: (ChatSession) -> Unit,
     onOpenResourceCard: (AgentResourceCard) -> Unit,
+    onOpenAiSettings: () -> Unit,
 ) {
     val tokens = HitaTheme.tokens
     val messages by viewModel.messages.observeAsState(emptyList())
@@ -302,7 +411,7 @@ private fun AgentChatScreen(
         modifier = Modifier
             .fillMaxSize()
             .background(
-                if (hitaIsAppleGlassSurface()) {
+                if (hitaUsesMainBackdrop()) {
                     Color.Transparent
                 } else {
                     MaterialTheme.colorScheme.background
@@ -322,7 +431,7 @@ private fun AgentChatScreen(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Box(modifier = Modifier.weight(1f)) {
-                    val sessionShape = RoundedCornerShape(18.dp)
+                    val sessionShape = hitaStyleCardShape(18.dp, 12.dp)
                     Surface(
                         color = MaterialTheme.colorScheme.surface,
                         shape = sessionShape,
@@ -393,6 +502,13 @@ private fun AgentChatScreen(
                         tint = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
+                IconButton(onClick = onOpenAiSettings) {
+                    Icon(
+                        painter = painterResource(R.drawable.ic_menu_settings),
+                        contentDescription = "AI 设置",
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
             }
 
             LazyColumn(
@@ -460,7 +576,7 @@ private fun AgentChatScreen(
                         fontSize = 14.sp
                     )
                 },
-                shape = RoundedCornerShape(22.dp),
+                shape = hitaStyleCardShape(22.dp, 14.dp),
                 minLines = 1,
                 maxLines = 8,
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
@@ -492,7 +608,7 @@ private fun AgentChatScreen(
                 enabled = !isLoading,
                 modifier = Modifier
                     .padding(start = tokens.spacing.sm)
-                    .background(MaterialTheme.colorScheme.primary, CircleShape)
+                    .background(MaterialTheme.colorScheme.primary, hitaStyleCardShape(999.dp, 14.dp))
             ) {
                 if (isLoading) {
                     CircularProgressIndicator(
@@ -543,7 +659,7 @@ private fun AgentMessageBubble(
             .padding(vertical = tokens.spacing.xs),
         horizontalArrangement = if (isUser) Arrangement.End else Arrangement.Start
     ) {
-        val bubbleShape = RoundedCornerShape(20.dp)
+        val bubbleShape = hitaStyleCardShape(20.dp, 16.dp)
         val isGlass = hitaIsAppleGlassSurface()
         Card(
             colors = if (isGlass) {
@@ -679,7 +795,7 @@ private fun AgentResourceCardView(
     onClick: () -> Unit,
 ) {
     val tokens = HitaTheme.tokens
-    val cardShape = RoundedCornerShape(tokens.radius.md)
+    val cardShape = hitaStyleCardShape(tokens.radius.md, 12.dp)
     Card(
         colors = hitaGlassCardColors(
             containerColor = MaterialTheme.colorScheme.background,
@@ -759,5 +875,5 @@ private fun getFileName(context: android.content.Context, uri: Uri): String {
             }
         }
     }
-    return uri.lastPathSegment ?: "file"
+    return uri.lastPathSegment ?: "文件"
 }

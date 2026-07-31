@@ -16,7 +16,7 @@ class GetLocalTimetableTool : AgentTool<TimetableAgentInput, TimetableAgentOutpu
         onResult: (AgentToolResult<TimetableAgentOutput>) -> Unit,
     ) {
         if (input.action != TimetableAgentInput.Action.GET_LOCAL_TIMETABLE) {
-            onResult(AgentToolResult.failure("invalid action for $name"))
+            onResult(AgentToolResult.failure("当前工具不支持此操作"))
             return
         }
 
@@ -29,7 +29,7 @@ class GetLocalTimetableTool : AgentTool<TimetableAgentInput, TimetableAgentOutpu
                 val events = if (input.timetableId != null) {
                     val timetable = repository.getTimetableByIdSync(input.timetableId)
                         ?: run {
-                            onResult(AgentToolResult.failure("timetable ${input.timetableId} not found"))
+                            onResult(AgentToolResult.failure("未找到课表 ${input.timetableId}"))
                             return@thread
                         }
                     LogUtils.d("Single timetable: ${timetable.name}")
@@ -67,7 +67,7 @@ class GetLocalTimetableTool : AgentTool<TimetableAgentInput, TimetableAgentOutpu
                     )
                 )
             } catch (e: Exception) {
-                onResult(AgentToolResult.failure(e.message ?: "get local timetable failed"))
+                onResult(AgentToolResult.failure(e.message ?: "查询本地课表失败"))
             }
         }
     }

@@ -8,7 +8,7 @@ class CrawlSiteTool : ReActTool {
             val (url, maxPages) = extractParams(input.actionInput)
             AgentBackendClient.crawlSiteSync(url, maxPages) ?: "无法启动站点爬取"
         } catch (e: Exception) {
-            "Error: ${e.message}"
+            "启动站点爬取失败：${e.message ?: "未知错误"}"
         }
     }
 

@@ -15,21 +15,21 @@ class AddTimetableArrangementTool : AgentTool<TimetableAgentInput, TimetableAgen
         onResult: (AgentToolResult<TimetableAgentOutput>) -> Unit,
     ) {
         if (input.action != TimetableAgentInput.Action.ADD_TIMETABLE_ARRANGEMENT) {
-            onResult(AgentToolResult.failure("invalid action for $name"))
+            onResult(AgentToolResult.failure("当前工具不支持此操作"))
             return
         }
 
         val arrangement = input.arrangement
         if (arrangement == null) {
-            onResult(AgentToolResult.failure("arrangement is required"))
+            onResult(AgentToolResult.failure("缺少活动时间安排"))
             return
         }
         if (arrangement.name.isBlank()) {
-            onResult(AgentToolResult.failure("arrangement name is required"))
+            onResult(AgentToolResult.failure("缺少活动名称"))
             return
         }
         if (arrangement.toMs <= arrangement.fromMs) {
-            onResult(AgentToolResult.failure("arrangement end time must be after start time"))
+            onResult(AgentToolResult.failure("活动结束时间必须晚于开始时间"))
             return
         }
 
@@ -43,7 +43,7 @@ class AddTimetableArrangementTool : AgentTool<TimetableAgentInput, TimetableAgen
                     ?.let { repository.getTimetableByIdSync(it) }
                     ?: repository.getRecentTimetableSync()
                     ?: repository.ensureDefaultCustomTimetableSync()
-                    LogUtils.d("[DEBUG] Got timetable: id=${timetable.id}, name=${timetable.name}")
+                LogUtils.d("[DEBUG] Got timetable: id=${timetable.id}, name=${timetable.name}")
 
                 val result = ScheduleEventCreator.buildEvents(
                     timetable = timetable,
@@ -80,7 +80,7 @@ class AddTimetableArrangementTool : AgentTool<TimetableAgentInput, TimetableAgen
                 )
             } catch (e: Exception) {
                 LogUtils.e("[DEBUG] Tool execution failed", e)
-                onResult(AgentToolResult.failure(e.message ?: "add timetable arrangement failed"))
+                onResult(AgentToolResult.failure(e.message ?: "添加活动失败"))
             }
         }
     }

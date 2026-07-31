@@ -30,6 +30,7 @@ import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CheckboxDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.RadioButtonDefaults
@@ -78,6 +79,8 @@ class PopUpLoginEAS : BottomSheetDialogFragment() {
     private var pendingWebViewCampus: EASToken.Campus? = null
     private var autoLaunchTriggered = false
     private var silentWebLoginTried = false
+    private var pendingNonSilentCampus by mutableStateOf<EASToken.Campus?>(null)
+    private var loginInProgress by mutableStateOf(false)
 
     private val viewModel: LoginEASViewModel by viewModels()
 
@@ -113,19 +116,33 @@ class PopUpLoginEAS : BottomSheetDialogFragment() {
                         handleWebViewResult(result.resultCode, result.data)
                     }
 
+                    LaunchedEffect(pendingNonSilentCampus) {
+                        val campus = pendingNonSilentCampus ?: return@LaunchedEffect
+                        pendingNonSilentCampus = null
+                        launchCampusWebLogin(campus, silentMode = false, webViewLauncher)
+                    }
+
                     LoginEASScreen(
                         viewModel = viewModel,
                         loginResult = loginResult,
                         loginCheckResult = loginCheckResult,
+                        isLoading = loginInProgress,
+                        onLoadingChange = { loginInProgress = it },
                         isAgreementAccepted = isUserAgreementAccepted(),
                         onMarkAgreementAccepted = { markUserAgreementAccepted() },
                         initialCampus = preferredCampus ?: viewModel.easRepo.getEasToken().campus,
                         onLogin = { campus, username, password ->
                             performLogin(campus, username, password, webViewLauncher)
                         },
+                        onWebLogin = { campus ->
+                            launchCampusWebLogin(campus, silentMode = false, webViewLauncher)
+                        },
                         onAutoLaunch = { campus ->
                             if (!autoLaunchTriggered && autoLaunchWebLogin &&
-                                campus == EASToken.Campus.BENBU && isUserAgreementAccepted()
+                                campus in setOf(
+                                    EASToken.Campus.BENBU,
+                                    EASToken.Campus.SHENZHEN
+                                ) && isUserAgreementAccepted()
                             ) {
                                 autoLaunchTriggered = true
                                 silentWebLoginTried = true
@@ -171,21 +188,32 @@ class PopUpLoginEAS : BottomSheetDialogFragment() {
         launcher: androidx.activity.result.ActivityResultLauncher<Intent>
     ) {
         pendingWebViewCampus = campus
+        loginInProgress = true
         launcher.launch(
             Intent(requireContext(), WebViewLoginActivity::class.java).apply {
                 putExtra(WebViewLoginActivity.EXTRA_SILENT_MODE, silentMode)
                 putExtra(WebViewLoginActivity.EXTRA_CAMPUS, campus.name)
+                putExtra(
+                    WebViewLoginActivity.EXTRA_STUDENT_TYPE,
+                    viewModel.easRepo.getEasToken().getStudentType()
+                )
             }
         )
     }
 
     private fun handleWebViewResult(resultCode: Int, data: Intent?) {
         if (resultCode != Activity.RESULT_OK) {
+            loginInProgress = false
             val campus = pendingWebViewCampus
             pendingWebViewCampus = null
-            if (autoLaunchWebLogin && silentWebLoginTried && campus == EASToken.Campus.BENBU) {
-                LogUtils.i("retry non-silent login")
+            if (autoLaunchWebLogin && silentWebLoginTried && campus in setOf(
+                    EASToken.Campus.BENBU,
+                    EASToken.Campus.SHENZHEN
+                )
+            ) {
+                LogUtils.i("silent session recovery needs interaction; opening visible login")
                 silentWebLoginTried = false
+                pendingNonSilentCampus = campus
             } else {
                 LogUtils.e("WebView login FAILED")
                 onResponseListener?.onFailed(this)
@@ -200,7 +228,7 @@ class PopUpLoginEAS : BottomSheetDialogFragment() {
         pendingWebViewCampus = null
         silentWebLoginTried = false
 
-        if (cookiesJson != null && (campus == EASToken.Campus.BENBU || campus == EASToken.Campus.WEIHAI)) {
+        if (cookiesJson != null && campus != null) {
             try {
                 val cookiesJsonObj = JSONObject(cookiesJson)
                 val cookiesMap = HashMap<String, String>()
@@ -211,12 +239,15 @@ class PopUpLoginEAS : BottomSheetDialogFragment() {
                 }
 
                 val electronicExpToken = data.getStringExtra("electronic_exp_token")
-                startCookieLogin(campus, cookiesMap, electronicExpToken)
+                val webBaseUrl = data.getStringExtra("web_base_url")
+                startCookieLogin(campus, cookiesMap, electronicExpToken, webBaseUrl)
             } catch (e: Exception) {
+                loginInProgress = false
                 LogUtils.e("Failed to parse cookies: ${e.message}")
                 onResponseListener?.onFailed(this)
             }
         } else {
+            loginInProgress = false
             onResponseListener?.onFailed(this)
         }
     }
@@ -225,14 +256,21 @@ class PopUpLoginEAS : BottomSheetDialogFragment() {
         campus: EASToken.Campus,
         cookiesMap: HashMap<String, String>,
         electronicExpToken: String?,
+        webBaseUrl: String?,
     ) {
         val cookiesJson = JSONObject(cookiesMap as Map<*, *>).toString()
-        val loginSource = viewModel.easRepo.login(cookiesJson, electronicExpToken.orEmpty(), campus)
+        val loginMetadata = if (campus == EASToken.Campus.SHENZHEN) {
+            webBaseUrl.orEmpty()
+        } else {
+            electronicExpToken.orEmpty()
+        }
+        val loginSource = viewModel.easRepo.login(cookiesJson, loginMetadata, campus)
         val observer = object : Observer<DataState<Boolean>> {
             override fun onChanged(value: DataState<Boolean>) {
                 val state = value
                 if (state.state == DataState.STATE.NOTHING) return
                 loginSource.removeObserver(this)
+                loginInProgress = false
                 if (state.state == DataState.STATE.SUCCESS && state.data == true) {
                     onResponseListener?.onSuccess(this@PopUpLoginEAS)
                 } else {
@@ -264,10 +302,13 @@ private fun LoginEASScreen(
     viewModel: LoginEASViewModel,
     loginResult: DataState<Boolean>?,
     loginCheckResult: DataState<Boolean>?,
+    isLoading: Boolean,
+    onLoadingChange: (Boolean) -> Unit,
     isAgreementAccepted: Boolean,
     onMarkAgreementAccepted: () -> Unit,
     initialCampus: EASToken.Campus,
     onLogin: (EASToken.Campus, String, String) -> Unit,
+    onWebLogin: (EASToken.Campus) -> Unit,
     onAutoLaunch: (EASToken.Campus) -> Unit,
     onSuccess: () -> Unit,
     onFailed: () -> Unit,
@@ -285,7 +326,6 @@ private fun LoginEASScreen(
         mutableStateOf(token.password?.takeIf { token.campus == EASToken.Campus.SHENZHEN } ?: "")
     }
     var agreementChecked by remember { mutableStateOf(isAgreementAccepted) }
-    var isLoading by remember { mutableStateOf(false) }
     var lastHandledLoginResult by remember { mutableStateOf<DataState<Boolean>?>(null) }
     var lastHandledCheckResult by remember { mutableStateOf<DataState<Boolean>?>(null) }
 
@@ -297,7 +337,7 @@ private fun LoginEASScreen(
         val result = loginResult ?: return@LaunchedEffect
         if (result === lastHandledLoginResult) return@LaunchedEffect
         lastHandledLoginResult = result
-        isLoading = false
+        onLoadingChange(false)
         view.performHapticFeedback(HapticFeedbackConstants.CONFIRM)
         if (result.state == DataState.STATE.SUCCESS && result.data == true) {
             onSuccess()
@@ -315,7 +355,7 @@ private fun LoginEASScreen(
         val result = loginCheckResult ?: return@LaunchedEffect
         if (result === lastHandledCheckResult) return@LaunchedEffect
         lastHandledCheckResult = result
-        isLoading = false
+        onLoadingChange(false)
         view.performHapticFeedback(HapticFeedbackConstants.CONFIRM)
         if (result.state == DataState.STATE.SUCCESS && result.data == true) {
             onSuccess()
@@ -369,7 +409,7 @@ private fun LoginEASScreen(
                         return@Button
                     }
                     onMarkAgreementAccepted()
-                    isLoading = true
+                    onLoadingChange(true)
                     onLogin(selectedCampus, username, password)
                 },
                 enabled = isFormValid && !isLoading,
@@ -389,7 +429,11 @@ private fun LoginEASScreen(
                     )
                 } else {
                     Text(
-                        text = stringResource(R.string.log_in),
+                        text = if (selectedCampus == EASToken.Campus.SHENZHEN) {
+                            stringResource(R.string.eas_login_app_api)
+                        } else {
+                            stringResource(R.string.eas_login_web)
+                        },
                         fontSize = 18.sp,
                         color = MaterialTheme.colorScheme.onPrimary
                     )
@@ -454,6 +498,34 @@ private fun LoginEASScreen(
                     keyboardType = KeyboardType.Password,
                     imeAction = ImeAction.Done
                 )
+            )
+            OutlinedButton(
+                onClick = {
+                    view.performHapticFeedback(HapticFeedbackConstants.CONTEXT_CLICK)
+                    if (!agreementChecked && !isAgreementAccepted) {
+                        Toast.makeText(
+                            view.context,
+                            R.string.user_agreement_required,
+                            Toast.LENGTH_SHORT
+                        ).show()
+                        return@OutlinedButton
+                    }
+                    onMarkAgreementAccepted()
+                    onWebLogin(EASToken.Campus.SHENZHEN)
+                },
+                enabled = !isLoading,
+                shape = RoundedCornerShape(16.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = tokens.spacing.sm)
+            ) {
+                Text(stringResource(R.string.eas_login_shenzhen_web))
+            }
+            Text(
+                text = stringResource(R.string.eas_login_shenzhen_web_hint),
+                fontSize = 12.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(top = tokens.spacing.xs)
             )
         }
 

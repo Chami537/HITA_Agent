@@ -1,94 +1,48 @@
 package cn.limpu.hita.ui.main.timetable
 
-import android.graphics.Color
 import android.view.Gravity
+import androidx.compose.runtime.Immutable
 import cn.limpu.hita.data.model.timetable.TimeInDay
 
-class TimetableStyleSheet {
-    var isColorEnabled: Boolean = true
-    var isFadeEnabled: Boolean = true
-    var cardTitleColor: String = "white"
-    var subTitleColor: String = "white"
-    var iconColor: String = "white"
-    var isBoldText: Boolean = true
-    var drawBGLine: Boolean = true
-    var cardIconEnabled: Boolean = false
-    var cardOpacity: Int = 95
-        get() = field.coerceIn(20, 100)
-    var cardHeight: Int = 160
-    var usePeriodLabel: Boolean = false
-    var startTime: Int = 830
-        set(value) {
-            startTimeInDay = TimeInDay(value / 100, value % 100)
-            field = value
-        }
-    var endHour: Int = 23
+enum class CourseBubbleStyle(val storageValue: String) {
+    SOLID("solid"),
+    TONAL("tonal"),
+    OUTLINE("outline");
+
+    companion object {
+        fun fromStorage(value: String?): CourseBubbleStyle =
+            entries.firstOrNull { it.storageValue == value } ?: SOLID
+    }
+}
+
+@Immutable
+data class TimetableStyleSheet(
+    val isColorEnabled: Boolean = true,
+    val isFadeEnabled: Boolean = true,
+    val cardTitleColor: String = "auto",
+    val subTitleColor: String = "auto",
+    val iconColor: String = "white",
+    val isBoldText: Boolean = true,
+    val drawBGLine: Boolean = true,
+    val cardIconEnabled: Boolean = false,
+    private val storedCardOpacity: Int = 95,
+    val cardHeight: Int = 160,
+    val usePeriodLabel: Boolean = false,
+    val startTime: Int = 830,
+    val endHour: Int = 23,
+    val todayBGColor: Int = 0x10000000,
+    val titleGravity: Int = Gravity.CENTER,
+    val titleAlpha: Int = 100,
+    val subtitleAlpha: Int = 60,
+    val drawNowLine: Boolean = true,
+    val courseBubbleStyle: CourseBubbleStyle = CourseBubbleStyle.SOLID,
+) {
+    val cardOpacity: Int get() = storedCardOpacity.coerceIn(20, 100)
     val startHour: Int get() = startTime / 100
     val startMinute: Int get() = startTime % 100
-    var todayBGColor: Int = Color.parseColor("#10000000")
-    var titleGravity: Int = Gravity.CENTER
-    var titleAlpha: Int = 100
-    var subtitleAlpha: Int = 60
-    var drawNowLine: Boolean = true
 
+    fun withCardOpacity(value: Int): TimetableStyleSheet =
+        copy(storedCardOpacity = value.coerceIn(20, 100))
 
-    private var startTimeInDay: TimeInDay? = null
-    fun getStartTimeObject(): TimeInDay {
-        startTimeInDay?.let { return it }
-        val time = TimeInDay(startTime / 100, startTime % 100)
-        startTimeInDay = time
-        return time
-    }
-
-    override fun equals(other: Any?): Boolean {
-        if (this === other) return true
-        if (javaClass != other?.javaClass) return false
-
-        other as TimetableStyleSheet
-
-        if (isColorEnabled != other.isColorEnabled) return false
-        if (isFadeEnabled != other.isFadeEnabled) return false
-        if (cardTitleColor != other.cardTitleColor) return false
-        if (subTitleColor != other.subTitleColor) return false
-        if (iconColor != other.iconColor) return false
-        if (isBoldText != other.isBoldText) return false
-        if (drawBGLine != other.drawBGLine) return false
-        if (cardIconEnabled != other.cardIconEnabled) return false
-        if (cardOpacity != other.cardOpacity) return false
-        if (cardHeight != other.cardHeight) return false
-        if (usePeriodLabel != other.usePeriodLabel) return false
-        if (startTime != other.startTime) return false
-        if (endHour != other.endHour) return false
-        if (todayBGColor != other.todayBGColor) return false
-        if (titleGravity != other.titleGravity) return false
-        if (titleAlpha != other.titleAlpha) return false
-        if (subtitleAlpha != other.subtitleAlpha) return false
-        if (drawNowLine != other.drawNowLine) return false
-
-        return true
-    }
-
-    override fun hashCode(): Int {
-        var result = isColorEnabled.hashCode()
-        result = 31 * result + isFadeEnabled.hashCode()
-        result = 31 * result + cardTitleColor.hashCode()
-        result = 31 * result + subTitleColor.hashCode()
-        result = 31 * result + iconColor.hashCode()
-        result = 31 * result + isBoldText.hashCode()
-        result = 31 * result + drawBGLine.hashCode()
-        result = 31 * result + cardIconEnabled.hashCode()
-        result = 31 * result + cardOpacity
-        result = 31 * result + cardHeight
-        result = 31 * result + usePeriodLabel.hashCode()
-        result = 31 * result + startTime
-        result = 31 * result + endHour
-        result = 31 * result + todayBGColor
-        result = 31 * result + titleGravity
-        result = 31 * result + titleAlpha
-        result = 31 * result + subtitleAlpha
-        result = 31 * result + drawNowLine.hashCode()
-        return result
-    }
-
-
+    fun getStartTimeObject(): TimeInDay = TimeInDay(startHour, startMinute)
 }

@@ -4,81 +4,40 @@ import cn.limpu.hita.data.model.eas.CourseScoreItem
 object WeightedScoreCalculator {
 
     data class ScoreResult(
-        val gpa: Float,              // 学期绩点（GPA）
-        val cgpa: Float,             // 累计绩点（CGPA），单学期时等于GPA
-        val weightedAverage: Float,  // 加权平均分（学分绩）
-        val totalCredits: Int,       // 总学分
-        val validCourses: Int        // 有效课程数
+        val weightedAverage: Float,
+        val totalCredits: Float,
+        val validCourses: Int
     )
 
     /**
-     * 成绩转绩点（HIT标准4.0制）
-     */
-    private fun scoreToGradePoint(score: Int): Float = when {
-        score >= 90 -> 4.0f
-        score >= 85 -> 3.6f
-        score >= 80 -> 3.2f
-        score >= 75 -> 2.7f
-        score >= 70 -> 2.2f
-        score >= 65 -> 1.7f
-        score >= 60 -> 1.0f
-        else -> 0f
-    }
-
-    /**
-     * 计算当前学期所有指标
-     * GPA = Σ(绩点 × 学分) / Σ学分
-     * 学分绩 = Σ(成绩 × 学分) / Σ学分
-     * CGPA = GPA（单学期数据下相同）
+     * 对当前页面中可解析为百分制数字的成绩做加权平均。
+     *
+     * 这不是教务系统的平均学分绩：接口没有提供“是否计入”、重修替代等规则，
+     * 等级制和“合格/不合格”成绩也会被排除。结果只能用于核对当前列表。
      */
     fun calculate(items: List<CourseScoreItem>): ScoreResult {
-        val validItems = items.filter { it.credits > 0 && it.finalScores > 0 }
-        if (validItems.isEmpty()) {
-            return ScoreResult(0f, 0f, 0f, 0, 0)
+        val validItems = items.mapNotNull { item ->
+            if (item.credits <= 0f) return@mapNotNull null
+            val rawText = item.finalScoresText?.trim()
+            val score = if (!rawText.isNullOrEmpty()) {
+                rawText.toDoubleOrNull()
+            } else {
+                item.finalScores.takeIf { it >= 0 }?.toDouble()
+            }
+            score?.takeIf { it in 0.0..100.0 }?.let { item to it }
         }
-        val totalCredits = validItems.sumOf { it.credits }
-        val totalScoreXCredit = validItems.sumOf { it.finalScores * it.credits }
-        val totalGradePointXCredit = validItems.sumOf {
-            (scoreToGradePoint(it.finalScores) * it.credits.toDouble())
-        }.toFloat()
+        if (validItems.isEmpty()) {
+            return ScoreResult(0f, 0f, 0)
+        }
+        val totalCredits = validItems.sumOf { (item, _) -> item.credits.toDouble() }.toFloat()
+        val totalScoreXCredit = validItems.sumOf { (item, score) -> score * item.credits.toDouble() }
 
-        val weightedAverage = totalScoreXCredit.toFloat() / totalCredits
-        val gpa = totalGradePointXCredit / totalCredits
+        val weightedAverage = (totalScoreXCredit / totalCredits).toFloat()
 
         return ScoreResult(
-            gpa = gpa,
-            cgpa = gpa, // 单学期CGPA = GPA，有全量数据时可独立计算
             weightedAverage = weightedAverage,
             totalCredits = totalCredits,
             validCourses = validItems.size
-        )
-    }
-
-    /**
-     * 多学期累计所有指标
-     * CGPA = Σ(所有学期绩点×学分) / Σ(所有学期学分)
-     * 累计学分绩 = Σ(所有学期成绩×学分) / Σ(所有学期学分)
-     */
-    fun calculateCumulative(allSemesterItems: List<List<CourseScoreItem>>): ScoreResult {
-        val allValid = allSemesterItems.flatten().filter { it.credits > 0 && it.finalScores > 0 }
-        if (allValid.isEmpty()) {
-            return ScoreResult(0f, 0f, 0f, 0, 0)
-        }
-        val totalCredits = allValid.sumOf { it.credits }
-        val totalScoreXCredit = allValid.sumOf { it.finalScores * it.credits }
-        val totalGradePointXCredit = allValid.sumOf {
-            (scoreToGradePoint(it.finalScores) * it.credits.toDouble())
-        }.toFloat()
-
-        val cumulativeWeightedAverage = totalScoreXCredit.toFloat() / totalCredits
-        val cumulativeGpa = totalGradePointXCredit / totalCredits
-
-        return ScoreResult(
-            gpa = cumulativeGpa,
-            cgpa = cumulativeGpa,
-            weightedAverage = cumulativeWeightedAverage,
-            totalCredits = totalCredits,
-            validCourses = allValid.size
         )
     }
 }

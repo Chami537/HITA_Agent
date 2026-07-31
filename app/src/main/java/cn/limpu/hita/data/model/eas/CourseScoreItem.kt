@@ -8,7 +8,7 @@ import com.google.gson.Gson
 class CourseScoreItem{
     var finalScores: Int = 0
     var finalScoresText: String? = null
-    var credits: Int = 0
+    var credits: Float = 0f
     var hours: Int = 0
     var courseName: String? = null
     var courseCode: String? = null

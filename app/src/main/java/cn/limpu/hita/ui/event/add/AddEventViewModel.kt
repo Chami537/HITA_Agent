@@ -216,7 +216,8 @@ class AddEventViewModel @Inject constructor(
 
         if (timetable == null) {
             val observer = object : Observer<List<Timetable>> {
-                override fun onChanged(t: List<Timetable>) {
+                override fun onChanged(value: List<Timetable>) {
+                    val t = value
                     // Prefer EAS timetable (with non-null code) covering the current date,
                     // matching the logic used by TimetableFragment.getCurrentTimetableAndWeek().
                     val now = System.currentTimeMillis()

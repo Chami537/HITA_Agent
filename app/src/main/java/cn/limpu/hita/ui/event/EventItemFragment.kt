@@ -31,6 +31,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -45,12 +46,14 @@ import cn.limpu.hita.data.repository.EASRepository
 import cn.limpu.hita.data.source.preference.EasPreferenceSource
 import cn.limpu.hita.data.source.preference.TimetablePreferenceSource
 import cn.limpu.hita.ui.design.HitaComposeTheme
+import cn.limpu.hita.ui.design.HitaCoursePaletteDialog
 import cn.limpu.hita.ui.design.HitaTheme
+import cn.limpu.hita.ui.design.hitaCourseColor
 import cn.limpu.hita.ui.subject.SubjectActivity
 import cn.limpu.hita.utils.ActivityUtils
 import cn.limpu.hita.utils.CourseResourceLinker
 import cn.limpu.hita.utils.TimeTools
-import com.limpu.style.widgets.PopUpColorPicker
+import com.limpu.style.ThemeTools
 import dagger.hilt.android.AndroidEntryPoint
 import java.util.Calendar
 
@@ -98,14 +101,8 @@ class EventItemFragment : Fragment() {
                                 campus = hoaCampus,
                             )
                         },
-                        onColorPick = { subject ->
-                            PopUpColorPicker().setOnColorSelectListener(object :
-                                PopUpColorPicker.OnColorSelectedListener {
-                                override fun onSelected(color: Int) {
-                                    viewModel.changeSubjectColor(color)
-                                }
-                            }).initColor(subject.color)
-                                .show(childFragmentManager, "pickColor")
+                        onColorPick = { _, color ->
+                            viewModel.changeSubjectColor(color)
                         },
                         onDelete = {
                             viewModel.delete()
@@ -152,7 +149,7 @@ private fun EventItemScreen(
     viewModel: EventItemViewModel,
     onSubjectClick: (EventItem, cn.limpu.hita.data.model.timetable.TermSubject) -> Unit,
     onSubjectLongClick: (cn.limpu.hita.data.model.timetable.TermSubject) -> Unit,
-    onColorPick: (cn.limpu.hita.data.model.timetable.TermSubject) -> Unit,
+    onColorPick: (cn.limpu.hita.data.model.timetable.TermSubject, Int) -> Unit,
     onDelete: () -> Unit,
     onTeacherClick: (String) -> Unit,
     onTeacherLongClick: (String) -> Unit
@@ -164,9 +161,15 @@ private fun EventItemScreen(
     val progress by viewModel.progressLiveData.observeAsState()
 
     val event = eventItem ?: return
+    val canEditCourseColor = HitaTheme.preferenceStyle == ThemeTools.STYLE.CLASSIC
+    val courseColor = hitaCourseColor(
+        courseKey = event.subjectId.ifBlank { event.name },
+        storedColor = subject?.color ?: event.color,
+    )
     val courseLike = event.type == EventItem.TYPE.CLASS || event.type == EventItem.TYPE.EXAM
     val teachers = splitTeachers(event.teacher)
     var showDeleteDialog by remember { mutableStateOf(false) }
+    var showCourseColorPicker by remember { mutableStateOf(false) }
 
     Column(
         modifier = Modifier
@@ -316,8 +319,8 @@ private fun EventItemScreen(
                         .fillMaxWidth()
                         .padding(top = tokens.spacing.xs)
                         .height(10.dp),
-                    color = MaterialTheme.colorScheme.primary,
-                    trackColor = MaterialTheme.colorScheme.surfaceVariant,
+                    color = courseColor,
+                    trackColor = courseColor.copy(alpha = 0.18f),
                 )
             }
         }
@@ -335,11 +338,10 @@ private fun EventItemScreen(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Spacer(modifier = Modifier.weight(1f))
-            if (courseLike) {
+            if (courseLike && canEditCourseColor) {
                 Button(
                     onClick = {
-                        val subj = subject ?: return@Button
-                        onColorPick(subj)
+                        if (subject != null) showCourseColorPicker = true
                     },
                     colors = ButtonDefaults.buttonColors(
                         containerColor = MaterialTheme.colorScheme.primary
@@ -366,6 +368,18 @@ private fun EventItemScreen(
                 )
             }
         }
+    }
+
+    val colorSubject = subject
+    if (showCourseColorPicker && colorSubject != null) {
+        HitaCoursePaletteDialog(
+            selectedColor = courseColor,
+            onSelected = { color ->
+                onColorPick(colorSubject, color.toArgb())
+                showCourseColorPicker = false
+            },
+            onDismiss = { showCourseColorPicker = false },
+        )
     }
 
     if (showDeleteDialog) {

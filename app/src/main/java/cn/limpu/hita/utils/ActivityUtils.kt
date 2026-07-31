@@ -10,7 +10,6 @@ import android.content.IntentFilter
 import android.content.SharedPreferences
 import android.database.Cursor
 import android.net.Uri
-import android.os.Build
 import android.os.Environment
 import android.os.Handler
 import android.os.Looper
@@ -24,6 +23,7 @@ import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityOptionsCompat
+import androidx.core.content.ContextCompat
 import androidx.core.view.setPadding
 import com.limpu.style.R as StyleR
 import cn.limpu.hita.R
@@ -533,11 +533,12 @@ object ActivityUtils {
                 }
             }
             val filter = IntentFilter(DownloadManager.ACTION_DOWNLOAD_COMPLETE)
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                activity.applicationContext.registerReceiver(receiver, filter, Context.RECEIVER_NOT_EXPORTED)
-            } else {
-                activity.applicationContext.registerReceiver(receiver, filter)
-            }
+            ContextCompat.registerReceiver(
+                activity.applicationContext,
+                receiver,
+                filter,
+                ContextCompat.RECEIVER_NOT_EXPORTED,
+            )
             downloadReceiver = receiver
             Toast.makeText(activity, R.string.download_started, Toast.LENGTH_SHORT).show()
         } catch (e: Exception) {

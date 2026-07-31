@@ -292,6 +292,23 @@ object CourseResourceLinker {
             .sortedByDescending { scoreCandidate(it, normalizedCode, normalizedName) }
     }
 
+    internal fun uniqueExactCourseCodeForName(
+        items: List<CourseResourceItem>,
+        courseNameRaw: String?
+    ): String? {
+        val nameKey = CourseNameUtils.normalizeKey(courseNameRaw)
+        if (nameKey.isBlank()) return null
+        val codes = items.asSequence()
+            .filter { item ->
+                CourseNameUtils.normalizeKey(item.courseName) == nameKey ||
+                    item.aliases.any { CourseNameUtils.normalizeKey(it) == nameKey }
+            }
+            .mapNotNull { CourseCodeUtils.normalize(it.courseCode) }
+            .distinctBy { it.lowercase() }
+            .toList()
+        return codes.singleOrNull()
+    }
+
     private fun scoreCandidate(
         item: CourseResourceItem,
         normalizedCode: String?,

@@ -66,12 +66,18 @@ import cn.limpu.hita.data.work.CourseReminderScheduler
 import cn.limpu.hita.ui.credit.CreditStatsActivity
 import cn.limpu.hita.ui.design.HitaComposeTheme
 import cn.limpu.hita.ui.design.HitaTheme
+import cn.limpu.hita.ui.design.HitaThemeStyle
 import cn.limpu.hita.ui.design.hitaGlassCardBorder
 import cn.limpu.hita.ui.design.hitaGlassCardColors
 import cn.limpu.hita.ui.design.hitaGlassCardModifier
+import cn.limpu.hita.ui.design.hitaUsesMainBackdrop
 import cn.limpu.hita.ui.design.hitaIsAppleGlassSurface
+import cn.limpu.hita.ui.design.hitaStyleCardShape
+import cn.limpu.hita.ui.design.hitaSumiBrushUnderline
 import cn.limpu.hita.ui.eas.classroom.EmptyClassroomActivity
+import cn.limpu.hita.ui.eas.catalog.ShenzhenCourseCatalogActivity
 import cn.limpu.hita.ui.eas.exam.ExamActivity
+import cn.limpu.hita.ui.eas.grade.ShenzhenGradeAnalysisActivity
 import cn.limpu.hita.ui.eas.imp.ImportTimetableActivity
 import cn.limpu.hita.ui.eas.login.PopUpLoginEAS
 import cn.limpu.hita.ui.eas.score.ScoreInquiryActivity
@@ -146,8 +152,14 @@ class NavigationFragment : androidx.fragment.app.Fragment() {
                         onImportIcs = { selectIcsLauncher.launch(IcsImportUtils.pickerMimeTypes()) },
                         onExam = { openExam() },
                         onScores = { ActivityUtils.startActivity(requireContext(), ScoreInquiryActivity::class.java) },
+                        onGradeAnalysis = {
+                            ActivityUtils.startActivity(requireContext(), ShenzhenGradeAnalysisActivity::class.java)
+                        },
                         onEmptyClassroom = { ActivityUtils.startActivity(requireContext(), EmptyClassroomActivity::class.java) },
                         onCreditStats = { ActivityUtils.startActivity(requireContext(), CreditStatsActivity::class.java) },
+                        onCourseCatalog = {
+                            ActivityUtils.startActivity(requireContext(), ShenzhenCourseCatalogActivity::class.java)
+                        },
                         onCourseLookup = {
                             ActivityUtils.startCourseResourceSearchActivity(requireContext(), mode = CourseResourceMode.VIEW)
                         },
@@ -328,8 +340,10 @@ private fun NavigationScreen(
     onImportIcs: () -> Unit,
     onExam: () -> Unit,
     onScores: () -> Unit,
+    onGradeAnalysis: () -> Unit,
     onEmptyClassroom: () -> Unit,
     onCreditStats: () -> Unit,
+    onCourseCatalog: () -> Unit,
     onCourseLookup: () -> Unit,
     onCourseSubmit: () -> Unit,
     onToggleReminder: () -> Unit,
@@ -344,7 +358,7 @@ private fun NavigationScreen(
             .fillMaxSize()
             .verticalScroll(rememberScrollState())
             .background(
-                if (hitaIsAppleGlassSurface()) {
+                if (hitaUsesMainBackdrop()) {
                     Color.Transparent
                 } else {
                     MaterialTheme.colorScheme.background
@@ -393,8 +407,33 @@ private fun NavigationScreen(
         NavigationGroup(title = stringResource(R.string.navi_jw_title)) {
             NavigationRow(icon = R.drawable.ic_baseline_today_24, title = stringResource(R.string.ade_exam), onClick = onExam)
             NavigationRow(icon = R.drawable.ic_baseline_format_list_bulleted_24, title = stringResource(R.string.jw_tabs_cj), onClick = onScores)
+            if (easToken.campus == EASToken.Campus.SHENZHEN) {
+                NavigationRow(
+                    icon = R.drawable.ic_baseline_format_list_bulleted_24,
+                    title = "个人成绩明细",
+                    subtitle = "成绩状态 · 分项得分 · 权重折算",
+                    onClick = onGradeAnalysis
+                )
+            }
             NavigationRow(icon = R.drawable.ic_baseline_location_city_24, title = stringResource(R.string.shortcut_empty_classroom_short), onClick = onEmptyClassroom)
-            NavigationRow(icon = R.drawable.ic_baseline_format_list_bulleted_24, title = stringResource(R.string.navi_credit_stats), onClick = onCreditStats)
+            NavigationRow(
+                icon = R.drawable.ic_baseline_format_list_bulleted_24,
+                title = if (easToken.campus == EASToken.Campus.SHENZHEN) {
+                    "培养方案"
+                } else {
+                    stringResource(R.string.navi_credit_stats)
+                },
+                subtitle = if (easToken.campus == EASToken.Campus.SHENZHEN) {
+                    "完成度 · 学分类别 · 培养课组"
+                } else "",
+                onClick = onCreditStats
+            )
+            NavigationRow(
+                icon = R.drawable.ic_baseline_search_24,
+                title = "深圳课程浏览",
+                subtitle = "教务选课池 · 全校课表（需 Web 登录）",
+                onClick = onCourseCatalog
+            )
         }
         NavigationGroup(title = stringResource(R.string.navi_course_resource_title)) {
             NavigationRow(icon = R.drawable.ic_baseline_search_24, title = stringResource(R.string.navi_course_lookup), subtitle = stringResource(R.string.navi_course_lookup_sub), onClick = onCourseLookup)
@@ -458,7 +497,7 @@ private fun UserCard(
         subtitle = stringResource(R.string.eas_account_not_logged_in_subtitle)
         avatarSource = localAvatar
     }
-    val cardShape = RoundedCornerShape(tokens.radius.lg)
+    val cardShape = hitaStyleCardShape(tokens.radius.lg, 14.dp)
     Card(
         modifier = Modifier
             .fillMaxWidth()
@@ -530,7 +569,7 @@ private fun ShortcutCard(
     modifier: Modifier = Modifier,
 ) {
     val tokens = HitaTheme.tokens
-    val cardShape = RoundedCornerShape(tokens.radius.lg)
+    val cardShape = hitaStyleCardShape(tokens.radius.lg, 14.dp)
     Card(
         modifier = modifier
             .hitaGlassCardModifier(cardShape, elevation = 10.dp)
@@ -583,14 +622,16 @@ private fun NavigationGroup(
         color = MaterialTheme.colorScheme.onSurface,
         fontSize = 18.sp,
         fontWeight = FontWeight.Bold,
-        modifier = Modifier.padding(
-            start = tokens.spacing.lg,
-            top = tokens.spacing.lg,
-            end = tokens.spacing.lg,
-            bottom = tokens.spacing.xs
-        )
+        modifier = Modifier
+            .padding(
+                start = tokens.spacing.lg,
+                top = tokens.spacing.lg,
+                end = tokens.spacing.lg,
+                bottom = tokens.spacing.xs
+            )
+            .hitaSumiBrushUnderline()
     )
-    val cardShape = RoundedCornerShape(tokens.radius.lg)
+    val cardShape = hitaStyleCardShape(tokens.radius.lg, 14.dp)
     Card(
         modifier = Modifier
             .fillMaxWidth()
@@ -664,6 +705,11 @@ private fun NavigationRow(
 
 @Composable
 private fun CircleIcon(icon: Int) {
+    val iconTint = if (HitaTheme.style == HitaThemeStyle.Persona5) {
+        Color(0xFFFF6675)
+    } else {
+        MaterialTheme.colorScheme.primary
+    }
     Box(
         modifier = Modifier
             .size(40.dp)
@@ -673,7 +719,7 @@ private fun CircleIcon(icon: Int) {
         Icon(
             painter = painterResource(icon),
             contentDescription = null,
-            tint = MaterialTheme.colorScheme.primary,
+            tint = iconTint,
             modifier = Modifier.size(22.dp)
         )
     }

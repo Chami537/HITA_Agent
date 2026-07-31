@@ -18,6 +18,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -32,19 +33,18 @@ import com.google.android.material.bottomsheet.BottomSheetDialogFragment
 import cn.limpu.hita.R
 import cn.limpu.hita.data.AppDatabase
 import cn.limpu.hita.data.model.eas.ExamItem
-import cn.limpu.hita.data.model.timetable.EventItem
 import cn.limpu.hita.data.model.timetable.Timetable
+import cn.limpu.hita.data.repository.ExamEventMapper
 import cn.limpu.hita.ui.design.HitaComposeTheme
 import cn.limpu.hita.ui.design.HitaTheme
 import cn.limpu.hita.utils.LogUtils
 import java.sql.Timestamp
-import java.text.SimpleDateFormat
-import java.util.Calendar
-import java.util.Locale
 import java.util.UUID
 
 class ExamDetailFragment(
-    private val exam: ExamItem
+    private val exam: ExamItem,
+    private val onEdit: ((ExamItem) -> Unit)? = null,
+    private val onDelete: ((ExamItem) -> Unit)? = null
 ) : BottomSheetDialogFragment() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -62,7 +62,19 @@ class ExamDetailFragment(
                 HitaComposeTheme() {
                     ExamDetailSheet(
                         exam = exam,
-                        onImport = { importExamToTimetable() }
+                        onImport = { importExamToTimetable() },
+                        onEdit = onEdit?.let { callback ->
+                            {
+                                dismiss()
+                                callback(exam)
+                            }
+                        },
+                        onDelete = onDelete?.let { callback ->
+                            {
+                                dismiss()
+                                callback(exam)
+                            }
+                        }
                     )
                 }
             }
@@ -79,7 +91,10 @@ class ExamDetailFragment(
                 val eventItemDao = appDatabase.eventItemDao()
                 val timetableDao = appDatabase.timetableDao()
                 val defaultTimetable = timetableDao.getFirstCustomTimetableSync()
-                val timetable = defaultTimetable ?: createDefaultTimetable(timetableDao)
+                val timetable = defaultTimetable
+                    ?: timetableDao.getTimetableClosestToTimestampSync(System.currentTimeMillis())
+                    ?: timetableDao.getTimetablesSync().firstOrNull()
+                    ?: createDefaultTimetable(timetableDao)
                 val result = importExamEvent(timetable, eventItemDao)
 
                 requireActivity().runOnUiThread {
@@ -137,71 +152,29 @@ class ExamDetailFragment(
         timetable: Timetable,
         eventItemDao: cn.limpu.hita.data.source.dao.EventItemDao
     ): ImportResult {
-        val existingEvents = eventItemDao.getEventsOfTimetableSync(timetable.id)
-        val isDuplicate = existingEvents.any { event ->
-            event.type == EventItem.TYPE.EXAM &&
-                (event.name == exam.courseName || event.name == "[考试] ${exam.courseName}") &&
-                event.place == exam.examLocation
+        val examEvent = ExamEventMapper.toEvent(exam, timetable.id, "ExamDetailFragment")
+            ?: return ImportResult(false, "考试时间格式解析失败")
+        val examKey = ExamEventMapper.identityKey(examEvent)
+        val isDuplicate = eventItemDao.getExamEventsSync().any { event ->
+            ExamEventMapper.identityKey(event) == examKey
         }
 
         if (isDuplicate) {
             return ImportResult(false, "该考试已导入默认课表")
         }
 
-        val examEvent = parseExamToEvent(exam, timetable.id)
-            ?: return ImportResult(false, "考试时间格式解析失败")
-
         eventItemDao.insertEventSync(examEvent)
         return ImportResult(true, "已导入到默认课表: ${timetable.name}")
     }
 
-    private fun parseExamToEvent(exam: ExamItem, timetableId: String): EventItem? {
-        try {
-            val dateFormat = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
-            val timeFormat = SimpleDateFormat("HH:mm", Locale.getDefault())
-            val date = exam.examDate ?: return null
-            val parsedDate = dateFormat.parse(date) ?: return null
-            val timeRange = exam.examTime ?: return null
-            val times = timeRange.split("-")
-            if (times.size != 2) return null
-
-            val startTime = timeFormat.parse(times[0]) ?: return null
-            val endTime = timeFormat.parse(times[1]) ?: return null
-            val calendarStart = Calendar.getInstance().apply {
-                time = parsedDate
-                set(Calendar.HOUR_OF_DAY, startTime.hours)
-                set(Calendar.MINUTE, startTime.minutes)
-            }
-            val calendarEnd = Calendar.getInstance().apply {
-                time = parsedDate
-                set(Calendar.HOUR_OF_DAY, endTime.hours)
-                set(Calendar.MINUTE, endTime.minutes)
-            }
-
-            return EventItem().apply {
-                type = EventItem.TYPE.EXAM
-                source = EventItem.SOURCE_EAS_IMPORT
-                name = "[考试] " + (exam.courseName ?: "考试")
-                place = exam.examLocation ?: ""
-                teacher = ""
-                subjectId = ""
-                this.timetableId = timetableId
-                from = Timestamp(calendarStart.timeInMillis)
-                to = Timestamp(calendarEnd.timeInMillis)
-                fromNumber = 0
-                lastNumber = 0
-            }
-        } catch (e: Exception) {
-            LogUtils.e("❌ 解析考试时间失败: ${e.message}", e, "ExamDetailFragment")
-            return null
-        }
-    }
 }
 
 @Composable
 private fun ExamDetailSheet(
     exam: ExamItem,
-    onImport: () -> Unit
+    onImport: () -> Unit,
+    onEdit: (() -> Unit)?,
+    onDelete: (() -> Unit)?
 ) {
     val tokens = HitaTheme.tokens
     Surface(
@@ -270,6 +243,21 @@ private fun ExamDetailSheet(
                 )
             ) {
                 Text(text = "导入到课表", fontSize = 14.sp)
+            }
+            if (exam.isMemo() && onEdit != null && onDelete != null) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = tokens.spacing.xl, vertical = tokens.spacing.sm),
+                    horizontalArrangement = Arrangement.spacedBy(tokens.spacing.sm)
+                ) {
+                    TextButton(onClick = onEdit, modifier = Modifier.weight(1f)) {
+                        Text("编辑")
+                    }
+                    TextButton(onClick = onDelete, modifier = Modifier.weight(1f)) {
+                        Text("删除", color = MaterialTheme.colorScheme.error)
+                    }
+                }
             }
             Spacer(modifier = Modifier.height(tokens.spacing.xl))
         }

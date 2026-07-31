@@ -6,7 +6,6 @@ import com.limpu.component.data.SharedPreferenceBooleanLiveData
 import com.limpu.component.data.SharedPreferenceIntLiveData
 import cn.limpu.hita.data.repository.EASRepository
 import cn.limpu.hita.data.repository.EasSettingsRepository
-import cn.limpu.hita.data.repository.SubjectRepository
 import cn.limpu.hita.data.repository.TimetableRepository
 import cn.limpu.hita.data.repository.TimetableStyleRepository
 import cn.limpu.hita.data.repository.KEY_COLOR_ENABLE
@@ -16,6 +15,8 @@ import cn.limpu.hita.data.repository.KEY_LABEL_PERIOD
 import cn.limpu.hita.data.repository.KEY_START_DATE
 import cn.limpu.hita.data.repository.KEY_CARD_OPACITY
 import cn.limpu.hita.data.repository.KEY_WALLPAPER_SCRIM
+import cn.limpu.hita.data.repository.KEY_COURSE_BUBBLE_STYLE
+import cn.limpu.hita.ui.main.timetable.CourseBubbleStyle
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
 
@@ -23,7 +24,6 @@ import javax.inject.Inject
 class TimetablePanelViewModel @Inject constructor(
     private val timetableStyleRepository: TimetableStyleRepository,
     private val easSettingsRepository: EasSettingsRepository,
-    private val subjectRepository: SubjectRepository,
     private val timetableRepository: TimetableRepository,
     private val easRepository: EASRepository,
 ) : ViewModel() {
@@ -46,6 +46,8 @@ class TimetablePanelViewModel @Inject constructor(
         get() = timetableStyleRepository.wallpaperScrimLiveData
     val cardOpacityLiveData: SharedPreferenceIntLiveData
         get() = timetableStyleRepository.cardOpacityLiveData
+    val courseBubbleStyleLiveData
+        get() = timetableStyleRepository.courseBubbleStyleLiveData
 
 
     fun changeStartDate(hour: Int, minute: Int) {
@@ -76,6 +78,10 @@ class TimetablePanelViewModel @Inject constructor(
         timetableStyleRepository.putData(KEY_CARD_OPACITY, opacity)
     }
 
+    fun setCourseBubbleStyle(style: CourseBubbleStyle) {
+        timetableStyleRepository.putData(KEY_COURSE_BUBBLE_STYLE, style.storageValue)
+    }
+
     fun triggerAutoReimportNow() {
         val token = easRepository.getEasToken()
         if (!token.isLogin()) return
@@ -85,9 +91,5 @@ class TimetablePanelViewModel @Inject constructor(
                 easSettingsRepository.setLastAutoReimportTs(System.currentTimeMillis())
             }
         }
-    }
-
-    fun startResetColor(){
-        subjectRepository.actionResetRecentSubjectColors()
     }
 }

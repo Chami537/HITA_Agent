@@ -1,10 +1,15 @@
 package cn.limpu.hita.data.repository
 
 import android.app.Application
+import android.app.DownloadManager
+import android.net.Uri
+import android.os.Environment
 import android.os.Handler
 import javax.inject.Inject
 import javax.inject.Singleton
 import android.os.Looper
+import android.webkit.CookieManager
+import android.webkit.MimeTypeMap
 import androidx.annotation.WorkerThread
 import androidx.lifecycle.LiveData
 import androidx.lifecycle.MediatorLiveData
@@ -12,6 +17,8 @@ import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.Observer
 import androidx.lifecycle.map
 import androidx.lifecycle.switchMap
+import com.google.gson.Gson
+import com.google.gson.reflect.TypeToken
 import com.limpu.component.data.DataState
 import cn.limpu.hita.R
 import cn.limpu.hita.data.AppDatabase
@@ -36,11 +43,12 @@ import cn.limpu.hita.utils.CourseCodeUtils
 import cn.limpu.hita.utils.ColorTools
 import cn.limpu.hita.utils.CourseNameUtils
 import java.sql.Timestamp
-import java.text.SimpleDateFormat
+import java.lang.reflect.Type
 import java.util.*
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicLong
 import cn.limpu.hita.utils.LogUtils
 import org.json.JSONArray
 import org.json.JSONObject
@@ -53,26 +61,44 @@ class EASRepository @Inject constructor(
     private val timetablePreferenceSource: TimetablePreferenceSource
 ) {
     private val appContext = application.applicationContext
+    private val tokenStateLock = Any()
+    private val authEpoch = AtomicLong(easPreferenceSource.getEasToken().sessionGeneration)
+    private val autoImportInProgress = AtomicBoolean(false)
+    @Volatile private var acceptServiceTokenRefresh = easPreferenceSource.getEasToken().isLogin()
     private val shenzhenService: EASWebSource = EASWebSource { token ->
-        saveEasToken(token)
+        saveRefreshedEasToken(token)
     }
     private val benbuService: EASService = BenbuEASWebSource { token ->
-        saveEasToken(token)
+        saveRefreshedEasToken(token)
     }
     private val weihaiService: EASService = WeihaiEASWebSource { token ->
-        saveEasToken(token)
+        saveRefreshedEasToken(token)
     }
     private var eventItemDao = AppDatabase.getDatabase(application).eventItemDao()
     private var timetableDao = AppDatabase.getDatabase(application).timetableDao()
     private var subjectDao = AppDatabase.getDatabase(application).subjectDao()
     private var classroomCacheDao = AppDatabase.getDatabase(application).classroomCacheDao()
+    private var scoreCacheDao = AppDatabase.getDatabase(application).scoreCacheDao()
+    private val timetableSnapshotStore = TimetableSnapshotStore(appContext)
     private val easTokenLiveData = MutableLiveData(easPreferenceSource.getEasToken())
+    private val gson = Gson()
+    private val scoreListType = object : TypeToken<List<CourseScoreItem>>() {}.type
+    private val shenzhenGradeCourseListType = object : TypeToken<List<ShenzhenGradeCourse>>() {}.type
 
     companion object {
         private const val LOGIN_ENRICH_MAX_RETRIES = 3
         private const val LOGIN_ENRICH_RETRY_DELAY_MS = 800L
+        private const val JW_DIRECT_BASE_URL = "https://jw.hitsz.edu.cn"
+        private const val JW_PROXY_BASE_URL = "https://jw-hitsz-edu-cn.hitsz.edu.cn"
+        private const val SCORE_CACHE_RETENTION_MS = 365L * 24L * 60L * 60L * 1000L
     }
 
+    /**
+     * 三校区教务策略入口。
+     *
+     * UI 和导入流程只依赖 EASService 的统一模型；具体校区的登录方式、
+     * HTML/JSON 字段、WebVPN 地址都应留在对应 WebSource 内部。
+     */
     private fun getService(campus: EASToken.Campus): EASService {
         return when (campus) {
             EASToken.Campus.SHENZHEN -> shenzhenService
@@ -106,6 +132,7 @@ class EASRepository @Inject constructor(
         password: String,
         campus: EASToken.Campus
     ): LiveData<DataState<Boolean>> {
+        val expectedEpoch = authEpoch.get()
         val result = MediatorLiveData<DataState<Boolean>>()
         val loginSource = getService(campus).login(username, password, null)
         result.addSource(loginSource) { state ->
@@ -127,7 +154,7 @@ class EASRepository @Inject constructor(
             ) {
                 token.electronicExpToken = password
             }
-            enrichLoginToken(result, token, campus)
+            enrichLoginToken(result, token, campus, expectedEpoch = expectedEpoch)
             result.removeSource(loginSource)
         }
         return result
@@ -137,8 +164,13 @@ class EASRepository @Inject constructor(
         result: MediatorLiveData<DataState<Boolean>>,
         token: EASToken,
         campus: EASToken.Campus,
-        attempt: Int = 0
+        attempt: Int = 0,
+        expectedEpoch: Long
     ) {
+        if (authEpoch.get() != expectedEpoch) {
+            result.value = DataState(false, DataState.STATE.NOT_LOGGED_IN)
+            return
+        }
         val enrichSource = getService(campus).getSafePersonalInfo(token)
         result.addSource(enrichSource) enrichObserver@{ enrichedState ->
             if (enrichedState.state == DataState.STATE.NOTHING) {
@@ -157,7 +189,15 @@ class EASRepository @Inject constructor(
                         "state=${enrichedState.state}, message=${enrichedState.message}"
                 )
                 Handler(Looper.getMainLooper()).postDelayed(
-                    { enrichLoginToken(result, token, campus, attempt + 1) },
+                    {
+                        enrichLoginToken(
+                            result,
+                            token,
+                            campus,
+                            attempt + 1,
+                            expectedEpoch
+                        )
+                    },
                     LOGIN_ENRICH_RETRY_DELAY_MS
                 )
                 return@enrichObserver
@@ -172,8 +212,11 @@ class EASRepository @Inject constructor(
                 "login: saving token campus=$campus name=${finalToken.name} " +
                     "stuId=${finalToken.stuId} electronic=${!finalToken.electronicExpToken.isNullOrBlank()}"
             )
-            saveEasToken(finalToken)
-            result.value = DataState(true, DataState.STATE.SUCCESS)
+            if (saveEasToken(finalToken, expectedEpoch)) {
+                result.value = DataState(true, DataState.STATE.SUCCESS)
+            } else {
+                result.value = DataState(false, DataState.STATE.NOT_LOGGED_IN)
+            }
         }
     }
 
@@ -181,6 +224,7 @@ class EASRepository @Inject constructor(
      * 验证登录
      */
     fun loginCheck(): LiveData<DataState<Boolean>> {
+        val expectedEpoch = authEpoch.get()
         val token = easPreferenceSource.getEasToken()
         LogUtils.d("loginCheck: isLogin=${token.isLogin()}, campus=${token.campus}")
         if (!token.isLogin()) {
@@ -223,8 +267,11 @@ class EASRepository @Inject constructor(
                     checkedToken
                 }
                 LogUtils.d("loginCheck: saving enriched token name=${finalToken.name}")
-                saveEasToken(finalToken)
-                result.value = DataState(true, DataState.STATE.SUCCESS)
+                if (saveEasToken(finalToken, expectedEpoch)) {
+                    result.value = DataState(true, DataState.STATE.SUCCESS)
+                } else {
+                    result.value = DataState(false, DataState.STATE.NOT_LOGGED_IN)
+                }
                 result.removeSource(enrichSource)
             }
             result.removeSource(checkSource)
@@ -249,14 +296,57 @@ class EASRepository @Inject constructor(
     /**
      * 进行获取学年学期
      */
-    fun getAllTerms(): LiveData<DataState<List<TermItem>>> {
+    fun getAllTerms(useCache: Boolean = true): LiveData<DataState<List<TermItem>>> {
         val easToken = easPreferenceSource.getEasToken()
         LogUtils.d("getAllTerms: isLogin=${easToken.isLogin()}, campus=${easToken.campus}")
+        if (!useCache) {
+            return getOnlineTerms(easToken)
+        }
+        val ownerKey = scoreCacheOwnerKey(easToken)
+        if (ownerKey == null) {
+            return getOnlineTerms(easToken)
+        }
+
+        val result = MediatorLiveData<DataState<List<TermItem>>>()
+        val hasCachedResult = AtomicBoolean(false)
+        thread(name = "score-term-cache-load") {
+            val cachedTerms = scoreCacheDao.getTermsSync(ownerKey).map { it.toTermItem() }
+            hasCachedResult.set(cachedTerms.isNotEmpty())
+            if (cachedTerms.isNotEmpty()) {
+                result.postValue(DataState(cachedTerms, DataState.STATE.SUCCESS).setFromCache(true))
+            }
+
+            if (!easToken.isLogin()) {
+                if (!hasCachedResult.get()) {
+                    result.postValue(DataState(DataState.STATE.NOT_LOGGED_IN))
+                }
+                return@thread
+            }
+
+            val remote = getService(easToken.campus).getAllTerms(easToken)
+            Handler(Looper.getMainLooper()).post {
+                result.addSource(remote) { state ->
+                    if (state.state == DataState.STATE.SUCCESS && state.data != null) {
+                        val terms = state.data.orEmpty()
+                        result.value = state
+                        thread(name = "score-term-cache-save") {
+                            saveScoreTermsCache(ownerKey, terms)
+                        }
+                    } else if (!hasCachedResult.get()) {
+                        result.value = state
+                    }
+                }
+            }
+        }
+        return result
+    }
+
+    private fun getOnlineTerms(easToken: EASToken): LiveData<DataState<List<TermItem>>> {
         if (easToken.isLogin()) {
             return getService(easToken.campus).getAllTerms(easToken)
         }
         LogUtils.w("getAllTerms: not logged in")
-        return LiveDataUtils.getMutableLiveData<DataState<List<TermItem>>>(DataState(DataState.STATE.NOT_LOGGED_IN))
+        return LiveDataUtils.getMutableLiveData(DataState(DataState.STATE.NOT_LOGGED_IN))
     }
 
     /**
@@ -393,21 +483,71 @@ class EASRepository @Inject constructor(
         term: TermItem,
         testType: EASService.TestType
     ): LiveData<DataState<List<CourseScoreItem>>> {
-        val easToken = easPreferenceSource.getEasToken()
-        LogUtils.d("getPersonalScores: isLogin=${easToken.isLogin()}, term=${term.getCode()}")
-        if (easToken.isLogin()) {
-            return getService(easToken.campus).getPersonalScores(term, easToken, testType)
+        return getPersonalScoresWithSummary(term, testType).map { state ->
+            DataState(state.data?.items ?: emptyList(), state.state).apply {
+                message = state.message
+                fromCache = state.fromCache
+            }
         }
-        LogUtils.w("getPersonalScores: not logged in")
-        return LiveDataUtils.getMutableLiveData(DataState(DataState.STATE.NOT_LOGGED_IN))
     }
 
     fun getPersonalScoresWithSummary(
         term: TermItem,
-        testType: EASService.TestType
+        testType: EASService.TestType,
+        useCache: Boolean = true,
     ): LiveData<DataState<ScoreQueryResult>> {
         val easToken = easPreferenceSource.getEasToken()
         LogUtils.d("getPersonalScoresWithSummary: isLogin=${easToken.isLogin()}, term=${term.getCode()}")
+        if (!useCache) {
+            return getOnlinePersonalScoresWithSummary(term, testType, easToken)
+        }
+        val ownerKey = scoreCacheOwnerKey(easToken)
+        if (ownerKey == null) {
+            return getOnlinePersonalScoresWithSummary(term, testType, easToken)
+        }
+
+        val result = MediatorLiveData<DataState<ScoreQueryResult>>()
+        val hasCachedResult = AtomicBoolean(false)
+        thread(name = "score-cache-load") {
+            scoreCacheDao.getScoreSync(
+                ownerKey = ownerKey,
+                termYearCode = term.yearCode,
+                termTermCode = term.termCode,
+                testType = testType.name
+            )?.toScoreQueryResultOrNull()?.let { cached ->
+                hasCachedResult.set(true)
+                result.postValue(DataState(cached, DataState.STATE.SUCCESS).setFromCache(true))
+            }
+
+            if (!easToken.isLogin()) {
+                if (!hasCachedResult.get()) {
+                    result.postValue(DataState(DataState.STATE.NOT_LOGGED_IN))
+                }
+                return@thread
+            }
+
+            val remote = getOnlinePersonalScoresWithSummary(term, testType, easToken)
+            Handler(Looper.getMainLooper()).post {
+                result.addSource(remote) { state ->
+                    if (state.state == DataState.STATE.SUCCESS && state.data != null) {
+                        result.value = state
+                        thread(name = "score-cache-save") {
+                            saveScoreCache(ownerKey, term, testType, state.data!!)
+                        }
+                    } else if (!hasCachedResult.get()) {
+                        result.value = state
+                    }
+                }
+            }
+        }
+        return result
+    }
+
+    private fun getOnlinePersonalScoresWithSummary(
+        term: TermItem,
+        testType: EASService.TestType,
+        easToken: EASToken,
+    ): LiveData<DataState<ScoreQueryResult>> {
         if (!easToken.isLogin()) {
             return LiveDataUtils.getMutableLiveData(DataState(DataState.STATE.NOT_LOGGED_IN))
         }
@@ -426,6 +566,76 @@ class EASRepository @Inject constructor(
         }
     }
 
+    private fun scoreCacheOwnerKey(token: EASToken): String? {
+        val identity = token.stuId
+            ?.trim()
+            ?.takeIf { it.isNotEmpty() }
+            ?: token.id?.trim()?.takeIf { it.isNotEmpty() }
+            ?: token.username?.trim()?.takeIf { it.isNotEmpty() }
+            ?: return null
+        return "${token.campus.name}:$identity"
+    }
+
+    private fun saveScoreTermsCache(ownerKey: String, terms: List<TermItem>) {
+        val cachedAt = System.currentTimeMillis()
+        scoreCacheDao.deleteTermsByOwnerSync(ownerKey)
+        if (terms.isNotEmpty()) {
+            scoreCacheDao.saveTermsSync(
+                terms.map { term ->
+                    ScoreTermCacheEntity(
+                        ownerKey = ownerKey,
+                        termYearCode = term.yearCode,
+                        yearName = term.yearName,
+                        termTermCode = term.termCode,
+                        termName = term.termName,
+                        isCurrent = term.isCurrent,
+                        cachedAt = cachedAt,
+                    )
+                }
+            )
+        }
+        scoreCacheDao.deleteOldTermsSync(cachedAt - SCORE_CACHE_RETENTION_MS)
+    }
+
+    private fun saveScoreCache(
+        ownerKey: String,
+        term: TermItem,
+        testType: EASService.TestType,
+        result: ScoreQueryResult,
+    ) {
+        val cachedAt = System.currentTimeMillis()
+        scoreCacheDao.saveScoreSync(
+            ScoreCacheEntity(
+                ownerKey = ownerKey,
+                termYearCode = term.yearCode,
+                termTermCode = term.termCode,
+                testType = testType.name,
+                scoresJson = gson.toJson(result.items),
+                summaryJson = result.summary?.let(gson::toJson),
+                cachedAt = cachedAt,
+            )
+        )
+        scoreCacheDao.deleteOldScoresSync(cachedAt - SCORE_CACHE_RETENTION_MS)
+    }
+
+    private fun ScoreCacheEntity.toScoreQueryResultOrNull(): ScoreQueryResult? {
+        return runCatching {
+            ScoreQueryResult(
+                items = gson.fromJson<List<CourseScoreItem>>(scoresJson, scoreListType).orEmpty(),
+                summary = summaryJson?.let { gson.fromJson(it, ScoreSummary::class.java) }
+            )
+        }.getOrNull()
+    }
+
+    private fun ScoreTermCacheEntity.toTermItem(): TermItem {
+        return TermItem(
+            yearCode = termYearCode,
+            yearName = yearName,
+            termCode = termTermCode,
+            termName = termName,
+        ).also { it.isCurrent = isCurrent }
+    }
+
     /**
      * 获取考试信息
      */
@@ -440,7 +650,14 @@ class EASRepository @Inject constructor(
     }
 
     /**
-     * 动作：导入课表
+     * 动作：导入课表。
+     *
+     * 这里是导入编排层，不解析各校区原始响应：
+     * - WebSource 负责把不同校区接口规范化为 CourseItem；
+     * - Repository 负责复用/创建本地 Timetable、生成 EventItem、保存 Subject；
+     * - EasImportIdentity 负责结构化去重，避免同一课程因名称长短、校区 code 差异重复导入。
+     *
+     * 老教务解析逻辑不要挪到这里；如果某校区字段变化，应优先修改对应 WebSource 或 Parser。
      */
     private var timetableWebLiveData: LiveData<DataState<List<CourseItem>>>? = null
     fun startImportTimetableOfTerm(
@@ -453,6 +670,8 @@ class EASRepository @Inject constructor(
         startDate.set(Calendar.MINUTE, 0)
         startDate.firstDayOfWeek = Calendar.MONDAY
         startDate.set(Calendar.DAY_OF_WEEK, Calendar.MONDAY)
+        startDate.set(Calendar.SECOND, 0)
+        startDate.set(Calendar.MILLISECOND, 0)
         val easToken = easPreferenceSource.getEasToken()
         val timetableCode = EASTimetableCode.of(easToken.campus, term)
         val legacyTimetableCode = term.getCode()
@@ -488,7 +707,14 @@ class EASRepository @Inject constructor(
                                 val meta = if (easToken.campus == EASToken.Campus.SHENZHEN) {
                                     fetchSelectedSubjectMeta(term, easToken)
                                 } else {
-                                    SelectedSubjectMeta(emptyMap(), emptyMap(), emptyMap(), emptyMap(), emptyMap())
+                                    SelectedSubjectMeta(
+                                        emptyMap(),
+                                        emptyMap(),
+                                        emptyMap(),
+                                        emptyMap(),
+                                        emptyMap(),
+                                        emptyMap()
+                                    )
                                 }
                                 val teacherMap = meta.teacherMap
                                 val creditMap = meta.creditMap
@@ -507,15 +733,19 @@ class EASRepository @Inject constructor(
                                 )
                                 if (timetable == null) {
                                     timetable = Timetable()
-                                } else {
-                                    //若存在，则先清空原有课表课程
-                                    eventItemDao.deleteCourseFromTimetable(timetable.id)
                                 }
                                 //记录最后的时间戳，作为学期结束的标志
                                 var maxTs: Long = 0
                                 //添加时间表
                                 val events = mutableListOf<EventItem>()
-                                val requireSubjects = mutableMapOf<String, String>()
+                                val pendingSubjects = linkedMapOf<String, TermSubject>()
+                                val subjectsByKey = mutableMapOf<String, TermSubject>()
+                                subjectDao.getSubjectsSync(timetable.id).forEach { subject ->
+                                    EasImportIdentity.subjectLookupKeys(subject.code, subject.name, subject.name).forEach { key ->
+                                        subjectsByKey[key] = subject
+                                    }
+                                }
+                                val generatedClassKeys = mutableSetOf<String>()
 
                                 // Count free time courses before processing
                                 val freeTimeCount = courseItems.count { item ->
@@ -538,10 +768,22 @@ class EASRepository @Inject constructor(
                                     }
 
                                     val rawName = item.name?.toString().orEmpty().trim()
+                                    if (rawName.isBlank()) {
+                                        continue
+                                    }
                                     val normalizedName = CourseNameUtils.normalize(rawName) ?: rawName
+                                    val code = (
+                                        CourseCodeUtils.normalize(item.code)
+                                            ?: item.code?.trim().orEmpty()
+                                        ).ifBlank {
+                                        meta.codeMap[rawName]
+                                            ?: meta.codeMap[normalizedName]
+                                            ?: ""
+                                    }
 
                                     //添加科目
-                                    var subject = subjectDao.getSubjectByName(timetable.id, normalizedName)
+                                    val lookupKeys = EasImportIdentity.subjectLookupKeys(code, normalizedName, rawName)
+                                    var subject = lookupKeys.firstNotNullOfOrNull { key -> subjectsByKey[key] }
                                     if (subject == null) {//不存在，新建
                                         subject = TermSubject()
                                         // 优先保存完整的原始名称
@@ -565,7 +807,6 @@ class EASRepository @Inject constructor(
                                             subject.name = rawName
                                         }
                                     }
-                                    val code = CourseCodeUtils.normalize(item.code) ?: item.code?.trim().orEmpty()
                                     if (code.isNotBlank() && subject.code.isNullOrBlank()) {
                                         subject.code = code
                                     }
@@ -601,10 +842,10 @@ class EASRepository @Inject constructor(
                                             subject.nature = mappedNature
                                         }
                                     }
-                                    subjectDao.saveSubjectSync(subject)
-                                    if (requireSubjects[subject.id] == null) {
-                                        requireSubjects[subject.id] = subject.id
+                                    EasImportIdentity.subjectLookupKeys(subject.code, normalizedName, subject.name).forEach { key ->
+                                        subjectsByKey[key] = subject
                                     }
+                                    var itemHasEvent = false
 
                                     for (week in item.weeks) {
                                         val from = getDateAtWOT(startDate, week, item.dow)
@@ -657,8 +898,15 @@ class EASRepository @Inject constructor(
                                         e.teacher = mappedTeacher
                                         e.place = item.classroom
                                         e.timetableId = timetable.id
+                                        if (!generatedClassKeys.add(EasImportIdentity.classEventIdentityKey(e))) {
+                                            continue
+                                        }
                                         if (e.to.time > maxTs) maxTs = e.to.time
                                         events.add(e)
+                                        itemHasEvent = true
+                                    }
+                                    if (itemHasEvent) {
+                                        pendingSubjects[subject.id] = subject
                                     }
                                 }
                                 if (events.isEmpty()) {
@@ -672,6 +920,15 @@ class EASRepository @Inject constructor(
                                     return@Thread
                                 }
                                 LogUtils.d( "import: saving ${events.size} events for term=${term.getCode()}")
+                                val snapshotOwnerKey = FollowedTeachingSectionStore.ownerKey(easToken)
+                                timetableSnapshotStore.capture(
+                                    snapshotOwnerKey,
+                                    term,
+                                    timetable,
+                                    TimetableSnapshotKind.BEFORE_REFRESH
+                                )
+                                eventItemDao.deleteCourseFromTimetable(timetable.id)
+                                subjectDao.saveSubjectsSync(pendingSubjects.values.toList())
                                 eventItemDao.saveEvents(events)
 
                                 //更新timetable对象
@@ -681,6 +938,13 @@ class EASRepository @Inject constructor(
                                 timetable.code = timetableCode
                                 timetable.scheduleStructure = safeSchedule
                                 timetableDao.saveTimetableSync(timetable)
+                                timetableSnapshotStore.capture(
+                                    snapshotOwnerKey,
+                                    term,
+                                    timetable,
+                                    TimetableSnapshotKind.IMPORTED
+                                )
+                                cleanupDefaultDuplicateTimetablesAfterImport(timetable.id)
 
                                 if (finished.compareAndSet(false, true)) {
                                     timeoutHandler.removeCallbacks(timeoutRunnable)
@@ -713,6 +977,60 @@ class EASRepository @Inject constructor(
             LogUtils.e("startImport: not logged in, cannot import")
             importTimetableLiveData.value = DataState(DataState.STATE.NOT_LOGGED_IN)
         }
+    }
+
+    /**
+     * 清理历史遗留的“默认课表”重复数据。
+     *
+     * 早期版本可能把 EAS 导入课程放入默认课表，升级后同一学期会同时存在：
+     * - 带 EAS code 的正式学期课表；
+     * - code 为空、名字像“默认课表”的历史表。
+     *
+     * 只清理纯 EAS 课程且内容完全被正式课表覆盖的默认表；
+     * 如果里面有手动活动、考试、ICS 或 AI 创建内容，一律保留。
+     */
+    private fun cleanupDefaultDuplicateTimetablesAfterImport(importedTimetableId: String) {
+        val defaultPrefix = appContext.getString(R.string.default_timetable_name)
+        val defaults = timetableDao.getDefaultNamedCustomTimetablesSync("$defaultPrefix%")
+        if (defaults.isEmpty()) return
+
+        val importedKeys = eventItemDao.getImportedClassEventsOfTimetableSync(importedTimetableId)
+            .mapTo(mutableSetOf()) { importedClassEventIdentityKey(it) }
+        if (importedKeys.isEmpty()) return
+
+        val deleteIds = defaults.mapNotNull { timetable ->
+            val eventCount = eventItemDao.countEventsOfTimetableSync(timetable.id)
+            if (eventCount == 0) return@mapNotNull timetable.id
+
+            val nonImportedClassCount = eventItemDao.countNonImportedClassEventsOfTimetableSync(timetable.id)
+            if (nonImportedClassCount > 0) return@mapNotNull null
+
+            val defaultKeys = eventItemDao.getImportedClassEventsOfTimetableSync(timetable.id)
+                .mapTo(mutableSetOf()) { importedClassEventIdentityKey(it) }
+            if (defaultKeys.isNotEmpty() && importedKeys.containsAll(defaultKeys)) {
+                timetable.id
+            } else {
+                null
+            }
+        }
+        if (deleteIds.isEmpty()) return
+
+        LogUtils.d("import: cleanup duplicate default timetables=$deleteIds")
+        timetableDao.deleteTimetablesInIdsSync(deleteIds)
+        eventItemDao.deleteEventsFromTimetablesSync(deleteIds)
+        subjectDao.deleteSubjectsFromTimetablesSync(deleteIds)
+    }
+
+    private fun importedClassEventIdentityKey(event: EventItem): String {
+        return listOf(
+            event.name.trim(),
+            event.place.orEmpty().trim(),
+            event.teacher.orEmpty().trim(),
+            event.from.time.toString(),
+            event.to.time.toString(),
+            event.fromNumber.toString(),
+            event.lastNumber.toString(),
+        ).joinToString("|")
     }
 
     private fun sanitizeImportedTeacher(courseName: String?, teacherRaw: String?): String? {
@@ -760,6 +1078,7 @@ class EASRepository @Inject constructor(
     }
 
     private data class SelectedSubjectMeta(
+        val codeMap: Map<String, String>,
         val teacherMap: Map<String, String>,
         val creditMap: Map<String, Float>,
         val fieldMap: Map<String, String>,
@@ -768,6 +1087,7 @@ class EASRepository @Inject constructor(
     )
 
     private fun fetchSelectedSubjectMeta(term: TermItem, token: EASToken): SelectedSubjectMeta {
+        val codeMap = mutableMapOf<String, String>()
         val teacherMap = mutableMapOf<String, String>()
         val creditMap = mutableMapOf<String, Float>()
         val fieldMap = mutableMapOf<String, String>()
@@ -778,27 +1098,36 @@ class EASRepository @Inject constructor(
         val observer = Observer<DataState<MutableList<TermSubject>>> { state ->
             if (state.state == DataState.STATE.SUCCESS || state.state == DataState.STATE.FETCH_FAILED) {
                 state.data?.forEach { subject ->
+                    val code = CourseCodeUtils.normalize(subject.code)
+                        ?: subject.code?.trim().orEmpty()
+                    val nameKeys = listOfNotNull(
+                        subject.name.trim().takeIf { it.isNotEmpty() },
+                        CourseNameUtils.normalize(subject.name)?.trim()?.takeIf { it.isNotEmpty() }
+                    ).distinct()
+                    if (code.isNotBlank()) {
+                        nameKeys.forEach { name -> codeMap[name] = code }
+                    }
                     val teacher = subject.teacher?.trim()
                     if (!teacher.isNullOrEmpty()) {
-                        subject.code?.let { code -> teacherMap[code] = teacher }
-                        if (subject.name.isNotBlank()) teacherMap[subject.name] = teacher
+                        if (code.isNotBlank()) teacherMap[code] = teacher
+                        nameKeys.forEach { name -> teacherMap[name] = teacher }
                     }
                     val credit = subject.credit
                     if (credit > 0f) {
-                        subject.code?.let { code -> creditMap[code] = credit }
-                        if (subject.name.isNotBlank()) creditMap[subject.name] = credit
+                        if (code.isNotBlank()) creditMap[code] = credit
+                        nameKeys.forEach { name -> creditMap[name] = credit }
                     }
                     subject.field?.trim()?.takeIf { it.isNotEmpty() }?.let { value ->
-                        subject.code?.let { code -> fieldMap[code] = value }
-                        if (subject.name.isNotBlank()) fieldMap[subject.name] = value
+                        if (code.isNotBlank()) fieldMap[code] = value
+                        nameKeys.forEach { name -> fieldMap[name] = value }
                     }
                     subject.selectCategory?.trim()?.takeIf { it.isNotEmpty() }?.let { value ->
-                        subject.code?.let { code -> selectCategoryMap[code] = value }
-                        if (subject.name.isNotBlank()) selectCategoryMap[subject.name] = value
+                        if (code.isNotBlank()) selectCategoryMap[code] = value
+                        nameKeys.forEach { name -> selectCategoryMap[name] = value }
                     }
                     subject.nature?.trim()?.takeIf { it.isNotEmpty() }?.let { value ->
-                        subject.code?.let { code -> natureMap[code] = value }
-                        if (subject.name.isNotBlank()) natureMap[subject.name] = value
+                        if (code.isNotBlank()) natureMap[code] = value
+                        nameKeys.forEach { name -> natureMap[name] = value }
                     }
                 }
                 latch.countDown()
@@ -806,9 +1135,16 @@ class EASRepository @Inject constructor(
         }
         val mainHandler = Handler(Looper.getMainLooper())
         mainHandler.post { live.observeForever(observer) }
-        latch.await(4, TimeUnit.SECONDS)
+        latch.await(8, TimeUnit.SECONDS)
         mainHandler.post { live.removeObserver(observer) }
-        return SelectedSubjectMeta(teacherMap, creditMap, fieldMap, selectCategoryMap, natureMap)
+        return SelectedSubjectMeta(
+            codeMap,
+            teacherMap,
+            creditMap,
+            fieldMap,
+            selectCategoryMap,
+            natureMap
+        )
     }
 
     fun startAutoImportCurrentTimetable(
@@ -820,133 +1156,107 @@ class EASRepository @Inject constructor(
             onResult?.invoke(false)
             return
         }
+        if (!autoImportInProgress.compareAndSet(false, true)) {
+            LogUtils.d("autoImport: ignored duplicate request while another import is running")
+            onResult?.invoke(false)
+            return
+        }
+        val expectedEpoch = authEpoch.get()
         Thread {
-            val service = getService(token.campus)
-            val termsState = awaitLiveData(service.getAllTerms(token), 6)
-            LogUtils.d( "autoImport: terms state=${termsState.state} count=${termsState.data?.size ?: -1}")
-            val term = termsState.data?.firstOrNull { it.isCurrent } ?: termsState.data?.firstOrNull()
-            if (term == null) {
-                onResult?.invoke(false)
-                return@Thread
-            }
-            val startState = awaitLiveData(service.getStartDate(token, term), 6)
-            val startDate = startState.data
-            LogUtils.d( "autoImport: startDate state=${startState.state}")
-            val scheduleState = awaitLiveData(
-                service.getScheduleStructure(term, isUndergraduate, token),
-                6
-            )
-            val schedule = scheduleState.data ?: timetablePreferenceSource.getSchedule()
-            LogUtils.d( "autoImport: schedule state=${scheduleState.state} size=${schedule.size}")
-            if (startDate == null) {
-                onResult?.invoke(false)
-                return@Thread
-            }
-            val importLive = MediatorLiveData<DataState<Boolean>>()
-            val latch = CountDownLatch(1)
-            var success = false
-            val observer = Observer<DataState<Boolean>> { state ->
-                if (state.state == DataState.STATE.SUCCESS || state.state == DataState.STATE.FETCH_FAILED) {
-                    success = state.state == DataState.STATE.SUCCESS
-                    latch.countDown()
-                }
-            }
-            val mainHandler = Handler(Looper.getMainLooper())
-            mainHandler.post {
-                importLive.observeForever(observer)
-                startImportTimetableOfTerm(term, startDate, schedule, importLive)
-            }
-            latch.await(25, TimeUnit.SECONDS)
-            mainHandler.post { importLive.removeObserver(observer) }
+            var importedSuccessfully = false
+            try {
+                if (!isCurrentAuthOperation(expectedEpoch)) return@Thread
+                val service = getService(token.campus)
+                val termsState = awaitLiveData(service.getAllTerms(token), 6)
+                LogUtils.d("autoImport: terms state=${termsState.state} count=${termsState.data?.size ?: -1}")
+                if (!isCurrentAuthOperation(expectedEpoch)) return@Thread
+                val term = termsState.data?.firstOrNull { it.isCurrent }
+                    ?: termsState.data?.firstOrNull()
+                    ?: return@Thread
 
-            val examState = awaitLiveData(service.getExamItems(token, term), 8)
-            val timetableCode = EASTimetableCode.of(token.campus, term)
-            val timetable = timetableDao.getTimetableByEASCodeCandidatesSync(
-                EASTimetableCode.candidates(term, token.campus),
-                timetableCode,
-                term.getCode()
-            )
-            val importedExamCount = if (timetable == null) {
-                LogUtils.w("autoImport: skip exams, timetable not found code=$timetableCode")
-                0
-            } else {
-                importExamItemsSync(examState.data.orEmpty(), timetable)
+                val startState = awaitLiveData(service.getStartDate(token, term), 6)
+                val startDate = startState.data
+                LogUtils.d("autoImport: startDate state=${startState.state}")
+                if (!isCurrentAuthOperation(expectedEpoch)) return@Thread
+                val scheduleState = awaitLiveData(
+                    service.getScheduleStructure(term, isUndergraduate, token),
+                    6
+                )
+                val schedule = scheduleState.data ?: timetablePreferenceSource.getSchedule()
+                LogUtils.d("autoImport: schedule state=${scheduleState.state} size=${schedule.size}")
+                if (startDate == null || !isCurrentAuthOperation(expectedEpoch)) return@Thread
+
+                val importLive = MediatorLiveData<DataState<Boolean>>()
+                val latch = CountDownLatch(1)
+                var timetableImported = false
+                val observer = Observer<DataState<Boolean>> { state ->
+                    if (state.state == DataState.STATE.SUCCESS ||
+                        state.state == DataState.STATE.FETCH_FAILED
+                    ) {
+                        timetableImported = state.state == DataState.STATE.SUCCESS
+                        latch.countDown()
+                    }
+                }
+                val mainHandler = Handler(Looper.getMainLooper())
+                mainHandler.post {
+                    if (!isCurrentAuthOperation(expectedEpoch)) {
+                        latch.countDown()
+                        return@post
+                    }
+                    importLive.observeForever(observer)
+                    startImportTimetableOfTerm(term, startDate, schedule, importLive)
+                }
+                latch.await(25, TimeUnit.SECONDS)
+                mainHandler.post { importLive.removeObserver(observer) }
+                if (!isCurrentAuthOperation(expectedEpoch)) return@Thread
+
+                val examState = awaitLiveData(service.getExamItems(token, term), 8)
+                if (!isCurrentAuthOperation(expectedEpoch)) return@Thread
+                val timetableCode = EASTimetableCode.of(token.campus, term)
+                val timetable = timetableDao.getTimetableByEASCodeCandidatesSync(
+                    EASTimetableCode.candidates(term, token.campus),
+                    timetableCode,
+                    term.getCode()
+                )
+                val importedExamCount = if (timetable == null) {
+                    LogUtils.w("autoImport: skip exams, timetable not found code=$timetableCode")
+                    0
+                } else {
+                    importExamItemsSync(examState.data.orEmpty(), timetable)
+                }
+                LogUtils.d(
+                    "autoImport: exam state=${examState.state} " +
+                        "total=${examState.data?.size ?: -1} imported=$importedExamCount"
+                )
+                importedSuccessfully = timetableImported || importedExamCount > 0
+            } catch (error: Exception) {
+                LogUtils.e("autoImport: failed, error=${error.message}", error)
+            } finally {
+                autoImportInProgress.set(false)
+                onResult?.invoke(importedSuccessfully)
             }
-            LogUtils.d(
-                "autoImport: exam state=${examState.state} total=${examState.data?.size ?: -1} imported=$importedExamCount"
-            )
-            onResult?.invoke(success || importedExamCount > 0)
         }.start()
+    }
+
+    private fun isCurrentAuthOperation(expectedEpoch: Long): Boolean {
+        return authEpoch.get() == expectedEpoch && easPreferenceSource.getEasToken().isLogin()
     }
 
     @WorkerThread
     private fun importExamItemsSync(exams: List<ExamItem>, timetable: Timetable): Int {
         if (exams.isEmpty()) return 0
-        val existingEvents = eventItemDao.getEventsOfTimetableSync(timetable.id)
-            .filter { it.type == EventItem.TYPE.EXAM }
-            .toMutableList()
+        val existingKeys = eventItemDao.getExamEventsSync()
+            .mapTo(mutableSetOf()) { ExamEventMapper.identityKey(it) }
         var importedCount = 0
 
         for (exam in exams) {
-            val examEvent = parseExamToEvent(exam, timetable.id) ?: continue
-            val exists = existingEvents.any { event ->
-                event.name == examEvent.name &&
-                    event.place == examEvent.place &&
-                    event.from.time == examEvent.from.time
-            }
-            if (exists) continue
+            val examEvent = ExamEventMapper.toEvent(exam, timetable.id, "EASRepository") ?: continue
+            val key = ExamEventMapper.identityKey(examEvent)
+            if (!existingKeys.add(key)) continue
             eventItemDao.insertEventSync(examEvent)
-            existingEvents.add(examEvent)
             importedCount++
         }
         return importedCount
-    }
-
-    private fun parseExamToEvent(exam: ExamItem, timetableId: String): EventItem? {
-        return try {
-            val date = exam.examDate ?: return null
-            val timeRange = exam.examTime ?: return null
-            val times = timeRange.split("-")
-            if (times.size != 2) return null
-
-            val dateFormat = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
-            val timeFormat = SimpleDateFormat("HH:mm", Locale.getDefault())
-            val parsedDate = dateFormat.parse(date) ?: return null
-            val parsedStart = timeFormat.parse(times[0].trim()) ?: return null
-            val parsedEnd = timeFormat.parse(times[1].trim()) ?: return null
-            val startClock = Calendar.getInstance().apply { time = parsedStart }
-            val endClock = Calendar.getInstance().apply { time = parsedEnd }
-            val calendarStart = Calendar.getInstance().apply {
-                time = parsedDate
-                set(Calendar.HOUR_OF_DAY, startClock.get(Calendar.HOUR_OF_DAY))
-                set(Calendar.MINUTE, startClock.get(Calendar.MINUTE))
-                set(Calendar.SECOND, 0)
-                set(Calendar.MILLISECOND, 0)
-            }
-            val calendarEnd = Calendar.getInstance().apply {
-                time = parsedDate
-                set(Calendar.HOUR_OF_DAY, endClock.get(Calendar.HOUR_OF_DAY))
-                set(Calendar.MINUTE, endClock.get(Calendar.MINUTE))
-                set(Calendar.SECOND, 0)
-                set(Calendar.MILLISECOND, 0)
-            }
-            EventItem().apply {
-                type = EventItem.TYPE.EXAM
-                source = EventItem.SOURCE_EAS_IMPORT
-                name = "[考试] " + (exam.courseName ?: "考试")
-                place = exam.examLocation.orEmpty()
-                teacher = ""
-                subjectId = ""
-                this.timetableId = timetableId
-                from = Timestamp(calendarStart.timeInMillis)
-                to = Timestamp(calendarEnd.timeInMillis)
-                fromNumber = 0
-                lastNumber = 0
-            }
-        } catch (e: Exception) {
-            LogUtils.e("autoImport: parse exam failed ${exam.courseName}", e)
-            null
-        }
     }
 
     private fun <T> awaitLiveData(
@@ -970,6 +1280,332 @@ class EASRepository @Inject constructor(
         return campus == EASToken.Campus.SHENZHEN
     }
 
+    fun hasShenzhenWebSession(): Boolean {
+        return easPreferenceSource.getEasToken().hasShenzhenWebSession()
+    }
+
+    fun getShenzhenWebTerms(): LiveData<DataState<List<TermItem>>> {
+        return shenzhenService.getShenzhenWebTerms(easPreferenceSource.getEasToken())
+    }
+
+    fun queryShenzhenAvailableCourses(
+        term: TermItem,
+        pool: ShenzhenSelectionPool,
+        keyword: String,
+        page: Int,
+        pageSize: Int = 20
+    ): LiveData<DataState<ShenzhenCourseCatalogPage>> {
+        return shenzhenService.queryShenzhenAvailableCourses(
+            easPreferenceSource.getEasToken(),
+            term,
+            pool,
+            keyword,
+            page,
+            pageSize
+        )
+    }
+
+    fun queryShenzhenSchoolCourses(
+        term: TermItem,
+        studentType: String,
+        keyword: String,
+        page: Int,
+        pageSize: Int = 20
+    ): LiveData<DataState<ShenzhenCourseCatalogPage>> {
+        return shenzhenService.queryShenzhenSchoolCourses(
+            easPreferenceSource.getEasToken(),
+            term,
+            studentType,
+            keyword,
+            page,
+            pageSize
+        )
+    }
+
+    fun getShenzhenCourseRecommendations(
+        term: TermItem,
+        pools: List<ShenzhenSelectionPool>,
+        options: ShenzhenRecommendationOptions
+    ): LiveData<DataState<ShenzhenCourseRecommendationResult>> {
+        val token = easPreferenceSource.getEasToken()
+        return shenzhenService.getShenzhenCreditProgress(
+            token,
+            includeDetails = false
+        ).switchMap { progressState ->
+            val progress = progressState.data
+            val hasRecommendationRequirements = progress?.categories?.any { requirement ->
+                requirement.name.contains("跨专业发展") ||
+                    requirement.name.contains("文理通识")
+            } == true
+            if (progressState.state == DataState.STATE.SUCCESS &&
+                progress != null && hasRecommendationRequirements
+            ) {
+                shenzhenService.getShenzhenCourseRecommendations(
+                    token,
+                    term,
+                    pools,
+                    options,
+                    progress.categories
+                )
+            } else if (progressState.state == DataState.STATE.SUCCESS) {
+                LiveDataUtils.getMutableLiveData(
+                    DataState<ShenzhenCourseRecommendationResult>(
+                        DataState.STATE.FETCH_FAILED,
+                        "教务系统未返回跨专业或文理通识学分要求"
+                    )
+                )
+            } else {
+                LiveDataUtils.getMutableLiveData(
+                    DataState<ShenzhenCourseRecommendationResult>(
+                        progressState.state,
+                        progressState.message
+                    )
+                )
+            }
+        }
+    }
+
+    fun getShenzhenSelectedCourses(
+        term: TermItem
+    ): LiveData<DataState<List<ShenzhenCourseCatalogItem>>> =
+        shenzhenService.getShenzhenSelectedCourses(easPreferenceSource.getEasToken(), term)
+
+    fun getShenzhenCoursePlanningStartDate(term: TermItem): LiveData<DataState<Calendar>> =
+        shenzhenService.getShenzhenCoursePlanningStartDate(
+            easPreferenceSource.getEasToken(),
+            term
+        )
+
+    fun getShenzhenCoursePlanningScheduleStructure(
+        term: TermItem
+    ): LiveData<DataState<MutableList<TimePeriodInDay>>> =
+        shenzhenService.getShenzhenCoursePlanningScheduleStructure(
+            easPreferenceSource.getEasToken(),
+            term
+        )
+
+    fun getShenzhenRecommendationTracks(): LiveData<DataState<List<ShenzhenRecommendationTrack>>> {
+        return shenzhenService.getShenzhenCreditProgress(
+            easPreferenceSource.getEasToken(),
+            includeDetails = true,
+            includeCourseRecords = false,
+            trackCoursesOnly = true
+        ).map { state ->
+            val tracks = state.data?.groups.orEmpty()
+                .filter { group -> group.name.contains("轨道") && group.courses.isNotEmpty() }
+                .map { group ->
+                    ShenzhenRecommendationTrack(
+                        id = group.id,
+                        name = group.name,
+                        courseCodes = group.courses.asSequence()
+                            .map { it.courseCode.trim().uppercase(Locale.ROOT) }
+                            .filter { it.isNotBlank() }
+                            .toSet(),
+                        compulsoryCourseCodes = group.courses.asSequence()
+                            .filter { it.courseNature.contains("必修") }
+                            .map { it.courseCode.trim().uppercase(Locale.ROOT) }
+                            .filter { it.isNotBlank() }
+                            .toSet()
+                    )
+                }
+            DataState(tracks, state.state).apply { message = state.message }
+        }
+    }
+
+    fun getShenzhenCourseAttachments(
+        course: ShenzhenCourseCatalogItem
+    ): LiveData<DataState<List<ShenzhenCourseAttachment>>> {
+        return shenzhenService.getShenzhenCourseAttachments(
+            easPreferenceSource.getEasToken(),
+            course.courseId,
+            course.taskNumber
+        )
+    }
+
+    fun getShenzhenGradeCourses(
+        term: TermItem
+    ): LiveData<DataState<List<ShenzhenGradeCourse>>> {
+        val token = easPreferenceSource.getEasToken()
+        val ownerKey = scoreCacheOwnerKey(token)
+            ?: return shenzhenService.getShenzhenGradeCourses(token, term)
+        return getCachedScoreDetail(
+            ownerKey = ownerKey,
+            cacheKey = "grade-courses:${term.id}",
+            payloadType = shenzhenGradeCourseListType,
+            canRefreshRemotely = token.isLogin(),
+            remote = { shenzhenService.getShenzhenGradeCourses(token, term) }
+        )
+    }
+
+    fun getShenzhenGradeAnalysis(
+        course: ShenzhenGradeCourse
+    ): LiveData<DataState<ShenzhenGradeAnalysis>> {
+        val token = easPreferenceSource.getEasToken()
+        val ownerKey = scoreCacheOwnerKey(token)
+            ?: return shenzhenService.getShenzhenGradeAnalysis(token, course)
+        return getCachedScoreDetail(
+            ownerKey = ownerKey,
+            cacheKey = gradeAnalysisCacheKey(course),
+            payloadType = ShenzhenGradeAnalysis::class.java,
+            canRefreshRemotely = token.isLogin(),
+            remote = { shenzhenService.getShenzhenGradeAnalysis(token, course) }
+        )
+    }
+
+    private fun gradeAnalysisCacheKey(course: ShenzhenGradeCourse): String {
+        return listOf(
+            "grade-analysis",
+            course.termCode,
+            course.taskId,
+            course.courseCode,
+        ).joinToString(":")
+    }
+
+    private fun <T : Any> getCachedScoreDetail(
+        ownerKey: String,
+        cacheKey: String,
+        payloadType: Type,
+        canRefreshRemotely: Boolean,
+        remote: () -> LiveData<DataState<T>>,
+    ): LiveData<DataState<T>> {
+        val result = MediatorLiveData<DataState<T>>()
+        val hasCachedResult = AtomicBoolean(false)
+        thread(name = "score-detail-cache-load") {
+            scoreCacheDao.getDetailSync(ownerKey, cacheKey)
+                ?.payloadJson
+                ?.let { payload -> runCatching { gson.fromJson<T>(payload, payloadType) }.getOrNull() }
+                ?.let { cached ->
+                    hasCachedResult.set(true)
+                    result.postValue(DataState(cached, DataState.STATE.SUCCESS).setFromCache(true))
+                }
+
+            if (!canRefreshRemotely) {
+                if (!hasCachedResult.get()) {
+                    result.postValue(DataState(DataState.STATE.NOT_LOGGED_IN))
+                }
+                return@thread
+            }
+
+            val remoteSource = remote()
+            Handler(Looper.getMainLooper()).post {
+                result.addSource(remoteSource) { state ->
+                    if (state.state == DataState.STATE.SUCCESS && state.data != null) {
+                        result.value = state
+                        thread(name = "score-detail-cache-save") {
+                            saveScoreDetailCache(ownerKey, cacheKey, state.data!!)
+                        }
+                    } else if (!hasCachedResult.get()) {
+                        result.value = state
+                    }
+                }
+            }
+        }
+        return result
+    }
+
+    private fun saveScoreDetailCache(ownerKey: String, cacheKey: String, payload: Any) {
+        val cachedAt = System.currentTimeMillis()
+        scoreCacheDao.saveDetailSync(
+            ScoreDetailCacheEntity(
+                ownerKey = ownerKey,
+                cacheKey = cacheKey,
+                payloadJson = gson.toJson(payload),
+                cachedAt = cachedAt,
+            )
+        )
+        scoreCacheDao.deleteOldDetailsSync(cachedAt - SCORE_CACHE_RETENTION_MS)
+    }
+
+    fun getShenzhenHistoricalTeacherFailureRates(
+        referenceTerm: TermItem,
+        studentType: String,
+        referenceCourse: ShenzhenCourseCatalogItem,
+        yearsBack: Int = 2
+    ): LiveData<DataState<ShenzhenHistoricalFailureReport>> {
+        return shenzhenService.getShenzhenHistoricalTeacherFailureRates(
+            easPreferenceSource.getEasToken(),
+            referenceTerm,
+            studentType,
+            referenceCourse,
+            yearsBack
+        )
+    }
+
+    fun getShenzhenTrainingPlans(): LiveData<DataState<List<ShenzhenTrainingPlan>>> {
+        return shenzhenService.getShenzhenTrainingPlans(easPreferenceSource.getEasToken())
+    }
+
+    fun getShenzhenCreditProgress(): LiveData<DataState<ShenzhenCreditProgress>> {
+        return shenzhenService.getShenzhenCreditProgress(easPreferenceSource.getEasToken())
+    }
+
+    fun getShenzhenTrainingPlanCourses(
+        plan: ShenzhenTrainingPlan
+    ): LiveData<DataState<ShenzhenTrainingPlanDetail>> {
+        return shenzhenService.getShenzhenTrainingPlanCourses(
+            easPreferenceSource.getEasToken(),
+            plan
+        )
+    }
+
+    fun downloadShenzhenCourseAttachment(attachment: ShenzhenCourseAttachment): Long {
+        val token = easPreferenceSource.getEasToken()
+        check(token.hasShenzhenWebSession()) { "深圳 Web 会话不可用" }
+        val baseUrl = if (token.webBaseUrl?.trimEnd('/') == JW_PROXY_BASE_URL) {
+            JW_PROXY_BASE_URL
+        } else {
+            JW_DIRECT_BASE_URL
+        }
+        val uri = when (attachment.kind) {
+            ShenzhenCourseAttachmentKind.COURSE_DESCRIPTION -> {
+                check(attachment.serverPath.isNotBlank()) { "课程简介缺少文件路径" }
+                Uri.parse("$baseUrl/kck/kcxxwh/downkcjjFj").buildUpon()
+                    .appendQueryParameter("sname", attachment.serverPath)
+                    .appendQueryParameter("fname", attachment.name)
+                    .build()
+            }
+            ShenzhenCourseAttachmentKind.CHINESE_SYLLABUS,
+            ShenzhenCourseAttachmentKind.ENGLISH_SYLLABUS -> {
+                check(attachment.courseId.isNotBlank()) { "课程大纲缺少课程标识" }
+                val flag = if (
+                    attachment.kind == ShenzhenCourseAttachmentKind.CHINESE_SYLLABUS
+                ) "zwfj" else "ywfj"
+                Uri.parse("$baseUrl/kck/kcxxwh/downFj").buildUpon()
+                    .appendQueryParameter("kcid", attachment.courseId)
+                    .appendQueryParameter("fjflag", flag)
+                    .appendQueryParameter("downFlag", "")
+                    .build()
+            }
+        }
+        val fileName = attachment.name
+            .substringAfterLast('/')
+            .substringAfterLast('\\')
+            .replace(Regex("[\\u0000-\\u001f/:*?\"<>|]"), "_")
+            .trim()
+            .ifBlank { "课程附件" }
+        val extension = fileName.substringAfterLast('.', "").lowercase(Locale.ROOT)
+        val mimeType = MimeTypeMap.getSingleton().getMimeTypeFromExtension(extension)
+            ?: "application/octet-stream"
+        val cookies = token.webCookies.entries
+            .filter { it.key.isNotBlank() && it.value.isNotBlank() }
+            .joinToString("; ") { "${it.key}=${it.value}" }
+        val request = DownloadManager.Request(uri)
+            .setTitle(fileName)
+            .setDescription("正在下载 $fileName")
+            .setMimeType(mimeType)
+            .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
+            .setAllowedOverMetered(true)
+            .setAllowedOverRoaming(true)
+            .setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, fileName)
+            .addRequestHeader("Referer", "$baseUrl/Xsxk/query/1")
+        if (cookies.isNotBlank()) {
+            request.addRequestHeader("Cookie", cookies)
+        }
+        val manager = appContext.getSystemService(DownloadManager::class.java)
+            ?: error("系统下载服务不可用")
+        return manager.enqueue(request)
+    }
+
     fun getHoaCampus(@Suppress("UNUSED_PARAMETER") campus: EASToken.Campus = easPreferenceSource.getEasToken().campus): String {
         return "shenzhen"
     }
@@ -978,20 +1614,82 @@ class EASRepository @Inject constructor(
         return easPreferenceSource.getEasToken()
     }
 
+    fun getTimetableSnapshots(term: TermItem): LiveData<DataState<List<TimetableVersionSnapshot>>> {
+        val result = MutableLiveData<DataState<List<TimetableVersionSnapshot>>>(
+            DataState(DataState.STATE.NOTHING)
+        )
+        thread(name = "timetable-snapshot-list") {
+            runCatching {
+                val token = easPreferenceSource.getEasToken()
+                val ownerKey = FollowedTeachingSectionStore.ownerKey(token)
+                timetableSnapshotStore.snapshots(ownerKey, term.id)
+            }.onSuccess {
+                result.postValue(DataState(it, DataState.STATE.SUCCESS))
+            }.onFailure { error ->
+                result.postValue(DataState(DataState.STATE.FETCH_FAILED, error.message))
+            }
+        }
+        return result
+    }
+
+    fun restoreTimetableSnapshot(snapshotId: String): LiveData<DataState<TimetableVersionSnapshot>> {
+        val result = MutableLiveData<DataState<TimetableVersionSnapshot>>(
+            DataState(DataState.STATE.NOTHING)
+        )
+        thread(name = "timetable-snapshot-restore") {
+            runCatching {
+                val token = easPreferenceSource.getEasToken()
+                val ownerKey = FollowedTeachingSectionStore.ownerKey(token)
+                timetableSnapshotStore.restore(ownerKey, snapshotId)
+            }.onSuccess {
+                result.postValue(DataState(it, DataState.STATE.SUCCESS))
+            }.onFailure { error ->
+                result.postValue(DataState(DataState.STATE.FETCH_FAILED, error.message))
+            }
+        }
+        return result
+    }
+
     fun observeEasToken(): LiveData<EASToken> {
         return easTokenLiveData
     }
 
-    private fun saveEasToken(token: EASToken) {
+    private fun saveEasToken(
+        token: EASToken,
+        expectedEpoch: Long = authEpoch.get()
+    ): Boolean = synchronized(tokenStateLock) {
+        if (authEpoch.get() != expectedEpoch) {
+            LogUtils.d("saveEasToken: ignored result from an operation cancelled by logout")
+            return@synchronized false
+        }
+        token.sessionGeneration = expectedEpoch
         val mergedToken = mergeWithStoredEasToken(token)
         easPreferenceSource.saveEasToken(mergedToken)
+        acceptServiceTokenRefresh = mergedToken.isLogin()
         publishEasToken(mergedToken)
+        true
+    }
+
+    private fun saveRefreshedEasToken(token: EASToken) {
+        synchronized(tokenStateLock) {
+            if (!EasSessionGenerationGuard.acceptsServiceRefresh(
+                    refreshEnabled = acceptServiceTokenRefresh,
+                    tokenGeneration = token.sessionGeneration,
+                    currentGeneration = authEpoch.get(),
+                    storedSessionLoggedIn = easPreferenceSource.getEasToken().isLogin()
+                )
+            ) {
+                LogUtils.d("saveRefreshedEasToken: ignored stale refresh after logout")
+                return
+            }
+            val mergedToken = mergeWithStoredEasToken(token)
+            easPreferenceSource.saveEasToken(mergedToken)
+            publishEasToken(mergedToken)
+        }
     }
 
     fun saveEasTokenSync(token: EASToken) {
-        val mergedToken = mergeWithStoredEasToken(token)
-        easPreferenceSource.saveEasToken(mergedToken)
-        publishEasToken(mergedToken)
+        saveEasToken(token)
     }
 
     private fun publishEasToken(token: EASToken) {
@@ -1022,6 +1720,7 @@ class EASRepository @Inject constructor(
         token.accessToken = token.accessToken?.takeIf { it.isNotBlank() } ?: stored.accessToken
         token.refreshToken = token.refreshToken?.takeIf { it.isNotBlank() } ?: stored.refreshToken
         token.electronicExpToken = token.electronicExpToken?.takeIf { it.isNotBlank() } ?: stored.electronicExpToken
+        token.webBaseUrl = token.webBaseUrl?.takeIf { it.isNotBlank() } ?: stored.webBaseUrl
         token.username = token.username?.takeIf { it.isNotBlank() }
             ?: stored.username?.takeIf {
                 stored.campus == EASToken.Campus.SHENZHEN && it.isNotBlank() && it != "value"
@@ -1032,16 +1731,41 @@ class EASRepository @Inject constructor(
             mergedCookies.putAll(token.cookies)
             token.cookies = mergedCookies
         }
+        if (stored.webCookies.isNotEmpty()) {
+            val mergedWebCookies = HashMap(stored.webCookies)
+            mergedWebCookies.putAll(token.webCookies)
+            token.webCookies = mergedWebCookies
+        }
         return token
     }
 
-    private fun clearEasToken() {
-        easPreferenceSource.clearEasToken()
-        publishEasToken(easPreferenceSource.getEasToken())
+    fun logout() {
+        val previousToken: EASToken
+        synchronized(tokenStateLock) {
+            previousToken = easPreferenceSource.getEasToken()
+            authEpoch.incrementAndGet()
+            acceptServiceTokenRefresh = false
+            easPreferenceSource.clearEasToken()
+            publishEasToken(easPreferenceSource.getEasToken())
+        }
+        scoreCacheOwnerKey(previousToken)?.let { ownerKey ->
+            thread(name = "score-cache-clear") {
+                scoreCacheDao.deleteScoresByOwnerSync(ownerKey)
+                scoreCacheDao.deleteTermsByOwnerSync(ownerKey)
+                scoreCacheDao.deleteDetailsByOwnerSync(ownerKey)
+            }
+        }
+        clearShenzhenWebViewCookies(previousToken)
     }
 
-    fun logout() {
-        clearEasToken()
+    private fun clearShenzhenWebViewCookies(token: EASToken) {
+        if (token.campus != EASToken.Campus.SHENZHEN) return
+        Handler(Looper.getMainLooper()).post {
+            val manager = CookieManager.getInstance()
+            manager.removeAllCookies {
+                manager.flush()
+            }
+        }
     }
 
 

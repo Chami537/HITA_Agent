@@ -4,6 +4,7 @@ import androidx.lifecycle.LiveData
 import javax.inject.Inject
 import com.limpu.component.data.DataState
 import cn.limpu.hita.data.model.resource.CourseReadmeData
+import cn.limpu.hita.data.model.resource.CoursePreviewData
 import cn.limpu.hita.data.model.resource.CourseResourceItem
 import cn.limpu.hita.data.model.resource.CourseStructureSummary
 import cn.limpu.hita.data.model.resource.ValidateReadmeResult
@@ -45,6 +46,16 @@ class HoaRepository @Inject constructor() {
         campus: String? = null,
     ): LiveData<DataState<String>> {
         return HoaResourceSource.submitOps(repoName, courseCode, courseName, repoType, ops, campus)
+    }
+
+    fun previewOps(
+        repoName: String,
+        courseCode: String,
+        courseName: String,
+        ops: JSONArray,
+        campus: String? = null,
+    ): LiveData<DataState<CoursePreviewData>> {
+        return HoaResourceSource.previewOps(repoName, courseCode, courseName, ops, campus)
     }
 
 }

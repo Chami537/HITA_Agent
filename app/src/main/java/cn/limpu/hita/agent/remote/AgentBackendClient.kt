@@ -21,21 +21,6 @@ data class CourseSearchRequest(val keyword: String)
 
 data class BraveSearchRequest(val query: String, val count: Int = 5)
 
-data class BraveAnswerRequest(
-    val query: String,
-    val count: Int = 10,
-    val freshness: String = "noLimit",
-    val answer: Boolean = true,
-)
-
-data class BraveAnswerResult(
-    val ok: Boolean,
-    val answer: String = "",
-    val model: String = "",
-    val usage: Map<String, Any> = emptyMap(),
-    val error: SkillError? = null,
-)
-
 data class TeacherSearchRequest(val name: String)
 
 data class CourseSearchResponse(val ok: Boolean, val results: Any? = null, val error: SkillError? = null)
@@ -78,10 +63,21 @@ internal fun buildAgentBackendHttpError(code: Int, rawBody: String?): SkillError
 }
 
 private fun unwrapSkillOutput(body: Map<String, Any>): Map<String, Any>? {
-    val output = body["output"] as? Map<*, *> ?: return body
-    val nestedOutput = output["output"] as? Map<*, *>
+    val output = body["output"].asStringAnyMap() ?: return body
+    val nestedOutput = output["output"].asStringAnyMap()
+    return nestedOutput ?: output
+}
+
+private fun Any?.asStringAnyMap(): Map<String, Any>? {
+    val map = this as? Map<*, *> ?: return null
+    if (map.keys.any { it !is String }) return null
     @Suppress("UNCHECKED_CAST")
-    return (nestedOutput ?: output) as? Map<String, Any>
+    return map as Map<String, Any>
+}
+
+private fun Any?.asStringAnyMapList(): List<Map<String, Any>>? {
+    val list = this as? List<*> ?: return null
+    return list.map { item -> item.asStringAnyMap() ?: return null }
 }
 
 interface AgentBackendApi {
@@ -108,9 +104,6 @@ interface AgentBackendApi {
 
     @POST("api/search/bocha")
     fun braveSearch(@Body request: BraveSearchRequest): Call<Map<String, Any>>
-
-    @POST("api/search/bocha/ai-search")
-    fun braveAnswer(@Body request: BraveAnswerRequest): Call<Map<String, Any>>
 
     @POST("api/rag/query")
     fun ragQuery(@Body request: RagQueryRequest): Call<Map<String, Any>>
@@ -158,7 +151,7 @@ object AgentBackendClient {
         val results = body.results
         val actualResults = when {
             results is Map<*, *> -> {
-                val unwrapped = unwrapSkillOutput(results as Map<String, Any>)
+                val unwrapped = unwrapSkillOutput(results.asStringAnyMap() ?: return body)
                 val data = unwrapped?.get("data") as? Map<*, *>
                 data?.get("results") ?: unwrapped?.get("results") ?: results
             }
@@ -293,18 +286,18 @@ object AgentBackendClient {
                     ok = false,
                     error = SkillError(
                         code = error?.get("code")?.toString() ?: "BACKEND_ERROR",
-                        message = error?.get("message")?.toString()?.takeIf { it.isNotBlank() } ?: "Unknown error",
+                        message = error?.get("message")?.toString()?.takeIf { it.isNotBlank() } ?: "未知错误",
                         retryable = false,
                     ),
                 )
             }
             val unwrapped = unwrapSkillOutput(body)
-            val results = unwrapped?.get("results") as? List<Map<String, Any>> ?: emptyList()
+            val results = unwrapped?.get("results").asStringAnyMapList() ?: emptyList()
             BraveSearchResult(ok = true, results = results)
         } catch (e: Exception) {
             BraveSearchResult(
                 ok = false,
-                error = SkillError("EXCEPTION", e.message ?: "Web search request failed", true),
+                error = SkillError("EXCEPTION", e.message ?: "网页搜索请求失败", true),
             )
         }
     }
@@ -323,7 +316,7 @@ object AgentBackendClient {
             val course = body.course
             val actualCourse = when {
                 course is Map<*, *> -> {
-                    val unwrapped = unwrapSkillOutput(course as Map<String, Any>)
+                    val unwrapped = unwrapSkillOutput(course.asStringAnyMap() ?: return body)
                     val data = unwrapped?.get("data") as? Map<*, *>
                     data?.get("result") ?: unwrapped?.get("result") ?: course
                 }
@@ -337,43 +330,7 @@ object AgentBackendClient {
 
             return body
         } catch (e: Exception) {
-            CourseReadResponse(ok = false, error = SkillError("EXCEPTION", e.message ?: "Course read failed", true))
-        }
-    }
-
-    fun braveAnswerSync(query: String): BraveAnswerResult {
-        return try {
-            val response = api.braveAnswer(BraveAnswerRequest(query = query)).execute()
-            if (!response.isSuccessful) {
-                return BraveAnswerResult(ok = false, error = buildAgentBackendHttpError(response.code(), response.errorBody()?.string()))
-            }
-            val body = response.body()
-                ?: return BraveAnswerResult(ok = false, error = SkillError("EMPTY", "Empty response body", false))
-            val ok = body["ok"] as? Boolean ?: false
-            if (!ok) {
-                val error = body["error"] as? Map<*, *>
-                return BraveAnswerResult(
-                    ok = false,
-                    error = SkillError(
-                        code = error?.get("code")?.toString() ?: "BACKEND_ERROR",
-                        message = error?.get("message")?.toString()?.takeIf { it.isNotBlank() } ?: "Unknown error",
-                        retryable = false,
-                    ),
-                )
-            }
-            val unwrapped = unwrapSkillOutput(body)
-            val result = unwrapped ?: body
-            BraveAnswerResult(
-                ok = true,
-                answer = result["answer"] as? String ?: "",
-                model = result["model"] as? String ?: "",
-                usage = (result["usage"] as? Map<String, Any>) ?: emptyMap(),
-            )
-        } catch (e: Exception) {
-            BraveAnswerResult(
-                ok = false,
-                error = SkillError("EXCEPTION", e.message ?: "Brave answer request failed", true),
-            )
+            CourseReadResponse(ok = false, error = SkillError("EXCEPTION", e.message ?: "课程详情读取失败", true))
         }
     }
 
@@ -395,20 +352,30 @@ object AgentBackendClient {
             val result = unwrapped ?: body
             LogUtils.d("RAG unwrapped result keys: ${result.keys}")
             // RAG 接口的数据在 result["result"]["hits"] 中
-            val data = result["result"] as? Map<String, Any> ?: result
-            val hits = data["hits"] as? List<Map<String, Any>>
-                ?: data["results"] as? List<Map<String, Any>>
-                ?: data["documents"] as? List<Map<String, Any>>
+            val data = result["result"].asStringAnyMap() ?: result
+            val hits = data["hits"].asStringAnyMapList()
+                ?: data["results"].asStringAnyMapList()
+                ?: data["documents"].asStringAnyMapList()
             if (hits == null || hits.isEmpty()) {
                 return "未找到相关内容。"
             }
             buildString {
-                append("找到 ${hits.size} 条相关内容:\n")
-                hits.take(10).forEach { h ->
-                    val title = h["title"]?.toString()?.takeIf { it.isNotBlank() } ?: "无标题"
-                    val snippet = h["snippet"]?.toString()?.take(10000) ?: ""
+                val displayedHits = hits.take(MAX_RAG_HITS)
+                append("RAG 返回 ${hits.size} 条相关内容，展示前 ${displayedHits.size} 条摘要:\n")
+                displayedHits.forEachIndexed { index, h ->
+                    val docId = cleanRagText(h["doc_id"]?.toString().orEmpty())
+                    val title = cleanRagText(h["title"]?.toString().orEmpty())
+                        .takeIf { it.isNotBlank() }
+                        ?: docId.takeIf { it.isNotBlank() }
+                        ?: "资料 ${index + 1}"
+                    val snippet = cleanRagText(h["snippet"]?.toString().orEmpty())
+                        .take(MAX_RAG_SNIPPET_CHARS)
                     val score = h["score"]?.toString()?.take(5) ?: ""
-                    append("\n• [$title] 相关度:$score\n  $snippet")
+                    val source = cleanRagText(h["source"]?.toString().orEmpty())
+                    append("\n• [$title]")
+                    if (score.isNotBlank()) append(" 相关度:$score")
+                    if (source.isNotBlank()) append(" 来源:$source")
+                    if (snippet.isNotBlank()) append("\n  $snippet")
                 }
             }
         } catch (e: Exception) {
@@ -423,4 +390,22 @@ object AgentBackendClient {
         } catch (e: Exception) {
         }
     }
+
+    private fun cleanRagText(value: String): String {
+        return decodeUnicodeEscapes(value)
+            .replace("\\n", "\n")
+            .replace("\\\"", "\"")
+            .replace(Regex("[ \\t\\x0B\\f\\r]+"), " ")
+            .replace(Regex("\\n{3,}"), "\n\n")
+            .trim()
+    }
+
+    private fun decodeUnicodeEscapes(value: String): String {
+        return Regex("""\\u([0-9a-fA-F]{4})""").replace(value) { match ->
+            match.groupValues[1].toInt(16).toChar().toString()
+        }
+    }
+
+    private const val MAX_RAG_HITS = 6
+    private const val MAX_RAG_SNIPPET_CHARS = 1200
 }

@@ -175,14 +175,14 @@ class BenbuEASWebSource(
                     }
                 }
 
-                val visibleTerms = terms.filterVisibleTerms().toMutableList()
-
                 LogUtils.d("getAllTerms: score=${scoreTerms.map { it.getCode() }} timetable=${timetableTerms.map { it.getCode() }}")
-                LogUtils.d("getAllTerms: parsed=${visibleTerms.map { "${it.getCode()}:${it.name}:current=${it.isCurrent}" }}")
-                if (visibleTerms.isEmpty()) {
+                LogUtils.d("getAllTerms: parsed=${terms.map { "${it.getCode()}:${it.name}:current=${it.isCurrent}" }}")
+                if (terms.isEmpty()) {
                     result.postValue(DataState(DataState.STATE.FETCH_FAILED, "未获取到学期列表"))
                 } else {
-                    result.postValue(DataState(visibleTerms, DataState.STATE.SUCCESS))
+                    // 服务端下拉框代表当前允许查询的学期；即使“当前学期”标记仍停留在春季，
+                    // 也必须保留已经开放的夏季学期。
+                    result.postValue(DataState(terms, DataState.STATE.SUCCESS))
                 }
             } catch (e: Exception) {
                 result.postValue(DataState(DataState.STATE.FETCH_FAILED, e.message ?: "获取学期失败"))
@@ -350,66 +350,6 @@ class BenbuEASWebSource(
         return buildings
     }
 
-    private fun parseTermValue(value: String, label: String): TermItem? {
-        val cleanedValue = value.trim()
-        val match = Regex("""(\d{4}-\d{4})(\d+)""").matchEntire(cleanedValue)
-        val yearCode = match?.groupValues?.get(1)
-            ?: Regex("""\d{4}-\d{4}""").find(cleanedValue)?.value
-            ?: Regex("""\d{4}""").find(cleanedValue)?.value
-            ?: return null
-        val termCode = match?.groupValues?.get(2)
-            ?: Regex("""\d+$""").find(cleanedValue)?.value
-            ?: return null
-
-        val normalizedLabel = normalizeTermLabel(label)
-        val derivedTermName = when {
-            normalizedLabel.isNotBlank() -> normalizedLabel
-            termCode.startsWith("1") -> "$yearCode 秋季学期"
-            termCode.startsWith("2") -> "$yearCode 春季学期"
-            termCode.startsWith("3") -> "$yearCode 夏季学期"
-            termCode.startsWith("4") -> "$yearCode 冬季学期"
-            else -> "$yearCode $termCode"
-        }
-
-        return TermItem(
-            yearCode = yearCode,
-            yearName = yearCode,
-            termCode = termCode,
-            termName = derivedTermName
-        ).apply {
-            name = derivedTermName
-        }
-    }
-
-    private fun normalizeTermLabel(label: String): String {
-        val compact = label.replace(Regex("""\s+"""), "").trim()
-        if (compact.isBlank()) return ""
-
-        val yearCode = Regex("""\d{4}-\d{4}""").find(compact)?.value
-            ?: Regex("""(\d{4})学年""").find(compact)?.groupValues?.getOrNull(1)?.let { "$it-${it.toInt() + 1}" }
-            ?: ""
-
-        val season = when {
-            compact.contains("秋") -> "秋季学期"
-            compact.contains("春") -> "春季学期"
-            compact.contains("夏") -> "夏季学期"
-            compact.contains("寒") || compact.contains("冬") -> "冬季学期"
-            compact.contains("第一") -> "秋季学期"
-            compact.contains("第二") -> "春季学期"
-            compact.contains("第三") -> "夏季学期"
-            compact.contains("第四") -> "冬季学期"
-            compact.contains("上学期") -> "秋季学期"
-            compact.contains("下学期") -> "春季学期"
-            else -> ""
-        }
-
-        return when {
-            yearCode.isNotBlank() && season.isNotBlank() -> "$yearCode $season"
-            compact.contains("学年") && season.isNotBlank() -> compact.replace("学年", "学年 ").replace("学期", "学期 ").trim()
-            else -> compact
-        }
-    }
-
     private data class TermDocFetchResult(
         val doc: Document?,
         val authExpired: Boolean
@@ -470,44 +410,11 @@ class BenbuEASWebSource(
     }
 
     private fun parseTermsFromDoc(doc: Document, selectName: String): List<TermItem> {
-        val options = doc.select("select[name=$selectName] option")
-        val currentValue = currentTermValueFromDoc(doc, selectName)
-        val terms = mutableListOf<TermItem>()
-
-        options.forEachIndexed { index, option ->
-            val value = option.attr("value").trim()
-            if (value.isBlank()) return@forEachIndexed
-            val parsed = parseTermValue(value, option.text().trim()) ?: return@forEachIndexed
-            parsed.isCurrent = value == currentValue || (currentValue.isEmpty() && index == 0)
-            terms.add(parsed)
-        }
-        return terms
+        return BenbuTermParser.parseTerms(doc, selectName)
     }
 
     private fun mergeTerms(primary: List<TermItem>, secondary: List<TermItem>): MutableList<TermItem> {
-        val merged = LinkedHashMap<String, TermItem>()
-
-        secondary.forEach { term ->
-            merged[term.getCode()] = term
-        }
-
-        primary.forEach { term ->
-            val key = term.getCode()
-            val existing = merged[key]
-            if (existing == null) {
-                merged[key] = term
-            } else {
-                if (term.termName.isNotBlank()) {
-                    existing.termName = term.termName
-                }
-                if (term.name.isNotBlank()) {
-                    existing.name = term.name
-                }
-                existing.isCurrent = existing.isCurrent || term.isCurrent
-            }
-        }
-
-        return merged.values.toMutableList()
+        return BenbuTermParser.mergeTerms(primary, secondary)
     }
 
     private fun currentTermValueFromDoc(doc: Document, selectName: String): String {
@@ -841,6 +748,7 @@ class BenbuEASWebSource(
     private fun parseDateToWeekAndDow(dateStr: String, termStartDate: Calendar): Pair<Int, Int> {
         try {
             val currentDate = SimpleDateFormat("yyyy-MM-dd").parse(dateStr)
+                ?: throw IllegalArgumentException("Invalid date: $dateStr")
             val currentCalendar = Calendar.getInstance().apply {
                 time = currentDate
             }
@@ -1350,15 +1258,20 @@ class BenbuEASWebSource(
                 values[id] = value
             }
         }
-        val gpa = values["pjxfj"].orEmpty()
+        val weightedAverage = values["pjxfj"].orEmpty()
         val rankRaw = values["zrs"].orEmpty()
         val rankParts = rankRaw.split("/").map { it.trim() }.filter { it.isNotBlank() }
         val rank = rankParts.getOrNull(0).orEmpty()
         val total = rankParts.getOrNull(1).orEmpty()
-        if (gpa.isBlank() && rank.isBlank() && total.isBlank()) {
+        if (weightedAverage.isBlank() && rank.isBlank() && total.isBlank()) {
             return null
         }
-        return ScoreSummary(gpa = gpa, rank = rank, total = total)
+        return ScoreSummary(
+            weightedAverage = weightedAverage,
+            rank = rank,
+            total = total,
+            scope = ScoreSummaryScope.CUMULATIVE
+        )
     }
 
     private fun logScoreDebug(
@@ -1432,19 +1345,6 @@ class BenbuEASWebSource(
             (normalized.contains(yearCodeCompact.substringBefore('-')) ||
                 normalized.contains(yearCodeCompact.substringAfter('-', "")) ||
                 normalized.contains(yearDigits))
-    }
-
-    private fun List<TermItem>.filterVisibleTerms(): List<TermItem> {
-        val current = firstOrNull { it.isCurrent }
-        if (current == null) {
-            return this
-        }
-        val currentKey = termTimelineKey(current)
-        val filtered = filter { term ->
-            val key = termTimelineKey(term)
-            key.first < currentKey.first || (key.first == currentKey.first && key.second <= currentKey.second)
-        }
-        return if (filtered.isNotEmpty()) filtered else this
     }
 
     private fun termTimelineKey(term: TermItem): Pair<Int, Int> {
@@ -1606,7 +1506,7 @@ class BenbuEASWebSource(
 
             // 尝试多种选择器查找表格
             val table = doc.select("table.bot_line").first()
-                ?: doc.select("table").first { it.select("tr").size > 1 }
+                ?: doc.select("table").firstOrNull { it.select("tr").size > 1 }
 
             if (table == null) {
                 LogUtils.w("parseExamHtml: table not found for $examTypeName")

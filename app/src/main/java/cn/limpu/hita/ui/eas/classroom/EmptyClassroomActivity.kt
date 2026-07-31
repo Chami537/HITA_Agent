@@ -197,7 +197,10 @@ class EmptyClassroomActivity :
 
     private fun pickTerm() {
         viewModel.termsLiveData.value?.data?.let { terms ->
-            val filteredTerms = cn.limpu.hita.utils.TermUtils.filterRecentTerms(terms)
+            val filteredTerms = cn.limpu.hita.utils.TermUtils.filterTermsForStudent(
+                terms,
+                easRepository.getEasToken().grade
+            )
             val names = filteredTerms.map { getDisplayTermName(it) }
             if (names.isEmpty()) return
             PopUpCheckableList<TermItem>()
@@ -253,7 +256,7 @@ class EmptyClassroomActivity :
     }
 
     private fun getDisplayTermName(term: TermItem): String {
-        return TermNameFormatter.shortTermName(term.termName, term.name)
+        return TermNameFormatter.fullTermName(term)
     }
 }
 

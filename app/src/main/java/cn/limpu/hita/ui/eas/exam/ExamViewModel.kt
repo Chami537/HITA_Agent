@@ -3,31 +3,32 @@ package cn.limpu.hita.ui.eas.exam
 import android.app.Application
 import android.content.Context
 import androidx.lifecycle.LiveData
+import androidx.lifecycle.MediatorLiveData
 import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.switchMap
 import com.limpu.component.data.DataState
-import com.limpu.component.data.MTransformations
 import com.limpu.component.data.Trigger
 import cn.limpu.hita.data.AppDatabase
 import cn.limpu.hita.data.model.eas.EASToken
 import cn.limpu.hita.data.model.eas.ExamItem
 import cn.limpu.hita.data.model.eas.TermItem
-import cn.limpu.hita.data.model.timetable.EventItem
 import cn.limpu.hita.data.model.timetable.Timetable
+import cn.limpu.hita.data.repository.ExamEventMapper
 import cn.limpu.hita.data.repository.EASRepository
+import cn.limpu.hita.data.source.preference.ExamMemoCodec
+import cn.limpu.hita.data.source.preference.ExamMemoStore
 import cn.limpu.hita.ui.eas.EASViewModel
 import cn.limpu.hita.utils.LogUtils
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import java.sql.Timestamp
-import java.text.SimpleDateFormat
 import java.util.*
 import javax.inject.Inject
 
 @HiltViewModel
 class ExamViewModel @Inject constructor(
     easRepo: EASRepository,
-    @ApplicationContext private val context: Context
+    @param:ApplicationContext private val context: Context
 ) : EASViewModel(easRepo) {
     /**
      * LiveData区
@@ -40,41 +41,19 @@ class ExamViewModel @Inject constructor(
 
     val selectedTermLiveData: MutableLiveData<TermItem> = MutableLiveData()
     val selectedExamTypeLiveData: MutableLiveData<ExamType> = MutableLiveData()
+    private val examMemoStore = ExamMemoStore(context)
+    private val rawExamLiveData = MutableLiveData<DataState<List<ExamItem>>>()
+    private var lastRemoteExams: List<ExamItem> = emptyList()
+    val examInfoLiveData = MediatorLiveData<DataState<List<ExamItem>>>()
 
     init {
         // 初始化默认值，避免筛选时把所有数据都过滤掉
         selectedExamTypeLiveData.value = ExamType.ALL
+        examInfoLiveData.addSource(rawExamLiveData) { publishFilteredExamState() }
+        examInfoLiveData.addSource(selectedTermLiveData) { publishFilteredExamState() }
+        examInfoLiveData.addSource(selectedExamTypeLiveData) { publishFilteredExamState() }
+        publishMergedExamState()
     }
-
-    private val rawExamLiveData = MutableLiveData<DataState<List<ExamItem>>>()
-
-    private val filterLiveData =
-        MTransformations.map(selectedTermLiveData, selectedExamTypeLiveData) { it }
-
-    val examInfoLiveData: LiveData<DataState<List<ExamItem>>> =
-        MTransformations.map(rawExamLiveData, filterLiveData) { pair ->
-            val state = pair.first
-            val term = pair.second.first
-            val type = pair.second.second
-            val data = state.data
-
-            LogUtils.d("🔍 filter: data size=${data?.size}, term=${term?.name}, type=$type", "ExamViewModel")
-
-            if (state.state != DataState.STATE.SUCCESS || data.isNullOrEmpty()) {
-                return@map state
-            }
-
-            val filtered = data.filter { item ->
-                val termMatch = matchTerm(item, term)
-                val typeMatch = matchType(item.examType, type)
-                val result = termMatch && typeMatch
-                LogUtils.d("🔍 item: ${item.courseName}, termMatch=$termMatch, typeMatch=$typeMatch, result=$result", "ExamViewModel")
-                result
-            }
-
-            LogUtils.d("🔍 filtered result: ${filtered.size} items", "ExamViewModel")
-            DataState(filtered, state.state)
-        }
 
     /**
      * 方法区
@@ -117,7 +96,8 @@ class ExamViewModel @Inject constructor(
         if (selectedTerm == null) {
             LogUtils.d("⏳ term is null, waiting for term list to load first", "ExamViewModel")
             termsLiveData.observeForever(object : androidx.lifecycle.Observer<DataState<List<TermItem>>> {
-                override fun onChanged(result: DataState<List<TermItem>>) {
+                override fun onChanged(value: DataState<List<TermItem>>) {
+                    val result = value
                     if (result.state == DataState.STATE.SUCCESS) {
                         val termList = result.data
                         if (termList != null && termList.isNotEmpty()) {
@@ -156,15 +136,14 @@ class ExamViewModel @Inject constructor(
             LogUtils.d("📥 API response received: state=${result.state}, data size=${result.data?.size}", "ExamViewModel")
             when (result.state) {
                 DataState.STATE.SUCCESS -> {
-                    // API获取成功，直接使用服务器数据
                     val serverExams = result.data ?: emptyList()
                     LogUtils.d("✅ got ${serverExams.size} exams from server", "ExamViewModel")
-                    rawExamLiveData.postValue(DataState(serverExams, DataState.STATE.SUCCESS))
+                    lastRemoteExams = serverExams.filterNot(ExamItem::isMemo)
+                    publishMergedExamState(result)
                 }
-                DataState.STATE.FETCH_FAILED -> {
-                    // API获取失败
+                DataState.STATE.FETCH_FAILED, DataState.STATE.NOT_LOGGED_IN -> {
                     LogUtils.e("❌ API failed: ${result.message}", null, "ExamViewModel")
-                    rawExamLiveData.postValue(result)
+                    publishMergedExamState(result)
                 }
                 else -> {
                     // 其他状态
@@ -177,6 +156,53 @@ class ExamViewModel @Inject constructor(
         newLiveData.observeForever(newObserver)
         currentExamSource = newLiveData
         examInfoObserver = newObserver
+    }
+
+    fun saveExamMemo(item: ExamItem): String? {
+        return runCatching {
+            examMemoStore.upsert(item)
+            publishMergedExamState()
+        }.exceptionOrNull()?.message
+    }
+
+    fun hasExamMemos(): Boolean = examMemoStore.getAll().isNotEmpty()
+
+    fun deleteExamMemo(item: ExamItem): String? {
+        val memoId = item.memoId?.trim().orEmpty()
+        if (memoId.isEmpty()) return "这不是本地考试备忘录"
+        return runCatching {
+            examMemoStore.delete(memoId)
+            publishMergedExamState()
+        }.exceptionOrNull()?.message
+    }
+
+    fun defaultMemoCampusName(): String = when (easRepo.getCurrentCampus()) {
+        EASToken.Campus.SHENZHEN -> "深圳校区"
+        EASToken.Campus.BENBU -> "哈尔滨本部"
+        EASToken.Campus.WEIHAI -> "威海校区"
+    }
+
+    private fun publishMergedExamState(remoteState: DataState<List<ExamItem>>? = null) {
+        rawExamLiveData.postValue(
+            mergeExamDataState(lastRemoteExams, examMemoStore.getAll(), remoteState)
+        )
+    }
+
+    private fun publishFilteredExamState() {
+        val state = rawExamLiveData.value ?: return
+        val data = state.data
+        if (state.state != DataState.STATE.SUCCESS || data.isNullOrEmpty()) {
+            examInfoLiveData.value = state
+            return
+        }
+        val term = selectedTermLiveData.value
+        val type = selectedExamTypeLiveData.value
+        val filtered = data.filter { item ->
+            matchTerm(item, term) && matchType(item.examType, type)
+        }
+        examInfoLiveData.value = DataState(filtered, state.state).apply {
+            message = state.message
+        }
     }
 
     private var currentExamSource: LiveData<DataState<List<ExamItem>>>? = null
@@ -216,6 +242,7 @@ class ExamViewModel @Inject constructor(
      */
     private fun matchTerm(item: ExamItem, term: TermItem?): Boolean {
         if (term == null) return true
+        if (item.isMemo() && item.termId.isNullOrBlank()) return true
 
         // 使用统一的termId进行匹配
         val itemTermId = item.termId
@@ -283,28 +310,23 @@ class ExamViewModel @Inject constructor(
         }
 
         // 获取已导入的考试事件（用于去重）
-        val existingEvents = eventItemDao.getEventsOfTimetableSync(timetable.id)
-            .filter { it.type == EventItem.TYPE.EXAM }
+        val existingKeys = eventItemDao.getExamEventsSync()
+            .mapTo(mutableSetOf()) { ExamEventMapper.identityKey(it) }
 
         var successCount = 0
         var skippedCount = 0
 
         for (exam in exams) {
-            val examEvent = parseExamToEvent(exam, timetable.id)
+            val examEvent = ExamEventMapper.toEvent(exam, timetable.id, "ExamViewModel")
             if (examEvent == null) {
                 skippedCount++
                 LogUtils.e("❌ 解析失败: ${exam.courseName}", null, "ExamViewModel")
                 continue
             }
 
-            // 去重：名称 + 地点 + 开始时间完全一致则跳过
-            val isDuplicate = existingEvents.any { event ->
-                event.name == examEvent.name &&
-                    event.place == examEvent.place &&
-                    event.from.time == examEvent.from.time
-            }
+            val examKey = ExamEventMapper.identityKey(examEvent)
 
-            if (isDuplicate) {
+            if (!existingKeys.add(examKey)) {
                 skippedCount++
                 LogUtils.d("⏭️ 跳过已导入: ${exam.courseName}", "ExamViewModel")
                 continue
@@ -359,67 +381,28 @@ class ExamViewModel @Inject constructor(
         return newTable
     }
 
-    /**
-     * 将考试信息解析为EventItem
-     *
-     * 解析逻辑：
-     * 1. 解析日期：examDate格式 "YYYY-MM-DD"
-     * 2. 解析时间：examTime格式 "HH:MM-HH:MM"
-     * 3. 创建EventItem，type设置为EXAM
-     *
-     * @param exam 考试信息
-     * @param timetableId 课表ID
-     * @return EventItem对象，解析失败返回null
-     */
-    private fun parseExamToEvent(exam: ExamItem, timetableId: String): EventItem? {
-        try {
-            val dateFormat = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
-            val timeFormat = SimpleDateFormat("HH:mm", Locale.getDefault())
+}
 
-            // 解析日期
-            val date = exam.examDate ?: return null
-            val parsedDate = dateFormat.parse(date) ?: return null
-
-            // 解析时间段 "HH:MM-HH:MM"
-            val timeRange = exam.examTime ?: return null
-            val times = timeRange.split("-")
-            if (times.size != 2) return null
-
-            val startTime = timeFormat.parse(times[0]) ?: return null
-            val endTime = timeFormat.parse(times[1]) ?: return null
-
-            // 组合日期和时间
-            val calendarStart = Calendar.getInstance().apply {
-                time = parsedDate
-                set(Calendar.HOUR_OF_DAY, startTime.hours)
-                set(Calendar.MINUTE, startTime.minutes)
-            }
-
-            val calendarEnd = Calendar.getInstance().apply {
-                time = parsedDate
-                set(Calendar.HOUR_OF_DAY, endTime.hours)
-                set(Calendar.MINUTE, endTime.minutes)
-            }
-
-            // 创建EventItem
-            return EventItem().apply {
-                type = EventItem.TYPE.EXAM
-                source = EventItem.SOURCE_EAS_IMPORT
-                name = "[考试] " + (exam.courseName ?: "考试")
-                place = exam.examLocation ?: ""
-                teacher = "" // 考试没有教师信息
-                subjectId = ""
-                this.timetableId = timetableId
-                from = Timestamp(calendarStart.timeInMillis)
-                to = Timestamp(calendarEnd.timeInMillis)
-                fromNumber = 0 // 考试不使用节次
-                lastNumber = 0
-            }
-
-        } catch (e: Exception) {
-            LogUtils.e("❌ 解析考试时间失败: ${e.message}", e, "ExamViewModel")
-            return null
+internal fun mergeExamDataState(
+    remoteExams: List<ExamItem>,
+    memoExams: List<ExamItem>,
+    remoteState: DataState<List<ExamItem>>?
+): DataState<List<ExamItem>> {
+    val merged = ExamMemoCodec.merge(remoteExams, memoExams)
+    if (remoteState?.state == DataState.STATE.NOT_LOGGED_IN) {
+        return DataState(merged, DataState.STATE.NOT_LOGGED_IN).apply {
+            message = remoteState.message
         }
     }
-
+    return if (
+        merged.isNotEmpty() ||
+        remoteState == null ||
+        remoteState.state == DataState.STATE.SUCCESS
+    ) {
+        DataState(merged, DataState.STATE.SUCCESS).apply {
+            message = remoteState?.message
+        }
+    } else {
+        remoteState
+    }
 }

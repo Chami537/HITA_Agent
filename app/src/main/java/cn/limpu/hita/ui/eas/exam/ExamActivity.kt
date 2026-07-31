@@ -75,6 +75,7 @@ import cn.limpu.hita.ui.eas.EASActivity
 import cn.limpu.hita.utils.TermNameFormatter
 import cn.limpu.hita.utils.TermUtils
 import com.limpu.style.widgets.PopUpCheckableList
+import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import dagger.hilt.android.AndroidEntryPoint
 
 @AndroidEntryPoint
@@ -107,7 +108,7 @@ class ExamActivity : EASActivity<ExamViewModel, ComposeViewBinding>() {
                         true
                     }) {
                     isRefreshing = false
-                    showEmpty = true
+                    showEmpty = !viewModel.hasExamMemos()
                 }
             } else {
                 isRefreshing = false
@@ -172,17 +173,71 @@ class ExamActivity : EASActivity<ExamViewModel, ComposeViewBinding>() {
                     onPickTerm = { pickTerm() },
                     onPickExamType = { pickExamType() },
                     onImportAll = { importAllExams() },
+                    onAddMemo = { openMemoEditor() },
                     onOpenExam = { exam ->
-                        ExamDetailFragment(exam).show(supportFragmentManager, "exam_detail")
+                        ExamDetailFragment(
+                            exam = exam,
+                            onEdit = if (exam.isMemo()) {
+                                { openMemoEditor(exam) }
+                            } else null,
+                            onDelete = if (exam.isMemo()) {
+                                { confirmDeleteMemo(exam) }
+                            } else null
+                        ).show(supportFragmentManager, "exam_detail")
                     }
                 )
             }
         }
     }
 
+    private fun openMemoEditor(item: ExamItem? = null) {
+        val allTerms = viewModel.termsLiveData.value?.data.orEmpty()
+        val memoTerms = TermUtils.filterTermsForStudent(
+            allTerms,
+            easRepository.getEasToken().grade
+        ).toMutableList()
+        listOfNotNull(item?.termId, viewModel.selectedTermLiveData.value?.id).forEach { termId ->
+            allTerms.firstOrNull { it.id == termId }
+                ?.takeIf { candidate -> memoTerms.none { it.id == candidate.id } }
+                ?.let(memoTerms::add)
+        }
+        ExamMemoEditorFragment(
+            editingItem = item,
+            defaultTerm = viewModel.selectedTermLiveData.value,
+            availableTerms = memoTerms,
+            defaultCampusName = viewModel.defaultMemoCampusName(),
+            onSave = { memo ->
+                viewModel.saveExamMemo(memo).also { error ->
+                    if (error == null) {
+                        Toast.makeText(this, "考试备忘录已保存", Toast.LENGTH_SHORT).show()
+                    }
+                }
+            }
+        ).show(supportFragmentManager, "exam_memo_editor")
+    }
+
+    private fun confirmDeleteMemo(item: ExamItem) {
+        MaterialAlertDialogBuilder(this)
+            .setTitle("删除考试备忘录？")
+            .setMessage(item.courseName.orEmpty())
+            .setNegativeButton("取消", null)
+            .setPositiveButton("删除") { _, _ ->
+                val error = viewModel.deleteExamMemo(item)
+                Toast.makeText(
+                    this,
+                    error ?: "考试备忘录已删除",
+                    Toast.LENGTH_SHORT
+                ).show()
+            }
+            .show()
+    }
+
     private fun pickTerm() {
         viewModel.termsLiveData.value?.data?.let { terms ->
-            val filteredTerms = TermUtils.filterRecentTerms(terms)
+            val filteredTerms = TermUtils.filterTermsForStudent(
+                terms,
+                easRepository.getEasToken().grade
+            )
             val names = filteredTerms.map { getDisplayTermName(it) }
             if (names.isEmpty()) return
             PopUpCheckableList<TermItem>()
@@ -220,7 +275,7 @@ class ExamActivity : EASActivity<ExamViewModel, ComposeViewBinding>() {
     }
 
     private fun getDisplayTermName(term: TermItem): String {
-        return TermNameFormatter.shortTermName(term.termName, term.name)
+        return TermNameFormatter.fullTermName(term)
     }
 
     private fun importAllExams() {
@@ -291,6 +346,7 @@ private fun ExamScreen(
     onPickTerm: () -> Unit,
     onPickExamType: () -> Unit,
     onImportAll: () -> Unit,
+    onAddMemo: () -> Unit,
     onOpenExam: (ExamItem) -> Unit
 ) {
     val tokens = HitaTheme.tokens
@@ -326,6 +382,13 @@ private fun ExamScreen(
                 }
             },
             actions = {
+                IconButton(onClick = onAddMemo) {
+                    Icon(
+                        painter = painterResource(R.drawable.ic_baseline_add_24),
+                        contentDescription = "添加考试备忘录",
+                        tint = MaterialTheme.colorScheme.primary
+                    )
+                }
                 IconButton(onClick = onRefresh) {
                     if (isRefreshing) {
                         CircularProgressIndicator(
@@ -598,6 +661,14 @@ private fun ExamRow(
                         modifier = Modifier.alpha(0.6f)
                     )
                 }
+            }
+            if (exam.isMemo()) {
+                Text(
+                    text = "本地备忘录",
+                    color = MaterialTheme.colorScheme.primary,
+                    fontSize = 11.sp,
+                    modifier = Modifier.padding(top = 2.dp)
+                )
             }
             Text(
                 text = buildString {

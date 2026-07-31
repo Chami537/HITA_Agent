@@ -69,6 +69,9 @@ class EasPreferenceSource(context: Context) {
             .putString("username", token.username)
             .putString("password", token.password)
             .putString("cookies", Gson().toJson(token.cookies))
+            .putString("webCookies", Gson().toJson(token.webCookies))
+            .putString("webBaseUrl", token.webBaseUrl)
+            .putLong("sessionGeneration", token.sessionGeneration)
             .putString("name", token.name)
             .putString("stutype", token.getStudentType())
             .putString("picture", token.picture)
@@ -87,13 +90,8 @@ class EasPreferenceSource(context: Context) {
 
 
     fun clearEasToken() {
-        preference.edit()
-            .putString("accessToken", null)
-            .putString("refreshToken", null)
-            .putString("password", null)
-            .putString("electronicExpToken", null)
-            .putString("cookies", null)
-            .apply()
+        // Logout is a security boundary: remove credentials and cached identity atomically.
+        preference.edit().clear().commit()
     }
 
     fun getEasToken(): EASToken {
@@ -120,6 +118,8 @@ class EasPreferenceSource(context: Context) {
         result.email = preference.getString("email", null)
         result.phone = preference.getString("phone", null)
         result.electronicExpToken = preference.getString("electronicExpToken", null)
+        result.webBaseUrl = preference.getString("webBaseUrl", null)
+        result.sessionGeneration = preference.getLong("sessionGeneration", 0L)
         val map = runCatching {
             Gson().fromJson(preference.getString("cookies", "{}"), HashMap::class.java)
         }.getOrNull() ?: HashMap<Any, Any>()
@@ -130,6 +130,18 @@ class EasPreferenceSource(context: Context) {
             val value = e.value?.toString().orEmpty()
             if (key.isNotBlank()) {
                 result.cookies[key] = value
+            }
+        }
+        val webMap = runCatching {
+            Gson().fromJson(preference.getString("webCookies", "{}"), HashMap::class.java)
+        }.getOrNull() ?: HashMap<Any, Any>()
+        for (e in webMap.entries) {
+            @Suppress("UNNECESSARY_SAFE_CALL")
+            val key = e.key?.toString().orEmpty()
+            @Suppress("UNNECESSARY_SAFE_CALL")
+            val value = e.value?.toString().orEmpty()
+            if (key.isNotBlank()) {
+                result.webCookies[key] = value
             }
         }
         return result

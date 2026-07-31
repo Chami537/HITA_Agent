@@ -1,5 +1,6 @@
 package cn.limpu.hita.agent.remote
 
+import cn.limpu.hita.BuildConfig
 import okhttp3.OkHttpClient
 import retrofit2.Call
 import retrofit2.Retrofit
@@ -66,12 +67,23 @@ interface PrServerApi {
 
 object PrServerClient {
 
-    private const val BASE_URL = "http://47.115.160.70:8081/"
+    private val BASE_URL = BuildConfig.HOA_BASE_URL.removeSuffix("/") + "/"
 
     val api: PrServerApi by lazy {
         val client = OkHttpClient.Builder()
             .connectTimeout(15, TimeUnit.SECONDS)
-            .readTimeout(30, TimeUnit.SECONDS)
+            .readTimeout(60, TimeUnit.SECONDS)
+            .writeTimeout(30, TimeUnit.SECONDS)
+            .addInterceptor { chain ->
+                val request = chain.request().newBuilder().apply {
+                    header("Accept", "application/json")
+                    header("User-Agent", "HITA_Agent/${BuildConfig.VERSION_NAME}")
+                    if (BuildConfig.HOA_API_KEY.isNotBlank()) {
+                        header("X-Api-Key", BuildConfig.HOA_API_KEY)
+                    }
+                }.build()
+                chain.proceed(request)
+            }
             .build()
 
         Retrofit.Builder()

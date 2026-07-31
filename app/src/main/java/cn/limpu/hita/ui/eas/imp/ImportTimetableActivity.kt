@@ -61,6 +61,8 @@ import cn.limpu.hita.R
 import cn.limpu.hita.data.model.eas.EASToken
 import cn.limpu.hita.data.model.eas.TermItem
 import cn.limpu.hita.data.model.timetable.TimePeriodInDay
+import cn.limpu.hita.data.repository.TimetableSnapshotKind
+import cn.limpu.hita.data.repository.TimetableVersionSnapshot
 import cn.limpu.hita.ui.base.ComposeViewBinding
 import cn.limpu.hita.ui.design.HitaComposeTheme
 import cn.limpu.hita.ui.design.HitaTheme
@@ -74,6 +76,8 @@ import cn.limpu.hita.utils.TermNameFormatter
 import cn.limpu.hita.utils.TextTools
 import com.limpu.style.widgets.PopUpCheckableList
 import dagger.hilt.android.AndroidEntryPoint
+import java.text.DateFormat
+import java.util.Date
 
 @AndroidEntryPoint
 class ImportTimetableActivity :
@@ -94,6 +98,7 @@ class ImportTimetableActivity :
     private var importEnabled by mutableStateOf(false)
     private var importing by mutableStateOf(false)
     private var importSuccess: Boolean? by mutableStateOf(null)
+    private var snapshots: List<TimetableVersionSnapshot> = emptyList()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -126,6 +131,7 @@ class ImportTimetableActivity :
                             refresh()
                         }
                     },
+                    onShowSnapshots = { showSnapshotHistory() },
                     onPickTerm = { pickTerm() },
                     onImport = {
                         ensureLoggedInForImport {
@@ -270,6 +276,7 @@ class ImportTimetableActivity :
                 importActionInFlight = false
                 resetSessionRetryState()
                 Toast.makeText(this, R.string.import_success, Toast.LENGTH_SHORT).show()
+                viewModel.refreshSnapshots()
             } else if (it.state == DataState.STATE.NOT_LOGGED_IN && importActionInFlight) {
                 if (!handleSessionExpired { retryImportFlow() }) {
                     importActionInFlight = false
@@ -285,6 +292,25 @@ class ImportTimetableActivity :
                 ).show()
             }
             WidgetUtils.sendRefreshToAll(this)
+        }
+        viewModel.snapshotsLiveData.observe(this) { state ->
+            if (state.state == DataState.STATE.SUCCESS) {
+                snapshots = state.data.orEmpty()
+            }
+        }
+        viewModel.restoreSnapshotLiveData.observe(this) { state ->
+            when (state.state) {
+                DataState.STATE.SUCCESS -> {
+                    Toast.makeText(this, "课表版本已恢复", Toast.LENGTH_SHORT).show()
+                    WidgetUtils.sendRefreshToAll(this)
+                }
+                DataState.STATE.FETCH_FAILED -> Toast.makeText(
+                    this,
+                    state.message ?: "课表版本恢复失败",
+                    Toast.LENGTH_LONG
+                ).show()
+                else -> Unit
+            }
         }
     }
 
@@ -380,7 +406,10 @@ class ImportTimetableActivity :
     }
 
     private fun showTermPicker(terms: List<TermItem>) {
-        val filteredTerms = cn.limpu.hita.utils.TermUtils.filterRecentTerms(terms)
+        val filteredTerms = cn.limpu.hita.utils.TermUtils.filterTermsForStudent(
+            terms,
+            easRepository.getEasToken().grade
+        )
         val names = filteredTerms.map { getDisplayTermName(it) }
         PopUpCheckableList<TermItem>()
             .setListData(names, filteredTerms)
@@ -393,7 +422,38 @@ class ImportTimetableActivity :
     }
 
     private fun getDisplayTermName(term: TermItem): String {
-        return TermNameFormatter.shortTermName(term.termName, term.name)
+        return TermNameFormatter.fullTermName(term)
+    }
+
+    private fun showSnapshotHistory() {
+        if (snapshots.isEmpty()) {
+            Toast.makeText(this, "当前学期还没有可恢复的课表版本", Toast.LENGTH_SHORT).show()
+            return
+        }
+        val dateFormat = DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT)
+        val labels = snapshots.map { snapshot ->
+            val kind = when (snapshot.kind) {
+                TimetableSnapshotKind.BEFORE_REFRESH -> "刷新前"
+                TimetableSnapshotKind.IMPORTED -> "教务导入"
+                TimetableSnapshotKind.BEFORE_RESTORE -> "恢复前"
+            }
+            "$kind · ${dateFormat.format(Date(snapshot.createdAtMillis))}\n" +
+                "${snapshot.courseCount} 门课程 · ${snapshot.lessonCount} 个课次"
+        }.toTypedArray()
+        AlertDialog.Builder(this)
+            .setTitle("课表版本记录")
+            .setItems(labels) { _, index -> confirmRestoreSnapshot(snapshots[index]) }
+            .setNegativeButton(R.string.cancel, null)
+            .show()
+    }
+
+    private fun confirmRestoreSnapshot(snapshot: TimetableVersionSnapshot) {
+        AlertDialog.Builder(this)
+            .setTitle("恢复这个课表版本？")
+            .setMessage("当前教务课程会先自动保存为“恢复前”版本，然后替换为所选版本；手动活动和考试不受影响。")
+            .setPositiveButton("恢复") { _, _ -> viewModel.restoreSnapshot(snapshot.id) }
+            .setNegativeButton(R.string.cancel, null)
+            .show()
     }
 }
 
@@ -408,6 +468,7 @@ private fun ImportTimetableScreen(
     getDisplayTermName: (TermItem) -> String,
     onBack: () -> Unit,
     onRefresh: () -> Unit,
+    onShowSnapshots: () -> Unit,
     onPickTerm: () -> Unit,
     onImport: () -> Unit,
     onPickDate: () -> Unit,
@@ -452,6 +513,13 @@ private fun ImportTimetableScreen(
                 }
             },
             actions = {
+                IconButton(onClick = onShowSnapshots) {
+                    Icon(
+                        painter = painterResource(R.drawable.ic_baseline_settings_backup_restore_24),
+                        contentDescription = "课表版本记录",
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
                 IconButton(onClick = onRefresh) {
                     if (isRefreshing) {
                         CircularProgressIndicator(

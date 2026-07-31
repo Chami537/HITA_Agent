@@ -5,7 +5,6 @@ import androidx.room.PrimaryKey
 import cn.limpu.hita.ui.main.timetable.TimetableFragment.Companion.WEEK_MILLS
 import java.sql.Timestamp
 import java.util.*
-import kotlin.math.roundToInt
 
 @Entity(tableName = "timetable")
 class Timetable {
@@ -34,14 +33,25 @@ class Timetable {
         c[Calendar.DAY_OF_WEEK] = Calendar.MONDAY
         c[Calendar.HOUR_OF_DAY] = 0
         c[Calendar.MINUTE] = 0
+        c[Calendar.SECOND] = 0
+        c[Calendar.MILLISECOND] = 0
         if (c.timeInMillis > endTime.time) return -1
-        val x = ((c.timeInMillis - startTime.time) / WEEK_MILLS.toFloat()).roundToInt()
+        val termStart = Calendar.getInstance().apply {
+            timeInMillis = startTime.time
+            firstDayOfWeek = Calendar.MONDAY
+            set(Calendar.DAY_OF_WEEK, Calendar.MONDAY)
+            set(Calendar.HOUR_OF_DAY, 0)
+            set(Calendar.MINUTE, 0)
+            set(Calendar.SECOND, 0)
+            set(Calendar.MILLISECOND, 0)
+        }
+        val x = Math.floorDiv(c.timeInMillis - termStart.timeInMillis, WEEK_MILLS)
         return when {
             x < 0 -> {
                 -1
             }
             else -> {
-                x + 1
+                x.toInt() + 1
             }
         }
     }

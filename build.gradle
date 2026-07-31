@@ -14,25 +14,12 @@ buildscript {
         maven { url = uri("https://repo.grails.org/grails/core") }
     }
     dependencies {
-        classpath 'com.android.tools.build:gradle:8.6.1'
+        classpath 'com.android.tools.build:gradle:8.10.1'
         classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:$kotlin_version"
         classpath "org.jetbrains.kotlin.plugin.compose:org.jetbrains.kotlin.plugin.compose.gradle.plugin:$kotlin_version"
         classpath 'com.google.dagger:hilt-android-gradle-plugin:2.57.2'
         // NOTE: Do not place your application dependencies here; they belong
         // in the individual module build.gradle files
-    }
-}
-
-allprojects {
-    repositories {
-        maven { url = uri("https://maven.aliyun.com/repository/google") }
-        maven { url = uri("https://maven.aliyun.com/repository/central") }
-        maven { url = uri("https://maven.aliyun.com/repository/public") }
-        mavenLocal()
-        // JitPack 放在腾讯镜像之前，确保 github 上的库能正确解析
-        maven { url = uri("https://www.jitpack.io") }
-        maven { url = uri("https://mirrors.tencent.com/nexus/repository/maven-public/") }
-        maven { url = uri("https://repo.grails.org/grails/core") }
     }
 }
 

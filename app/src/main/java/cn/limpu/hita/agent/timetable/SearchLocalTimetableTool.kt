@@ -16,7 +16,7 @@ class SearchLocalTimetableTool : AgentTool<TimetableAgentInput, TimetableAgentOu
         onResult: (AgentToolResult<TimetableAgentOutput>) -> Unit,
     ) {
         if (input.action != TimetableAgentInput.Action.SEARCH_TIMETABLE) {
-            onResult(AgentToolResult.failure("invalid action for $name"))
+            onResult(AgentToolResult.failure("当前工具不支持此操作"))
             return
         }
 
@@ -60,7 +60,7 @@ class SearchLocalTimetableTool : AgentTool<TimetableAgentInput, TimetableAgentOu
                 )
             } catch (e: Exception) {
                 LogUtils.e("SearchLocalTimetableTool error: ${e.message}", e)
-                onResult(AgentToolResult.failure(e.message ?: "search timetable failed"))
+                onResult(AgentToolResult.failure(e.message ?: "搜索课表事件失败"))
             }
         }
     }

@@ -9,6 +9,7 @@ import com.limpu.component.data.Trigger
 import cn.limpu.hita.data.model.eas.TermItem
 import cn.limpu.hita.data.model.timetable.TimePeriodInDay
 import cn.limpu.hita.data.repository.EASRepository
+import cn.limpu.hita.data.repository.TimetableVersionSnapshot
 import cn.limpu.hita.data.source.preference.BenbuStartDatePreferenceSource
 import cn.limpu.hita.ui.eas.EASViewModel
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -35,6 +36,18 @@ class ImportTimetableViewModel @Inject constructor(
     val isUndergraduateLiveData = MutableLiveData<Boolean>()
     val scheduleStructureLiveData: MediatorLiveData<DataState<MutableList<TimePeriodInDay>>> =
         MediatorLiveData()
+    val snapshotsLiveData: LiveData<DataState<List<TimetableVersionSnapshot>>> =
+        selectedTermLiveData.switchMap { term ->
+            if (term == null) {
+                MutableLiveData<DataState<List<TimetableVersionSnapshot>>>(
+                    DataState(emptyList(), DataState.STATE.SUCCESS)
+                )
+            } else {
+                easRepo.getTimetableSnapshots(term)
+            }
+        }
+    val restoreSnapshotLiveData = MediatorLiveData<DataState<TimetableVersionSnapshot>>()
+    private var restoreSnapshotSource: LiveData<DataState<TimetableVersionSnapshot>>? = null
     private var scheduleInnerSource1: LiveData<DataState<MutableList<TimePeriodInDay>>>? = null
     private var scheduleInnerSource2: LiveData<DataState<MutableList<TimePeriodInDay>>>? = null
 
@@ -121,6 +134,26 @@ class ImportTimetableViewModel @Inject constructor(
 
     fun retryImportTimetable(): Boolean {
         return startImportTimetable()
+    }
+
+    fun restoreSnapshot(snapshotId: String) {
+        restoreSnapshotSource?.let(restoreSnapshotLiveData::removeSource)
+        val source = easRepo.restoreTimetableSnapshot(snapshotId)
+        restoreSnapshotSource = source
+        restoreSnapshotLiveData.addSource(source) { state ->
+            restoreSnapshotLiveData.value = state
+            if (state.state != DataState.STATE.NOTHING) {
+                restoreSnapshotLiveData.removeSource(source)
+                restoreSnapshotSource = null
+                if (state.state == DataState.STATE.SUCCESS) {
+                    selectedTermLiveData.value = selectedTermLiveData.value
+                }
+            }
+        }
+    }
+
+    fun refreshSnapshots() {
+        selectedTermLiveData.value = selectedTermLiveData.value
     }
 
 

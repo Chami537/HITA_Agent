@@ -6,7 +6,10 @@ import android.text.method.LinkMovementMethod
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import android.widget.FrameLayout
 import androidx.annotation.StringRes
+import com.google.android.material.bottomsheet.BottomSheetBehavior
+import com.google.android.material.bottomsheet.BottomSheetDialog
 import com.limpu.style.databinding.DialogBottomUpdateBinding
 
 /**
@@ -29,7 +32,16 @@ class PopUpUpdate : TransparentBottomSheetDialog<DialogBottomUpdateBinding>() {
 
     override fun onStart() {
         super.onStart()
-        binding.text.requestFocus()
+        val bottomSheet = (dialog as? BottomSheetDialog)
+            ?.findViewById<FrameLayout>(com.google.android.material.R.id.design_bottom_sheet)
+            ?: return
+        val maxHeight = (resources.displayMetrics.heightPixels * 0.85f).toInt()
+        bottomSheet.layoutParams = bottomSheet.layoutParams.apply { height = maxHeight }
+        bottomSheet.requestLayout()
+        BottomSheetBehavior.from(bottomSheet).apply {
+            peekHeight = maxHeight
+            state = BottomSheetBehavior.STATE_EXPANDED
+        }
     }
 
     fun setTitle(@StringRes title: Int): PopUpUpdate {

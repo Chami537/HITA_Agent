@@ -15,7 +15,7 @@ import android.widget.EditText
 import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.LinearLayout
-import android.widget.SeekBar
+import android.widget.ScrollView
 import android.widget.TextView
 import androidx.cardview.widget.CardView
 import androidx.core.content.ContextCompat
@@ -258,27 +258,6 @@ class DialogBottomFloatPickerBinding constructor(
     }
 }
 
-class DialogBottomColorPickerBinding constructor(
-    private val rootView: LinearLayout,
-    val colorDemo: View,
-    val done: ImageView,
-    val sbR: SeekBar,
-    val sbB: SeekBar,
-    val sbG: SeekBar,
-) : ViewBinding {
-    override fun getRoot(): View = rootView
-
-    companion object {
-        fun inflate(inflater: LayoutInflater, parent: ViewGroup? = null, attachToParent: Boolean = false): DialogBottomColorPickerBinding {
-            return DialogUiFactory.createColorPicker(inflater.context).also {
-                if (attachToParent) parent?.addView(it.root)
-            }
-        }
-
-        fun bind(view: View): DialogBottomColorPickerBinding = DialogUiFactory.bindColorPicker(view)
-    }
-}
-
 private object DialogUiFactory {
     private const val ID_TITLE = 0x1f010001
     private const val ID_TEXT = 0x1f010002
@@ -292,11 +271,6 @@ private object DialogUiFactory {
     private const val ID_PICK_TIME_LAYOUT = 0x1f01000a
     private const val ID_A = 0x1f01000b
     private const val ID_B = 0x1f01000c
-    private const val ID_COLOR_DEMO = 0x1f01000d
-    private const val ID_DONE = 0x1f01000e
-    private const val ID_SB_R = 0x1f01000f
-    private const val ID_SB_B = 0x1f010010
-    private const val ID_SB_G = 0x1f010011
 
     fun createText(context: Context): DialogBottomTextBinding {
         val root = bottomSheetRoot(context)
@@ -327,7 +301,9 @@ private object DialogUiFactory {
     }
 
     fun createUpdate(context: Context): DialogBottomUpdateBinding {
-        val root = bottomSheetRoot(context)
+        val root = bottomSheetRoot(context).apply {
+            layoutParams = ViewGroup.LayoutParams(match, match)
+        }
         val title = titleView(context).also { it.id = ID_TITLE }
         val text = TextView(context).apply {
             id = ID_TEXT
@@ -336,10 +312,16 @@ private object DialogUiFactory {
             setHintTextColor(attrColor(context, R.attr.textColorSecondary))
             setTextSize(TypedValue.COMPLEX_UNIT_SP, 16f)
             setPadding(dp(context, 24), dp(context, 24), dp(context, 24), dp(context, 24))
-            layoutParams = LinearLayout.LayoutParams(match, wrap).apply { topMargin = -dp(context, 16) }
+        }
+        val textScroller = ScrollView(context).apply {
+            isFillViewport = true
+            layoutParams = LinearLayout.LayoutParams(match, 0, 1f).apply {
+                topMargin = -dp(context, 16)
+            }
+            addView(text, ViewGroup.LayoutParams(match, wrap))
         }
         root.addView(title)
-        root.addView(text)
+        root.addView(textScroller)
         root.addView(horizontalButtons(context, ID_CANCEL to R.string.cancel, ID_SKIP to R.string.skip, ID_CONFIRM to R.string.confirm))
         return bindUpdate(root)
     }
@@ -600,49 +582,6 @@ private object DialogUiFactory {
         )
     }
 
-    fun createColorPicker(context: Context): DialogBottomColorPickerBinding {
-        val root = bottomSheetRoot(context)
-        val colorFrame = FrameLayout(context).apply {
-            layoutParams = LinearLayout.LayoutParams(match, match, 1f)
-        }
-        val colorDemo = View(context).apply {
-            id = ID_COLOR_DEMO
-            background = ContextCompat.getDrawable(context, R.drawable.bottom_sheet_rounded_background)
-            layoutParams = FrameLayout.LayoutParams(match, dp(context, 160))
-        }
-        val done = ImageView(context).apply {
-            id = ID_DONE
-            isClickable = true
-            isFocusable = true
-            foreground = selectableBorderless(context)
-            setPadding(dp(context, 16), dp(context, 16), dp(context, 16), dp(context, 16))
-            imageTintList = ColorStateList.valueOf(Color.WHITE)
-            setImageResource(R.drawable.ic_baseline_check_24)
-            layoutParams = FrameLayout.LayoutParams(dp(context, 56), dp(context, 56), Gravity.END)
-        }
-        colorFrame.addView(colorDemo)
-        colorFrame.addView(done)
-        root.addView(colorFrame)
-        val sbR = seekRow(context, "R", ID_SB_R, attrColor(context, R.attr.textColorPrimary), 24, 24, 8)
-        val sbB = seekRow(context, "B", ID_SB_B, attrColor(context, R.attr.textColorPrimary), 8, 8, 8)
-        val sbG = seekRow(context, "G", ID_SB_G, attrColor(context, R.attr.colorControlNormal), 8, 8, 24)
-        root.addView(sbR.first)
-        root.addView(sbB.first)
-        root.addView(sbG.first)
-        return bindColorPicker(root)
-    }
-
-    fun bindColorPicker(view: View): DialogBottomColorPickerBinding {
-        return DialogBottomColorPickerBinding(
-            view as LinearLayout,
-            view.findViewById(ID_COLOR_DEMO),
-            view.findViewById(ID_DONE),
-            view.findViewById(ID_SB_R),
-            view.findViewById(ID_SB_B),
-            view.findViewById(ID_SB_G),
-        )
-    }
-
     private fun bottomSheetRoot(context: Context): LinearLayout {
         return LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
@@ -766,36 +705,6 @@ private object DialogUiFactory {
             setPadding(dp(context, 24), dp(context, 24), dp(context, 24), dp(context, 24))
             setEms(10)
         }
-    }
-
-    private fun seekRow(
-        context: Context,
-        label: String,
-        seekId: Int,
-        labelColor: Int,
-        marginTop: Int,
-        marginBottom: Int,
-        bottom: Int,
-    ): Pair<LinearLayout, SeekBar> {
-        val row = LinearLayout(context).apply {
-            orientation = LinearLayout.HORIZONTAL
-            layoutParams = LinearLayout.LayoutParams(match, wrap).apply {
-                setMargins(dp(context, 24), dp(context, marginTop), dp(context, 24), dp(context, bottom.coerceAtLeast(marginBottom)))
-            }
-        }
-        row.addView(TextView(context).apply {
-            text = label
-            setTextColor(labelColor)
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 18f)
-            setTypeface(typeface, Typeface.BOLD)
-            layoutParams = LinearLayout.LayoutParams(wrap, wrap).apply { rightMargin = dp(context, 16) }
-        })
-        val seekBar = SeekBar(context).apply {
-            id = seekId
-            layoutParams = LinearLayout.LayoutParams(0, wrap, 1f)
-        }
-        row.addView(seekBar)
-        return row to seekBar
     }
 
     private fun selectable(context: Context): android.graphics.drawable.Drawable? {

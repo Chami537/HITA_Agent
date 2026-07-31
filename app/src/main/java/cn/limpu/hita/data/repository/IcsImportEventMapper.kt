@@ -8,6 +8,7 @@ import java.util.UUID
 
 object IcsImportEventMapper {
     private val PERIOD_LINE_REGEX = Regex("""^第\s*\d+(?:\s*[-~到]\s*\d+)?\s*节$""")
+    private val LEGACY_LOCATION_TEACHER_REGEX = Regex("""^(.+?)\s+([^\s]+老师)$""")
 
     fun map(
         event: VEvent,
@@ -52,7 +53,9 @@ object IcsImportEventMapper {
     private fun resolvePlace(event: VEvent, descriptionLines: List<String>): String {
         getXProperty(event, "X-HITA-CLASSROOM")?.let { return it }
         val location = event.location?.value?.trim().orEmpty()
-        if (location.isNotEmpty()) return location
+        if (location.isNotEmpty()) {
+            return splitLegacyLocation(location)?.first ?: location
+        }
         return descriptionLines
             .asReversed()
             .firstOrNull { !isPeriodLine(it) }
@@ -60,7 +63,14 @@ object IcsImportEventMapper {
     }
 
     private fun resolveTeacher(event: VEvent): String {
-        return getXProperty(event, "X-HITA-TEACHER").orEmpty()
+        getXProperty(event, "X-HITA-TEACHER")?.let { return it }
+        val location = event.location?.value?.trim().orEmpty()
+        return splitLegacyLocation(location)?.second.orEmpty()
+    }
+
+    private fun splitLegacyLocation(location: String): Pair<String, String>? {
+        val match = LEGACY_LOCATION_TEACHER_REGEX.matchEntire(location) ?: return null
+        return match.groupValues[1].trim() to match.groupValues[2].trim()
     }
 
     private fun resolveType(event: VEvent): EventItem.TYPE? {

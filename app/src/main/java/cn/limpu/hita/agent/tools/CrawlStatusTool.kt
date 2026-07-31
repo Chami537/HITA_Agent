@@ -8,7 +8,7 @@ class CrawlStatusTool : ReActTool {
             val taskId = extractTaskId(input.actionInput)
             AgentBackendClient.crawlStatusSync(taskId) ?: "无法获取爬取状态"
         } catch (e: Exception) {
-            "Error: ${e.message}"
+            "获取爬取状态失败：${e.message ?: "未知错误"}"
         }
     }
 

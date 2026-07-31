@@ -26,6 +26,7 @@ import androidx.compose.ui.unit.sp
 import com.google.android.material.bottomsheet.BottomSheetDialogFragment
 import cn.limpu.hita.R
 import cn.limpu.hita.data.model.eas.CourseScoreItem
+import cn.limpu.hita.utils.formatCredits
 import cn.limpu.hita.ui.design.HitaComposeTheme
 import cn.limpu.hita.ui.design.HitaTheme
 
@@ -77,7 +78,7 @@ private fun ScoreDetailSheet(score: CourseScoreItem) {
             Spacer(modifier = Modifier.height(tokens.spacing.xl))
             DetailRow(
                 leftLabel = stringResource(R.string.score_credit),
-                leftValue = score.credits.toString(),
+                leftValue = formatCredits(score.credits),
                 rightLabel = stringResource(R.string.score_hours),
                 rightValue = score.hours.toString()
             )

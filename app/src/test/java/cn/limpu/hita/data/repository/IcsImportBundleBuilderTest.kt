@@ -1,6 +1,7 @@
 package cn.limpu.hita.data.repository
 
 import cn.limpu.hita.data.model.timetable.EventItem
+import cn.limpu.hita.utils.ColorTools
 import net.fortuna.ical4j.model.DateTime
 import net.fortuna.ical4j.model.component.VEvent
 import net.fortuna.ical4j.model.property.Location
@@ -15,7 +16,6 @@ import java.util.Calendar
 class IcsImportBundleBuilderTest {
     @Test
     fun build_createsStandaloneTimetableAndGroupsEventsIntoColoredSubjects() {
-        val colors = ArrayDeque(listOf(1001, 1002))
         val bundle = IcsImportBundleBuilder.build(
             events = listOf(
                 createEvent("高等数学", "20260407T100000", "20260407T120000", "A101 张老师"),
@@ -24,7 +24,6 @@ class IcsImportBundleBuilderTest {
             ),
             sourceName = "2026春季课程.ics",
             now = 1_744_000_000_000L,
-            nextColor = { colors.removeFirst() }
         )
 
         assertEquals("2026春季课程", bundle.timetable.name)
@@ -43,8 +42,8 @@ class IcsImportBundleBuilderTest {
 
         assertEquals(bundle.timetable.id, math.timetableId)
         assertEquals(bundle.timetable.id, english.timetableId)
-        assertEquals(1001, math.color)
-        assertEquals(1002, english.color)
+        assertEquals(ColorTools.colorForName("高等数学"), math.color)
+        assertEquals(ColorTools.colorForName("大学英语"), english.color)
         assertNotEquals(math.id, english.id)
 
         val mathEvents = bundle.events.filter { it.name == "高等数学" }
@@ -68,13 +67,12 @@ class IcsImportBundleBuilderTest {
             ),
             sourceName = "   ",
             now = 1_744_444_400_000L,
-            nextColor = { 2026 }
         )
 
         assertTrue(bundle.timetable.name?.startsWith("ICS导入") == true)
         assertEquals(1, bundle.subjects.size)
         assertEquals(1, bundle.events.size)
-        assertEquals(2026, bundle.subjects.single().color)
+        assertEquals(ColorTools.colorForName("高等数学"), bundle.subjects.single().color)
     }
 
     private fun createEvent(

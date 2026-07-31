@@ -23,6 +23,8 @@ import com.google.gson.Gson
  * - ExamViewModel.kt: 考试筛选逻辑
  */
 class ExamItem {
+    /** Non-null only for a locally created exam memo. Remote EAS records never set this. */
+    var memoId:String? = null
     var courseName:String? = null  // 课程名称
     var examDate:String? = null  // 考试日期，格式 "YYYY-MM-DD"
     var examTime:String? = null  // 考试时间，格式 "HH:MM-HH:MM"
@@ -31,6 +33,8 @@ class ExamItem {
     var termName:String? = null  // 学期名称（显示用），如 "2026春季"
     var termId:String? = null  // **重要**学期ID（匹配用），格式 "2025-2026-2"
     var campusName:String? = null  // 校区名称，如 "深圳校区"
+
+    fun isMemo(): Boolean = !memoId.isNullOrBlank()
 
     override fun toString(): String {
         return Gson().toJson(this)

@@ -21,14 +21,14 @@ class SubjectReadmeAgentEngine(
         onTrace(
             AgentTraceEvent(
                 stage = "start",
-                message = "Resolving candidates for subject",
+                message = "正在匹配课程资料候选项",
                 payload = AgentTraceSanitizer.sanitizePayload("subjectId=${input.subjectId}"),
             )
         )
 
         val tool = toolRegistry.get<SubjectReadmeAgentInput, List<cn.limpu.hita.data.model.resource.CourseResourceItem>>("resolve_course_candidates")
         if (tool == null) {
-            onResult(AgentToolResult.failure("tool resolve_course_candidates not found"))
+            onResult(AgentToolResult.failure("未找到课程资料候选匹配工具"))
             return
         }
 
@@ -44,7 +44,7 @@ class SubjectReadmeAgentEngine(
             onTrace = onTrace,
         ) { result ->
             if (!result.ok) {
-                onResult(AgentToolResult.failure(result.error ?: "resolve candidates failed"))
+                onResult(AgentToolResult.failure(result.error ?: "课程资料候选匹配失败"))
                 return@execute
             }
 
@@ -52,7 +52,7 @@ class SubjectReadmeAgentEngine(
             onTrace(
                 AgentTraceEvent(
                     stage = "result",
-                    message = "Candidates resolved",
+                    message = "课程资料候选项匹配完成",
                     payload = AgentTraceSanitizer.sanitizePayload("count=${candidates.size}"),
                 )
             )

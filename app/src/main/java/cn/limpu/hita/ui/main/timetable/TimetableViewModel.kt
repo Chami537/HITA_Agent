@@ -77,7 +77,7 @@ class TimetableViewModel @Inject constructor(
     }
 
     fun startRefresh() {
-        timetableRepository.ensureDefaultCustomTimetableAsync()
+        timetableRepository.actionPrepareTimetableList()
         timetableController.value = Trigger.actioning
     }
 
