@@ -134,11 +134,9 @@ class WebViewLoginActivity : AppCompatActivity() {
             const val SHENZHEN_DIRECT_BASE = "https://jw.hitsz.edu.cn"
             const val SHENZHEN_LOGIN = "$SHENZHEN_PROXY_BASE/"
             const val SHENZHEN_JWTS = "$SHENZHEN_PROXY_BASE/authentication/main"
-            val SHENZHEN_PROBE_URLS = listOf(
-                SHENZHEN_JWTS,
-                "$SHENZHEN_PROXY_BASE/student_index",
-                "$SHENZHEN_PROXY_BASE/user/me",
-                "$SHENZHEN_PROXY_BASE/"
+            val SHENZHEN_PROBE_URLS = WebLoginSuccessPolicy.shenzhenCookieProbeUrls(
+                proxyBaseUrl = SHENZHEN_PROXY_BASE,
+                directBaseUrl = SHENZHEN_DIRECT_BASE
             )
 
             const val EELABINFO_URL = "http://eelabinfo-hit-edu-cn.ivpn.hit.edu.cn:1080"
@@ -1880,12 +1878,7 @@ class WebViewLoginActivity : AppCompatActivity() {
                  path.contains("xswh") || path.contains("query") || path.contains("index"))
             }
             EASToken.Campus.WEIHAI -> {
-                val urlLower = url.lowercase()
-                val isLoginCasPage = urlLower.contains("logincas")
-                val isFunctionPage = path.contains("kbcx") || path.contains("cjcx") ||
-                                   path.contains("kjscx") || path.contains("query") ||
-                                   path.contains("index")
-                isLoginCasPage || isFunctionPage
+                WebLoginSuccessPolicy.isWeihaiAuthenticatedPage(url, collectCookies())
             }
             EASToken.Campus.SHENZHEN -> {
                 (host == "jw.hitsz.edu.cn" || host == Uri.parse(CampusUrls.SHENZHEN_PROXY_BASE).host) &&
@@ -2270,7 +2263,14 @@ class WebViewLoginActivity : AppCompatActivity() {
         val intent = Intent().apply {
             putExtra("cookies", cookiesJson)
             if (config.campus == EASToken.Campus.SHENZHEN) {
-                putExtra("web_base_url", CampusUrls.SHENZHEN_PROXY_BASE)
+                putExtra(
+                    "web_base_url",
+                    WebLoginSuccessPolicy.shenzhenWebBaseUrl(
+                        host = Uri.parse(webView.url.orEmpty()).host,
+                        proxyBaseUrl = CampusUrls.SHENZHEN_PROXY_BASE,
+                        directBaseUrl = CampusUrls.SHENZHEN_DIRECT_BASE
+                    )
+                )
             }
             if (!eelabToken.isNullOrBlank()) {
                 putExtra("electronic_exp_token", eelabToken)
