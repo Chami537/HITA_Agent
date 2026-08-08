@@ -7,6 +7,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import org.json.JSONArray
@@ -51,7 +52,7 @@ object AppNoticeCenter {
             .build()
     }
 
-    /** 异步拉取公告并缓存；回调在调用线程（主线程）执行。 */
+    /** 异步拉取公告并缓存；回调在主线程执行（UI 操作安全）。 */
     fun fetch(context: Context, onResult: (List<AppNotice>) -> Unit = {}) {
         val appContext = context.applicationContext
         scope.launch {
@@ -65,7 +66,9 @@ object AppNoticeCenter {
             if (fetched != null) {
                 cacheNotices(appContext, fetched)
             }
-            onResult(notices)
+            withContext(Dispatchers.Main) {
+                onResult(notices)
+            }
         }
     }
 
