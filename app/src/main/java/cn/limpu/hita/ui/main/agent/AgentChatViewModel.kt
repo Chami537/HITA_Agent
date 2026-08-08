@@ -18,6 +18,8 @@ import cn.limpu.hita.agent.tools.AgentResourceCardCollector
 import cn.limpu.hita.agent.timetable.TimetableAgentInput
 import cn.limpu.hita.agent.timetable.TimetableAgentOutput
 import cn.limpu.hita.data.AppDatabase
+import cn.limpu.hita.data.analytics.UsageAnalyticsClient
+import cn.limpu.hita.data.analytics.UsageAnalyticsEvent
 import cn.limpu.hita.data.model.chat.ChatMessageEntity
 import cn.limpu.hita.data.model.chat.ChatSession
 import cn.limpu.hita.utils.LogUtils
@@ -292,6 +294,7 @@ class AgentChatViewModel @Inject constructor(
         agentProvider: cn.limpu.hita.agent.core.AgentProvider<TimetableAgentInput, TimetableAgentOutput>,
     ) {
         ensureSession()
+        UsageAnalyticsClient.record(UsageAnalyticsEvent.AI_CHAT_STARTED)
         val sid = currentSessionId ?: return
         val history = sessionChatHistories.getOrPut(sid) { mutableListOf() }
         history.add(ChatMessage(role = "user", content = text))

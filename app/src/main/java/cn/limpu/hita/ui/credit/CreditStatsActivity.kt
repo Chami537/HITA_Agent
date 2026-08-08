@@ -66,6 +66,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import cn.limpu.hita.R
+import cn.limpu.hita.data.analytics.UsageAnalyticsClient
+import cn.limpu.hita.data.analytics.UsageAnalyticsEvent
 import cn.limpu.hita.data.model.eas.ShenzhenCreditGroupProgress
 import cn.limpu.hita.data.model.eas.ShenzhenCreditProgress
 import cn.limpu.hita.data.model.eas.ShenzhenCreditRequirement
@@ -100,6 +102,7 @@ class CreditStatsActivity : EASActivity<CreditStatsViewModel, ComposeViewBinding
 
     override fun initViews() {
         super.initViews()
+        UsageAnalyticsClient.record(UsageAnalyticsEvent.CREDIT_SUMMARY_VIEWED)
         viewModel.shenzhenProgress.observe(this) { state ->
             if (state.state == DataState.STATE.NOT_LOGGED_IN) {
                 handleSessionExpired(viewModel::retryOfficial)

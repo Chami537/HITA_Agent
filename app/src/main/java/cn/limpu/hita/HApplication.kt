@@ -16,6 +16,8 @@ import cn.limpu.hita.data.model.timetable.Timetable
 import com.limpu.hitauser.data.repository.LocalUserRepository
 import javax.inject.Inject
 import cn.limpu.hita.agent.remote.AgentBackendClient
+import cn.limpu.hita.data.analytics.UsageAnalyticsClient
+import cn.limpu.hita.data.analytics.UsageAnalyticsEvent
 import cn.limpu.hita.data.work.CourseReminderScheduler
 import cn.limpu.hita.data.work.WidgetRefreshScheduler
 import cn.limpu.hita.ui.widgets.WidgetUtils
@@ -94,6 +96,13 @@ class HApplication : Application() {
             reportAppVisit()
         } catch (e: Exception) {
             LogUtils.e("reportAppVisit failed", e)
+        }
+
+        try {
+            UsageAnalyticsClient.initialize(this)
+            UsageAnalyticsClient.record(UsageAnalyticsEvent.APP_FOREGROUND)
+        } catch (e: Exception) {
+            LogUtils.e("UsageAnalytics init failed", e)
         }
     }
 

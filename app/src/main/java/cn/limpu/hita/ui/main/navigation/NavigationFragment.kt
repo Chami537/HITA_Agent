@@ -58,6 +58,8 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.fragment.app.viewModels
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import cn.limpu.hita.R
+import cn.limpu.hita.data.analytics.UsageAnalyticsClient
+import cn.limpu.hita.data.analytics.UsageAnalyticsEvent
 import cn.limpu.hita.data.model.eas.EASToken
 import cn.limpu.hita.data.repository.EASRepository
 import cn.limpu.hita.data.repository.TimetableRepository
@@ -79,6 +81,7 @@ import cn.limpu.hita.ui.eas.catalog.ShenzhenCourseCatalogActivity
 import cn.limpu.hita.ui.eas.exam.ExamActivity
 import cn.limpu.hita.ui.eas.grade.ShenzhenGradeAnalysisActivity
 import cn.limpu.hita.ui.eas.imp.ImportTimetableActivity
+import cn.limpu.hita.ui.notice.AppNoticesActivity
 import cn.limpu.hita.ui.eas.login.PopUpLoginEAS
 import cn.limpu.hita.ui.eas.score.ScoreInquiryActivity
 import cn.limpu.hita.utils.ActivityUtils
@@ -99,6 +102,7 @@ class NavigationFragment : androidx.fragment.app.Fragment() {
 
     private val viewModel: NavigationViewModel by viewModels()
     private var reminderEnabledState by mutableStateOf(false)
+    private var usageAnalyticsEnabledState by mutableStateOf(true)
     private var userStateVersion by mutableStateOf(0)
 
     private val pickAvatarLauncher = registerForActivityResult(
@@ -138,6 +142,10 @@ class NavigationFragment : androidx.fragment.app.Fragment() {
                         localUser = remember(userStateVersion) { localUserRepository.getLoggedInUser() },
                         easToken = easToken,
                         reminderEnabled = reminderEnabledState,
+                        onToggleReminder = { toggleCourseReminder(!reminderEnabledState) },
+                        usageAnalyticsEnabled = usageAnalyticsEnabledState,
+                        onToggleUsageAnalytics = { toggleUsageAnalytics() },
+                        onOpenNotices = { openNotices() },
                         onAvatarClick = { showAvatarPicker() },
                         onUserClick = { openUserCard() },
                         onTimetableManager = { ActivityUtils.startTimetableManager(requireContext()) },
@@ -166,7 +174,6 @@ class NavigationFragment : androidx.fragment.app.Fragment() {
                         onCourseSubmit = {
                             ActivityUtils.startCourseResourceSearchActivity(requireContext(), mode = CourseResourceMode.SUBMIT)
                         },
-                        onToggleReminder = { toggleCourseReminder(!reminderEnabledState) },
                     )
                 }
             }
@@ -324,6 +331,19 @@ class NavigationFragment : androidx.fragment.app.Fragment() {
         CourseReminderScheduler.autoSchedule(requireContext())
         Toast.makeText(requireContext(), "课程提醒已开启（上课前15分钟提醒）", Toast.LENGTH_SHORT).show()
     }
+
+    private fun toggleUsageAnalytics() {
+        val next = !usageAnalyticsEnabledState
+        UsageAnalyticsClient.setEnabled(requireContext(), next)
+        usageAnalyticsEnabledState = next
+        if (next) {
+            UsageAnalyticsClient.record(UsageAnalyticsEvent.APP_FOREGROUND)
+        }
+    }
+
+    private fun openNotices() {
+        ActivityUtils.startActivity(requireContext(), AppNoticesActivity::class.java)
+    }
 }
 
 @Composable
@@ -332,6 +352,7 @@ private fun NavigationScreen(
     localUser: UserLocal,
     easToken: EASToken,
     reminderEnabled: Boolean,
+    usageAnalyticsEnabled: Boolean,
     onAvatarClick: () -> Unit,
     onUserClick: () -> Unit,
     onRecentTimetable: () -> Unit,
@@ -347,6 +368,8 @@ private fun NavigationScreen(
     onCourseLookup: () -> Unit,
     onCourseSubmit: () -> Unit,
     onToggleReminder: () -> Unit,
+    onToggleUsageAnalytics: () -> Unit,
+    onOpenNotices: () -> Unit,
 ) {
     val tokens = HitaTheme.tokens
     val recentTimetable by viewModel.recentTimetableLiveData.observeAsState()
@@ -449,6 +472,31 @@ private fun NavigationScreen(
                     Switch(
                         checked = reminderEnabled,
                         onCheckedChange = { onToggleReminder() }
+                    )
+                }
+            )
+            NavigationRow(
+                icon = R.drawable.ic_info,
+                title = "使用统计",
+                subtitle = "匿名统计功能使用情况，帮助改进应用",
+                onClick = onToggleUsageAnalytics,
+                trailing = {
+                    Switch(
+                        checked = usageAnalyticsEnabled,
+                        onCheckedChange = { onToggleUsageAnalytics() }
+                    )
+                }
+            )
+            NavigationRow(
+                icon = R.drawable.ic_menu_settings,
+                title = "公告",
+                subtitle = "版本更新 · 服务与故障通知",
+                onClick = onOpenNotices,
+                trailing = {
+                    Icon(
+                        painter = painterResource(R.drawable.ic_baseline_keyboard_arrow_right_24),
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
             )

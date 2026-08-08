@@ -7,6 +7,9 @@ import cn.limpu.hita.agent.tools.ReActToolInput
 import cn.limpu.hita.agent.tools.ReActToolRegistry
 import cn.limpu.hita.agent.timetable.TimetableAgentInput
 import cn.limpu.hita.agent.timetable.TimetableAgentOutput
+import cn.limpu.hita.data.analytics.UsageAnalyticsClient
+import cn.limpu.hita.data.analytics.UsageAnalyticsDimensions
+import cn.limpu.hita.data.analytics.UsageAnalyticsEvent
 import cn.limpu.hita.data.model.resource.AgentResourceCard
 import cn.limpu.hita.utils.LogUtils
 import kotlinx.coroutines.Dispatchers
@@ -203,6 +206,12 @@ object LlmChatService {
                     onResourceCards = onResourceCards,
                 ))
                 ?: "未知工具：${toolDisplayName(parsed.action)}"
+            runCatching {
+                UsageAnalyticsClient.record(
+                    UsageAnalyticsEvent.AI_TOOL_INVOKED,
+                    mapOf(UsageAnalyticsDimensions.TOOL to normalizedAction)
+                )
+            }
             collectUsefulObservation(parsed.action, observation, usefulObservations)
             emitTraceToMain(onTrace, AgentTraceEvent(stage = "react_step", message = "观察: ${observation.take(100)}", payload = observation.take(500)))
 

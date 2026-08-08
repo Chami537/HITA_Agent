@@ -66,6 +66,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.limpu.component.data.DataState
 import cn.limpu.hita.R
+import cn.limpu.hita.data.analytics.UsageAnalyticsClient
+import cn.limpu.hita.data.analytics.UsageAnalyticsEvent
 import cn.limpu.hita.data.model.eas.ExamItem
 import cn.limpu.hita.data.model.eas.TermItem
 import cn.limpu.hita.ui.base.ComposeViewBinding
@@ -158,6 +160,7 @@ class ExamActivity : EASActivity<ExamViewModel, ComposeViewBinding>() {
 
     override fun initViews() {
         super.initViews()
+        UsageAnalyticsClient.record(UsageAnalyticsEvent.EXAMS_VIEWED)
         bindLiveData()
         viewModel.selectedExamTypeLiveData.value = ExamViewModel.ExamType.ALL
         (binding.root as ComposeView).setContent {
