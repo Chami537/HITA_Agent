@@ -6,7 +6,12 @@ plugins {
     id 'dagger.hilt.android.plugin'
 }
 
-def appVersionCodeValue = 2026073101
+// versionCode：优先使用 CI/发布脚本注入的 VERSION_CODE 环境变量（单调递增由发布方保证），
+// 否则回退到显式基线值，避免误用 git 提交数导致版本回退。
+def envVersionCode = System.getenv("VERSION_CODE")
+def appVersionCodeValue = (envVersionCode != null && envVersionCode.matches("\\d+"))
+    ? Integer.parseInt(envVersionCode)
+    : 2026073101
 def appVersionNameValue = "2.5.5"
 
 def keystorePropertiesFile = rootProject.file("keystore.properties")
@@ -56,7 +61,7 @@ android {
     defaultConfig {
         applicationId "cn.limpu.hita"
         minSdkVersion 26
-        targetSdk 34
+        targetSdk 35
         compileSdk 35
         versionCode appVersionCodeValue
         versionName appVersionNameValue
@@ -70,8 +75,9 @@ android {
             }
         }
 
-        buildConfigField "String", "HOA_BASE_URL", '"http://139.199.173.108:8081"'
-        buildConfigField "String", "AGENT_BACKEND_BASE_URL", '"http://139.199.173.108:8080"'
+        buildConfigField "String", "HOA_BASE_URL", '"https://api.hita.limpu.cn"'
+        // 统一入口：nginx 按路径分发（/api/usage|notices|visit|stats → hita-api；/api/courses|rag|... → agent-backend；/v1/* → course-server）
+        buildConfigField "String", "AGENT_BACKEND_BASE_URL", '"https://api.hita.limpu.cn"'
         buildConfigField "String", "HOA_API_KEY", '""'
         buildConfigField "String", "UPDATE_URL", '"https://github.com/HIT-A/HITA_Android/releases/latest"'
         buildConfigField "String", "UPDATE_VERSION_NAME", "\"${appVersionNameValue}\""
@@ -121,6 +127,8 @@ dependencies {
     implementation "org.jetbrains.kotlin:kotlin-stdlib:$kotlin_version"
     implementation 'androidx.core:core-ktx:1.13.1'
     implementation 'androidx.core:core-splashscreen:1.0.1'
+    // Baseline Profile：release 构建自动应用启动路径 AOT 编译（规则见 src/main/baseline-prof.txt）
+    implementation 'androidx.profileinstaller:profileinstaller:1.3.0'
     implementation 'androidx.appcompat:appcompat:1.7.0'
     implementation 'com.google.android.material:material:1.12.0'
     implementation platform('androidx.compose:compose-bom:2025.09.01')
