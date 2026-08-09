@@ -166,4 +166,24 @@ class ShenzhenCourseSelectionProtocolTest {
 
         assertEquals(CourseSelectionCourseStatus.UNKNOWN, result.status)
     }
+
+    @Test
+    fun `credential echoes are removed at the response boundary including unicode separators`() {
+        val maliciousMessages = listOf(
+            "Cookie\u00a0=\u00a0SESSION=server-cookie-secret",
+            "Authorization\u202f=\u202fBearer server-bearer-secret",
+            "se\u200bssion\u200c=server-session-secret"
+        )
+
+        maliciousMessages.forEach { malicious ->
+            val result = ShenzhenCourseSelectionResponseParser.parse(
+                200,
+                "https://jw.hitsz.edu.cn/Xsxk/addGouwuche",
+                """{"jg":-1,"message":"$malicious"}"""
+            )
+
+            assertEquals(CourseSelectionCourseStatus.BUSINESS_FAILURE, result.status)
+            assertEquals("", result.message)
+        }
+    }
 }

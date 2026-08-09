@@ -71,6 +71,106 @@ class CourseSelectionExecutorTest {
     }
 
     @Test
+    fun `attempt marker is persisted before post and final result immediately after`() = runBlocking {
+        val snapshots = mutableListOf<CourseSelectionJob>()
+        val persistedProgress = AtomicReference<CourseSelectionJob>()
+        val fake = object : ShenzhenCourseSelectionGateway {
+            override suspend fun submitOnce(
+                job: CourseSelectionJob,
+                course: CourseSelectionJobCourse
+            ): CourseSelectionCourseResult {
+                assertEquals(
+                    CourseSelectionCourseStatus.UNKNOWN,
+                    persistedProgress.get().results.single().status
+                )
+                return resultFor(course)
+            }
+
+            override suspend fun selectedRequestIds(job: CourseSelectionJob): Set<String> = emptySet()
+        }
+
+        CourseSelectionExecutor(fake, nowMillis = { 1_234L }).execute(
+            jobWithCourses(1).copy(status = CourseSelectionJobStatus.RUNNING),
+            persistProgress = { snapshot ->
+                persistedProgress.set(snapshot)
+                snapshots += snapshot
+            }
+        )
+
+        assertEquals(2, snapshots.size)
+        assertEquals(CourseSelectionCourseStatus.UNKNOWN, snapshots[0].results.single().status)
+        assertEquals(1_234L, snapshots[0].results.single().submittedAtMillis)
+        assertEquals(CourseSelectionCourseStatus.UNCONFIRMED, snapshots[1].results.single().status)
+    }
+
+    @Test
+    fun `interruption after two posts survives restart and reconfirms without resubmission`() = runBlocking {
+        val firstResultPersisted = CompletableDeferred<Unit>()
+        val encodedProgress = AtomicReference<String>()
+        val posts = AtomicInteger(0)
+        val interruptedGateway = object : ShenzhenCourseSelectionGateway {
+            override suspend fun submitOnce(
+                job: CourseSelectionJob,
+                course: CourseSelectionJobCourse
+            ): CourseSelectionCourseResult {
+                if (course.courseId == "course-2") {
+                    firstResultPersisted.await()
+                    posts.incrementAndGet()
+                    throw SimulatedProcessInterruption()
+                }
+                posts.incrementAndGet()
+                return resultFor(course)
+            }
+
+            override suspend fun selectedRequestIds(job: CourseSelectionJob): Set<String> =
+                throw AssertionError("Interrupted execution must not reach confirmation")
+        }
+        val runningJob = jobWithCourses(2).copy(status = CourseSelectionJobStatus.RUNNING)
+
+        val failure = runCatching {
+            CourseSelectionExecutor(interruptedGateway, nowMillis = { 1_500L }).execute(
+                runningJob,
+                persistProgress = { snapshot ->
+                    encodedProgress.set(CourseSelectionJobCodec.encode(listOf(snapshot)))
+                    if (snapshot.results.any {
+                            it.courseId == "course-1" &&
+                                it.status == CourseSelectionCourseStatus.UNCONFIRMED
+                        }
+                    ) {
+                        firstResultPersisted.complete(Unit)
+                    }
+                }
+            )
+        }.exceptionOrNull()
+
+        assertTrue(failure is SimulatedProcessInterruption)
+        assertEquals(2, posts.get())
+        val restarted = CourseSelectionJobStorePolicy.recover(
+            CourseSelectionJobCodec.decode(encodedProgress.get()),
+            nowMillis = 2_000L
+        ).single()
+        assertEquals(CourseSelectionJobStatus.FAILED, restarted.status)
+        assertEquals(
+            CourseSelectionCourseStatus.UNCONFIRMED,
+            restarted.results.single { it.courseId == "course-1" }.status
+        )
+        assertEquals(
+            CourseSelectionCourseStatus.UNKNOWN,
+            restarted.results.single { it.courseId == "course-2" }.status
+        )
+
+        val reconfirmGateway = RecordingGateway(
+            acceptedIds = setOf("request-1", "request-2")
+        )
+        val reconfirmed = CourseSelectionExecutor(reconfirmGateway, nowMillis = { 3_000L })
+            .confirm(restarted)
+
+        assertTrue(reconfirmGateway.submittedIds.isEmpty())
+        assertEquals(1, reconfirmGateway.confirmCalls)
+        assertTrue(reconfirmed.results.all { it.status == CourseSelectionCourseStatus.CONFIRMED })
+    }
+
+    @Test
     fun `duplicate course ids are submitted only once`() = runBlocking {
         val original = course(1)
         val duplicate = original.copy(requestId = "duplicate-request", taskId = "duplicate-task")
@@ -94,6 +194,81 @@ class CourseSelectionExecutorTest {
         assertTrue(failure is IllegalArgumentException)
         assertTrue(fake.submittedIds.isEmpty())
         assertEquals(0, fake.confirmCalls)
+    }
+
+    @Test
+    fun `durable credential scope survives restart but rejects logout and account switch`() {
+        val originalScope = 8_135_021L
+        val job = jobWithCourses(1).copy(credentialScopeGeneration = originalScope)
+        val currentToken = AtomicReference(webToken(originalScope))
+        val tokenStore = CourseSelectionExecutionTokenStore(currentToken::get)
+        val restartOwner = Any()
+
+        assertSame(currentToken.get(), tokenStore.begin(job, restartOwner))
+        assertSame(currentToken.get(), tokenStore.requireToken(job))
+        tokenStore.end(job.id, restartOwner)
+
+        currentToken.set(EASToken())
+        assertTrue(
+            runCatching { tokenStore.begin(job, Any()) }.exceptionOrNull() is
+                CourseSelectionCredentialScopeMismatchException
+        )
+
+        currentToken.set(webToken(originalScope + 1L))
+        assertTrue(
+            runCatching { tokenStore.begin(job, Any()) }.exceptionOrNull() is
+                CourseSelectionCredentialScopeMismatchException
+        )
+    }
+
+    @Test
+    fun `different account rejects execution and reconfirmation before transport`() = runBlocking {
+        val job = jobWithCourses(1).copy(
+            status = CourseSelectionJobStatus.FAILED,
+            credentialScopeGeneration = 101L,
+            results = listOf(resultFor(course(1), CourseSelectionCourseStatus.UNKNOWN))
+        )
+        val tokenStore = CourseSelectionExecutionTokenStore { webToken(202L) }
+        val posts = AtomicInteger(0)
+        val queries = AtomicInteger(0)
+        val gateway = object : ShenzhenCourseSelectionGateway {
+            override suspend fun beginExecution(job: CourseSelectionJob, owner: Any) {
+                tokenStore.begin(job, owner)
+            }
+
+            override suspend fun endExecution(job: CourseSelectionJob, owner: Any) {
+                tokenStore.end(job.id, owner)
+            }
+
+            override suspend fun submitOnce(
+                job: CourseSelectionJob,
+                course: CourseSelectionJobCourse
+            ): CourseSelectionCourseResult {
+                posts.incrementAndGet()
+                return resultFor(course)
+            }
+
+            override suspend fun selectedRequestIds(job: CourseSelectionJob): Set<String> {
+                queries.incrementAndGet()
+                return emptySet()
+            }
+        }
+        val executor = CourseSelectionExecutor(gateway)
+
+        assertTrue(
+            runCatching { executor.execute(job.copy(status = CourseSelectionJobStatus.RUNNING)) }
+                .exceptionOrNull() is CourseSelectionCredentialScopeMismatchException
+        )
+        assertTrue(
+            runCatching { executor.confirm(job) }.exceptionOrNull() is
+                CourseSelectionCredentialScopeMismatchException
+        )
+        assertEquals(0, posts.get())
+        assertEquals(0, queries.get())
+
+        val terminal = CourseSelectionCredentialScopePolicy.terminalize(job)
+        assertEquals(CourseSelectionJobStatus.FAILED, terminal.status)
+        assertEquals("任务属于其他账号，未发送任何请求。", terminal.message)
     }
 
     @Test
@@ -156,6 +331,44 @@ class CourseSelectionExecutorTest {
 
             assertEquals(1, receivedPosts.get())
             assertEquals(CourseSelectionCourseStatus.AUTH_REQUIRED, result.status)
+        }
+    }
+
+    @Test
+    fun `malicious server message never reaches returned result published job or payload`() {
+        val secret = "server-session-secret"
+        val malicious = "Cookie\u202f=\u202fSESSION=$secret Authorization: Bearer hidden"
+        val receivedPosts = AtomicInteger(0)
+        LocalSelectionServer(
+            mapOf(
+                "/Xsxk/addGouwuche" to { request ->
+                    request.requirePost(receivedPosts)
+                    LocalResponse(200, """{"jg":-1,"message":"$malicious"}""")
+                }
+            )
+        ).use { server ->
+            val result = localWebSource(server)
+                .submitShenzhenCourseOnce(webToken(), jobWithCourses(1), course(1))
+            var jobsFlowValue = emptyList<CourseSelectionJob>()
+
+            CourseSelectionJobStorePersistence.commitThenPublish(
+                snapshot = listOf(jobWithCourses(1).copy(
+                    status = CourseSelectionJobStatus.FAILED,
+                    message = malicious,
+                    results = listOf(result)
+                )),
+                commit = {},
+                publish = { jobsFlowValue = it }
+            )
+            val encoded = CourseSelectionJobCodec.encode(jobsFlowValue)
+
+            assertEquals("", result.message)
+            assertEquals(1, receivedPosts.get())
+            assertEquals("", jobsFlowValue.single().message)
+            assertEquals("", jobsFlowValue.single().results.single().message)
+            assertTrue(result.toString().contains(secret).not())
+            assertTrue(jobsFlowValue.toString().contains(secret).not())
+            assertTrue(encoded.contains(secret).not())
         }
     }
 
@@ -312,7 +525,7 @@ class CourseSelectionExecutorTest {
             }
             val job = jobWithCourses(2)
             val owner = Any()
-            val sharedToken = tokenStore.begin(job.id, owner)
+            val sharedToken = tokenStore.begin(job, owner)
             try {
                 job.courses.map { selectedCourse ->
                     async(Dispatchers.IO) {
@@ -320,8 +533,8 @@ class CourseSelectionExecutorTest {
                     }
                 }.awaitAll()
 
-                assertSame(sharedToken, tokenStore.requireToken(job.id))
-                assertEquals(1, loads.get())
+                assertSame(sharedToken, tokenStore.requireToken(job))
+                assertEquals(2, loads.get())
                 assertEquals(2, receivedPosts.get())
                 assertEquals("received", sharedToken.webCookies["course-one"])
                 assertEquals("received", sharedToken.webCookies["course-two"])
@@ -360,7 +573,7 @@ class CourseSelectionExecutorTest {
                 job: CourseSelectionJob,
                 owner: Any
             ) {
-                tokenStore.begin(job.id, owner)
+                tokenStore.begin(job, owner)
                 inserted.complete(Unit)
                 awaitCancellation()
             }
@@ -389,7 +602,7 @@ class CourseSelectionExecutorTest {
         execution.cancelAndJoin()
 
         val restartOwner = Any()
-        tokenStore.begin(job.id, restartOwner)
+        tokenStore.begin(job, restartOwner)
         tokenStore.end(job.id, restartOwner)
     }
 
@@ -475,6 +688,8 @@ class CourseSelectionExecutorTest {
         }
     }
 
+    private class SimulatedProcessInterruption : RuntimeException()
+
     companion object {
         private fun localWebSource(
             server: LocalSelectionServer,
@@ -484,10 +699,11 @@ class CourseSelectionExecutorTest {
             courseSelectionTimeoutMillis = timeoutMillis
         )
 
-        private fun webToken() = EASToken().apply {
+        private fun webToken(generation: Long = 1L) = EASToken().apply {
             campus = EASToken.Campus.SHENZHEN
             webCookies["JSESSIONID"] = "local-session"
             webCookies["route"] = "local-route"
+            sessionGeneration = generation
         }
 
         private fun jobWithCourses(count: Int): CourseSelectionJob =
@@ -501,7 +717,8 @@ class CourseSelectionExecutorTest {
             scheduledAtMillis = 900L,
             createdAtMillis = 800L,
             status = CourseSelectionJobStatus.WAITING,
-            courses = courses.toList()
+            courses = courses.toList(),
+            credentialScopeGeneration = 1L
         )
 
         private fun course(index: Int) = CourseSelectionJobCourse(

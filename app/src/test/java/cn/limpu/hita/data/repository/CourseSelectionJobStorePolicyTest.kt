@@ -37,13 +37,20 @@ class CourseSelectionJobStorePolicyTest {
 
     @Test
     fun `job payload round trips without credentials`() {
-        val encoded = CourseSelectionJobCodec.encode(listOf(job(status = CourseSelectionJobStatus.WAITING)))
+        val job = job(status = CourseSelectionJobStatus.WAITING).copy(
+            credentialScopeGeneration = 8_135_021L
+        )
+        val encoded = CourseSelectionJobCodec.encode(listOf(job))
+        val decoded = CourseSelectionJobCodec.decode(encoded).single()
 
         assertFalse(encoded.contains("SESSION="))
         assertFalse(encoded.contains("EASToken"))
         assertFalse(encoded.contains("username", ignoreCase = true))
         assertFalse(encoded.contains("password", ignoreCase = true))
-        assertEquals(listOf(job(status = CourseSelectionJobStatus.WAITING)), CourseSelectionJobCodec.decode(encoded))
+        assertFalse(encoded.contains("JSESSIONID", ignoreCase = true))
+        assertFalse(encoded.contains("Bearer", ignoreCase = true))
+        assertEquals(8_135_021L, decoded.credentialScopeGeneration)
+        assertEquals(job, decoded)
     }
 
     @Test
@@ -116,6 +123,33 @@ class CourseSelectionJobStorePolicyTest {
         secrets.forEach { secret -> assertFalse(encoded.contains(secret)) }
         assertEquals("", decoded.message)
         assertTrue(decoded.results.all { it.message.isEmpty() })
+    }
+
+    @Test
+    fun `store commit and jobs publication receive the same sanitized snapshot`() {
+        val secrets = listOf("flow-cookie-secret", "flow-bearer-secret")
+        val unsafe = job(
+            status = CourseSelectionJobStatus.FAILED,
+            message = "Cookie\u00a0=\u00a0${secrets[0]}",
+            results = listOf(result(message = "Bearer\u200b${secrets[1]}"))
+        )
+        var committed = emptyList<CourseSelectionJob>()
+        var published = emptyList<CourseSelectionJob>()
+
+        CourseSelectionJobStorePersistence.commitThenPublish(
+            snapshot = listOf(unsafe),
+            commit = { committed = it },
+            publish = { published = it }
+        )
+
+        assertEquals(committed, published)
+        assertEquals("", published.single().message)
+        assertEquals("", published.single().results.single().message)
+        val encoded = CourseSelectionJobCodec.encode(published)
+        secrets.forEach { secret ->
+            assertFalse(published.toString().contains(secret))
+            assertFalse(encoded.contains(secret))
+        }
     }
 
     @Test

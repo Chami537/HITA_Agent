@@ -2,6 +2,7 @@ package cn.limpu.hita.data.source.web.eas
 
 import cn.limpu.hita.data.model.eas.CourseSelectionCourseStatus
 import cn.limpu.hita.data.model.eas.CourseSelectionJobCourse
+import cn.limpu.hita.data.model.eas.CourseSelectionMessageSanitizer
 import cn.limpu.hita.data.model.eas.EASToken
 import cn.limpu.hita.data.model.eas.TermItem
 import com.google.gson.JsonParser
@@ -106,6 +107,9 @@ internal object ShenzhenCourseSelectionResponseParser {
                     ?.takeIf { it.isNotEmpty() }
             }
             .orEmpty()
-        return ShenzhenCourseSelectionResponse(resultStatus, message)
+        return ShenzhenCourseSelectionResponse(
+            resultStatus,
+            CourseSelectionMessageSanitizer.sanitize(message)
+        )
     }
 }

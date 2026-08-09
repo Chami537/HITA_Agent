@@ -26,7 +26,7 @@ import kotlinx.coroutines.withContext
 @Singleton
 class CourseSelectionJobCoordinator @Inject constructor(
     @ApplicationContext context: Context,
-    easRepository: EASRepository,
+    private val easRepository: EASRepository,
     private val alarmScheduler: CourseSelectionAlarmScheduler
 ) {
     private val appContext = context.applicationContext
@@ -106,8 +106,12 @@ class CourseSelectionJobCoordinator @Inject constructor(
         executionMutex.withLock {
             val runningJob = claimWaitingJob(jobId) ?: return@withLock
             try {
-                val terminalJob = executor.execute(runningJob)
+                val terminalJob = executor.execute(runningJob) { progress ->
+                    store.update(progress)
+                }
                 store.update(terminalJob.copy(message = terminalMessage(terminalJob.status)))
+            } catch (_: CourseSelectionCredentialScopeMismatchException) {
+                terminalizeDifferentAccount(jobId)
             } catch (cancellation: CancellationException) {
                 withContext(NonCancellable) {
                     markRunningJobUnknown(jobId)
@@ -128,8 +132,12 @@ class CourseSelectionJobCoordinator @Inject constructor(
             ) {
                 return@withLock
             }
-            val confirmedJob = executor.confirm(job)
-            store.update(confirmedJob.copy(message = terminalMessage(confirmedJob.status)))
+            try {
+                val confirmedJob = executor.confirm(job)
+                store.update(confirmedJob.copy(message = terminalMessage(confirmedJob.status)))
+            } catch (_: CourseSelectionCredentialScopeMismatchException) {
+                terminalizeDifferentAccount(jobId)
+            }
         }
     }
 
@@ -172,7 +180,8 @@ class CourseSelectionJobCoordinator @Inject constructor(
         scheduledAtMillis = scheduledAtMillis,
         createdAtMillis = createdAtMillis,
         status = CourseSelectionJobStatus.WAITING,
-        courses = CourseSelectionJobPolicy.buildCourses(courses, pool)
+        courses = CourseSelectionJobPolicy.buildCourses(courses, pool),
+        credentialScopeGeneration = easRepository.currentCourseSelectionCredentialScopeGeneration()
     )
 
     private fun claimWaitingJob(jobId: String): CourseSelectionJob? = synchronized(stateLock) {
@@ -192,6 +201,13 @@ class CourseSelectionJobCoordinator @Inject constructor(
                 status = CourseSelectionJobStatus.FAILED,
                 message = appContext.getString(R.string.course_selection_unknown_result_recovery)
             ))
+        }
+    }
+
+    private fun terminalizeDifferentAccount(jobId: String) {
+        synchronized(stateLock) {
+            val job = store.get(jobId) ?: return@synchronized
+            store.update(CourseSelectionCredentialScopePolicy.terminalize(job))
         }
     }
 

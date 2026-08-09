@@ -6,6 +6,7 @@ import cn.limpu.hita.data.model.eas.CourseSelectionCourseStatus
 import cn.limpu.hita.data.model.eas.CourseSelectionJob
 import cn.limpu.hita.data.model.eas.CourseSelectionJobCourse
 import cn.limpu.hita.data.model.eas.CourseSelectionJobStatus
+import cn.limpu.hita.data.model.eas.CourseSelectionMessageSanitizer
 import com.google.gson.Gson
 import com.google.gson.JsonElement
 import com.google.gson.JsonObject
@@ -75,7 +76,6 @@ class CourseSelectionJobStore(context: Context) {
         synchronized(processLock) {
             val next = CourseSelectionJobStorePolicy.prune(transform(load()))
             publishPersisted(next)
-            next
         }
 
     private fun load(): List<CourseSelectionJob> = CourseSelectionJobCodec.decode(
@@ -88,13 +88,12 @@ class CourseSelectionJobStore(context: Context) {
         }
     }
 
-    private fun publishPersisted(jobs: List<CourseSelectionJob>) {
+    private fun publishPersisted(jobs: List<CourseSelectionJob>): List<CourseSelectionJob> =
         CourseSelectionJobStorePersistence.commitThenPublish(
             snapshot = jobs,
             commit = ::persist,
             publish = { _jobs.value = it }
         )
-    }
 
     private companion object {
         const val PREFERENCES = "shenzhen_course_selection_jobs"
@@ -161,7 +160,8 @@ object CourseSelectionJobCodec {
         val status: String,
         val courses: List<CoursePayload>,
         val results: List<ResultPayload>,
-        val message: String
+        val message: String,
+        val credentialScopeGeneration: Long
     )
 
     private data class CoursePayload(
@@ -222,12 +222,13 @@ object CourseSelectionJobCodec {
             ResultPayload(
                 courseId = result.courseId,
                 status = result.status.name,
-                message = sanitizeMessage(result.message),
+                message = CourseSelectionMessageSanitizer.sanitize(result.message),
                 submittedAtMillis = result.submittedAtMillis,
                 confirmedAtMillis = result.confirmedAtMillis
             )
         },
-        message = sanitizeMessage(job.message)
+        message = CourseSelectionMessageSanitizer.sanitize(job.message),
+        credentialScopeGeneration = job.credentialScopeGeneration
     )
 
     private fun decodeJob(element: JsonElement): CourseSelectionJob? {
@@ -245,7 +246,10 @@ object CourseSelectionJobCodec {
             status = job.requiredEnum<CourseSelectionJobStatus>("status") ?: return null,
             courses = courses.filterNotNull(),
             results = results.filterNotNull(),
-            message = sanitizeMessage(job.requiredString("message") ?: return null)
+            message = CourseSelectionMessageSanitizer.sanitize(
+                job.requiredString("message") ?: return null
+            ),
+            credentialScopeGeneration = job.optionalCredentialScopeGeneration() ?: return null
         )
     }
 
@@ -268,7 +272,9 @@ object CourseSelectionJobCodec {
         return CourseSelectionCourseResult(
             courseId = result.requiredString("courseId", nonBlank = true) ?: return null,
             status = result.requiredEnum<CourseSelectionCourseStatus>("status") ?: return null,
-            message = sanitizeMessage(result.requiredString("message") ?: return null),
+            message = CourseSelectionMessageSanitizer.sanitize(
+                result.requiredString("message") ?: return null
+            ),
             submittedAtMillis = result.requiredTimestamp("submittedAtMillis") ?: return null,
             confirmedAtMillis = confirmedAt.value
         )
@@ -297,6 +303,11 @@ object CourseSelectionJobCodec {
         ?.toLongOrNull()
         ?.takeIf { it >= 0L }
 
+    private fun JsonObject.optionalCredentialScopeGeneration(): Long? {
+        if (!has("credentialScopeGeneration")) return 0L
+        return requiredTimestamp("credentialScopeGeneration")
+    }
+
     private fun JsonObject.optionalTimestamp(name: String): OptionalTimestamp? {
         if (!has(name)) return OptionalTimestamp(null)
         if (get(name).isJsonNull) return OptionalTimestamp(null)
@@ -310,47 +321,6 @@ object CourseSelectionJobCodec {
             enumValues<T>().firstOrNull { it.name == value }
         }
 
-    private fun sanitizeMessage(message: String): String =
-        if (credentialEchoPattern.containsMatchIn(normalizeCredentialSeparators(message))) "" else message
-
-    private fun normalizeCredentialSeparators(message: String): String = buildString(message.length) {
-        var index = 0
-        while (index < message.length) {
-            val codePoint = message.codePointAt(index)
-            index += Character.charCount(codePoint)
-            when (Character.getType(codePoint)) {
-                Character.FORMAT.toInt(),
-                Character.SPACE_SEPARATOR.toInt(),
-                Character.LINE_SEPARATOR.toInt(),
-                Character.PARAGRAPH_SEPARATOR.toInt() -> append(' ')
-                else -> append(if (Character.isWhitespace(codePoint)) ' ' else String(Character.toChars(codePoint)))
-            }
-        }
-    }
-
-    private val credentialKeys = listOf(
-        "cookie",
-        "set-cookie",
-        "jsessionid",
-        "session",
-        "sessionid",
-        "token",
-        "eastoken",
-        "username",
-        "user",
-        "password",
-        "passwd",
-        "authorization"
-    )
-
-    private fun separatedKeyPattern(key: String): String =
-        key.asIterable().joinToString("[ ]*") { Regex.escape(it.toString()) }
-
-    private val credentialEchoPattern = Regex(
-        "(?i)(?:\\b(?:${credentialKeys.joinToString("|") { separatedKeyPattern(it) }})\\b[ :=]*[=:]|" +
-            "\\b${separatedKeyPattern("bearer")}\\b[ ]+)"
-    )
-
     private const val VERSION = 1
 }
 
@@ -359,8 +329,10 @@ internal object CourseSelectionJobStorePersistence {
         snapshot: List<CourseSelectionJob>,
         commit: (List<CourseSelectionJob>) -> Unit,
         publish: (List<CourseSelectionJob>) -> Unit
-    ) {
-        commit(snapshot)
-        publish(snapshot)
+    ): List<CourseSelectionJob> {
+        val sanitizedSnapshot = snapshot.map(CourseSelectionMessageSanitizer::sanitize)
+        commit(sanitizedSnapshot)
+        publish(sanitizedSnapshot)
+        return sanitizedSnapshot
     }
 }
