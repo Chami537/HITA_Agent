@@ -752,9 +752,11 @@ private fun ShenzhenCourseCatalogScreen(
     var awaitingNotificationPermission by remember { mutableStateOf(false) }
     val listState = rememberLazyListState()
     val coroutineScope = rememberCoroutineScope()
-    val showFilterShortcut by remember(uiState, listState) {
+    val hasNormalBrowserContent = uiState !is CatalogUiState.NeedsWebLogin &&
+        !(uiState is CatalogUiState.Error && page == null)
+    val showFilterShortcut by remember(hasNormalBrowserContent, listState) {
         derivedStateOf {
-            uiState is CatalogUiState.Ready &&
+            hasNormalBrowserContent &&
                 ShenzhenCourseSelectionUiPolicy.shouldShowFilterShortcut(
                     firstVisibleItemIndex = listState.firstVisibleItemIndex,
                     canScrollBackward = listState.canScrollBackward
@@ -881,10 +883,7 @@ private fun ShenzhenCourseCatalogScreen(
             )
         )
 
-        if (
-            uiState is CatalogUiState.NeedsWebLogin ||
-            (uiState is CatalogUiState.Error && page == null)
-        ) {
+        if (!hasNormalBrowserContent) {
             LazyColumn(
                 modifier = Modifier.weight(1f),
                 contentPadding = PaddingValues(tokens.spacing.lg),
