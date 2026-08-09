@@ -752,12 +752,13 @@ private fun ShenzhenCourseCatalogScreen(
     var awaitingNotificationPermission by remember { mutableStateOf(false) }
     val listState = rememberLazyListState()
     val coroutineScope = rememberCoroutineScope()
-    val showFilterShortcut by remember(listState) {
+    val showFilterShortcut by remember(uiState, listState) {
         derivedStateOf {
-            ShenzhenCourseSelectionUiPolicy.shouldShowFilterShortcut(
-                firstVisibleItemIndex = listState.firstVisibleItemIndex,
-                canScrollBackward = listState.canScrollBackward
-            )
+            uiState is CatalogUiState.Ready &&
+                ShenzhenCourseSelectionUiPolicy.shouldShowFilterShortcut(
+                    firstVisibleItemIndex = listState.firstVisibleItemIndex,
+                    canScrollBackward = listState.canScrollBackward
+                )
         }
     }
 
