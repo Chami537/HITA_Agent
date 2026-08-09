@@ -100,7 +100,7 @@
     <string name="main_drawer_menu_search">搜索</string>
     <string name="main_drawer_menu_darkmode">深色模式</string>
     <string name="main_drawer_menu_settings">设置</string>
-    <string name="main_drawer_menu_report">意见反馈</string>
+    <string name="main_drawer_menu_report">用户反馈</string>
     <string name="main_drawer_menu_about">关于HITA</string>
     <string name="main_drawer_co_authored">Co-authored by</string>
     <string name="main_drawer_github_user">茶蘼</string>
