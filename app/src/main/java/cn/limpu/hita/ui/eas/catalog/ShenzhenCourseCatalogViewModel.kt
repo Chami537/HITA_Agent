@@ -16,6 +16,7 @@ import cn.limpu.hita.data.model.eas.ShenzhenCourseAttachment
 import cn.limpu.hita.data.model.eas.ShenzhenHistoricalFailureReport
 import cn.limpu.hita.data.model.eas.ShenzhenSelectionPool
 import cn.limpu.hita.data.model.eas.ShenzhenSelectionPools
+import cn.limpu.hita.data.model.eas.ShenzhenSelectionOpenTime
 import cn.limpu.hita.data.model.eas.TermItem
 import cn.limpu.hita.data.model.eas.CourseSelectionJob
 import cn.limpu.hita.data.model.eas.CourseSelectionJobStatus
@@ -70,6 +71,12 @@ sealed interface CourseSelectionCommandResult {
     data class Rejected(val failure: CourseSelectionCommandFailure) : CourseSelectionCommandResult
 }
 
+sealed interface CourseSelectionSchedulePrefill {
+    data object Manual : CourseSelectionSchedulePrefill
+    data class Official(val scheduledAtMillis: Long) : CourseSelectionSchedulePrefill
+    data class TooFar(val officialAtMillis: Long) : CourseSelectionSchedulePrefill
+}
+
 object ShenzhenCourseSelectionUiPolicy {
     fun canSelect(course: ShenzhenCourseCatalogItem): Boolean =
         course.source == ShenzhenCourseCatalogSource.AVAILABLE
@@ -87,6 +94,28 @@ object ShenzhenCourseSelectionUiPolicy {
             delay > CourseSelectionJobPolicy.MAX_SCHEDULE_AHEAD_MS ->
                 CourseSelectionScheduleValidation.TOO_FAR
             else -> CourseSelectionScheduleValidation.VALID
+        }
+    }
+
+    fun earliestOfficialOpenTime(
+        courses: List<ShenzhenCourseCatalogItem>,
+        fallback: ShenzhenSelectionOpenTime? = null
+    ): ShenzhenSelectionOpenTime? =
+        (courses.mapNotNull { it.selectionOpenTime } + listOfNotNull(fallback))
+            .minByOrNull { it.epochMillis }
+
+    fun schedulePrefill(
+        now: Long,
+        courses: List<ShenzhenCourseCatalogItem>
+    ): CourseSelectionSchedulePrefill {
+        val earliest = earliestOfficialOpenTime(courses) ?: return CourseSelectionSchedulePrefill.Manual
+        return when (validateSchedule(now, earliest.epochMillis)) {
+            CourseSelectionScheduleValidation.VALID ->
+                CourseSelectionSchedulePrefill.Official(earliest.epochMillis)
+            CourseSelectionScheduleValidation.TOO_FAR ->
+                CourseSelectionSchedulePrefill.TooFar(earliest.epochMillis)
+            CourseSelectionScheduleValidation.TOO_SOON ->
+                CourseSelectionSchedulePrefill.Manual
         }
     }
 }

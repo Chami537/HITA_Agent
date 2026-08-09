@@ -3,6 +3,8 @@ package cn.limpu.hita.ui.eas.catalog
 import cn.limpu.hita.data.model.eas.ShenzhenCourseCatalogItem
 import cn.limpu.hita.data.model.eas.ShenzhenCourseCatalogSource
 import cn.limpu.hita.data.model.eas.CourseSelectionJobStatus
+import cn.limpu.hita.data.model.eas.ShenzhenSelectionOpenTime
+import cn.limpu.hita.data.model.eas.ShenzhenSelectionOpenTimeSource
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -33,6 +35,45 @@ class ShenzhenCourseSelectionUiPolicyTest {
         assertEquals(
             CourseSelectionScheduleValidation.TOO_FAR,
             ShenzhenCourseSelectionUiPolicy.validateSchedule(now = 1_000L, scheduled = 86_401_001L)
+        )
+    }
+
+    @Test
+    fun `official schedule prefill uses earliest valid selected course time`() {
+        val courses = listOf(
+            availableCourse(openAt = 10_000L),
+            availableCourse(requestId = "request-b", openAt = 8_000L)
+        )
+
+        assertEquals(
+            CourseSelectionSchedulePrefill.Official(8_000L),
+            ShenzhenCourseSelectionUiPolicy.schedulePrefill(now = 1_000L, courses = courses)
+        )
+    }
+
+    @Test
+    fun `missing or past official time keeps manual scheduling`() {
+        assertEquals(
+            CourseSelectionSchedulePrefill.Manual,
+            ShenzhenCourseSelectionUiPolicy.schedulePrefill(now = 1_000L, courses = emptyList())
+        )
+        assertEquals(
+            CourseSelectionSchedulePrefill.Manual,
+            ShenzhenCourseSelectionUiPolicy.schedulePrefill(
+                now = 1_000L,
+                courses = listOf(availableCourse(openAt = 999L))
+            )
+        )
+    }
+
+    @Test
+    fun `official time beyond twenty four hours is reported without changing limit`() {
+        assertEquals(
+            CourseSelectionSchedulePrefill.TooFar(86_401_001L),
+            ShenzhenCourseSelectionUiPolicy.schedulePrefill(
+                now = 1_000L,
+                courses = listOf(availableCourse(openAt = 86_401_001L))
+            )
         )
     }
 
@@ -144,8 +185,9 @@ class ShenzhenCourseSelectionUiPolicyTest {
     private fun availableCourse(
         requestId: String = "request-id",
         taskId: String = "task-id",
-        id: String = "catalog-id"
-    ) = course(ShenzhenCourseCatalogSource.AVAILABLE, requestId, taskId, id)
+        id: String = "catalog-id",
+        openAt: Long? = null
+    ) = course(ShenzhenCourseCatalogSource.AVAILABLE, requestId, taskId, id, openAt)
 
     private fun schoolCourse() = course(ShenzhenCourseCatalogSource.SCHOOL)
 
@@ -153,13 +195,21 @@ class ShenzhenCourseSelectionUiPolicyTest {
         source: ShenzhenCourseCatalogSource,
         requestId: String = "request-id",
         taskId: String = "task-id",
-        id: String = "catalog-id"
+        id: String = "catalog-id",
+        openAt: Long? = null
     ) = ShenzhenCourseCatalogItem(
         id = id,
         taskId = taskId,
         selectionRequestId = requestId,
         courseCode = "CS101",
         courseName = "Course",
-        source = source
+        source = source,
+        selectionOpenTime = openAt?.let {
+            ShenzhenSelectionOpenTime(
+                rawValue = it.toString(),
+                epochMillis = it,
+                source = ShenzhenSelectionOpenTimeSource.COURSE
+            )
+        }
     )
 }
