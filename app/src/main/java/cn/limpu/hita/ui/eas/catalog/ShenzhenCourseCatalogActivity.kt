@@ -127,6 +127,7 @@ class ShenzhenCourseCatalogActivity :
 
     private var terms by mutableStateOf<List<TermItem>>(emptyList())
     private var uiState by mutableStateOf<CatalogUiState>(CatalogUiState.Loading)
+    private var openingMetadataState = ShenzhenCourseCatalogOpeningMetadataState()
     private var attachmentDialog by mutableStateOf<CourseAttachmentDialogState?>(null)
     private var historicalFailureDialog by mutableStateOf<HistoricalFailureDialogState?>(null)
     private var isShowingCoursePlanPreview by mutableStateOf(false)
@@ -307,12 +308,17 @@ class ShenzhenCourseCatalogActivity :
                 }
             }
         }
-        viewModel.queryLiveData.observe(this) {
-            uiState = CatalogUiState.Ready(refreshing = true)
+        viewModel.queryLiveData.observe(this) { query ->
+            openingMetadataState = openingMetadataState.beginQuery(query)
+            uiState = CatalogUiState.Ready(
+                refreshing = true,
+                suppressOfficialOpenTime = openingMetadataState.suppressOfficialOpenTime
+            )
         }
         viewModel.coursesLiveData.observe(this) { state ->
             when (state.state) {
                 DataState.STATE.SUCCESS -> {
+                    openingMetadataState = openingMetadataState.completeQuery()
                     uiState = CatalogUiState.Ready(
                         message = if (state.data?.items.isNullOrEmpty()) {
                             "当前筛选条件下没有课程"
@@ -327,12 +333,14 @@ class ShenzhenCourseCatalogActivity :
                 }
                 DataState.STATE.FETCH_FAILED -> {
                     uiState = CatalogUiState.Ready(
-                        message = state.message ?: "课程数据加载失败"
+                        message = state.message ?: "课程数据加载失败",
+                        suppressOfficialOpenTime = openingMetadataState.suppressOfficialOpenTime
                     )
                 }
                 DataState.STATE.NOTHING -> Unit
                 else -> uiState = CatalogUiState.Ready(
-                    message = state.message ?: "课程数据暂不可用"
+                    message = state.message ?: "课程数据暂不可用",
+                    suppressOfficialOpenTime = openingMetadataState.suppressOfficialOpenTime
                 )
             }
         }
@@ -658,7 +666,8 @@ private sealed interface CatalogUiState {
     data class Error(val message: String) : CatalogUiState
     data class Ready(
         val refreshing: Boolean = false,
-        val message: String? = null
+        val message: String? = null,
+        val suppressOfficialOpenTime: Boolean = false
     ) : CatalogUiState
 }
 
@@ -744,10 +753,16 @@ private fun ShenzhenCourseCatalogScreen(
         is CatalogUiState.NeedsWebLogin -> uiState.message
         CatalogUiState.Loading -> null
     }
-    val catalogOpenTime = ShenzhenCourseSelectionUiPolicy.earliestOfficialOpenTime(
-        courses = page?.items.orEmpty(),
-        fallback = page?.selectionOpenTime
-    )
+    val catalogOpenTime = if (
+        uiState is CatalogUiState.Ready && uiState.suppressOfficialOpenTime
+    ) {
+        null
+    } else {
+        ShenzhenCourseSelectionUiPolicy.earliestOfficialOpenTime(
+            courses = page?.items.orEmpty(),
+            fallback = page?.selectionOpenTime
+        )
+    }
     var keyword by remember(query?.keyword) { mutableStateOf(query?.keyword.orEmpty()) }
     var showImmediateConfirmation by remember { mutableStateOf(false) }
     var showScheduleDatePicker by remember { mutableStateOf(false) }
@@ -1308,7 +1323,11 @@ private fun SelectionScheduleDateDialog(
     onDismiss: () -> Unit,
     onDateSelected: (Long) -> Unit
 ) {
-    val datePickerState = rememberDatePickerState(initialSelectedDateMillis = initialSelectionMillis)
+    val datePickerState = rememberDatePickerState(
+        initialSelectedDateMillis = ShenzhenCourseSelectionUiPolicy.datePickerUtcDateMillis(
+            initialSelectionMillis
+        )
+    )
     DatePickerDialog(
         onDismissRequest = onDismiss,
         confirmButton = {
@@ -1347,7 +1366,9 @@ private fun SelectionScheduleTimeDialog(
     onConfirm: (Long) -> Unit
 ) {
     val initialSelection = remember(initialSelectionMillis) {
-        Calendar.getInstance().apply { timeInMillis = initialSelectionMillis }
+        Calendar.getInstance(TimeZone.getTimeZone("Asia/Shanghai")).apply {
+            timeInMillis = initialSelectionMillis
+        }
     }
     val timePickerState = rememberTimePickerState(
         initialHour = initialSelection.get(Calendar.HOUR_OF_DAY),
@@ -1428,12 +1449,13 @@ private fun SelectionScheduleTimeDialog(
                 if (seconds == null || seconds !in 0..59) {
                     validationError = R.string.course_selection_invalid_seconds
                 } else {
-                    val scheduledAtMillis = combineSelectionDateTime(
-                        dateMillis = dateMillis,
-                        hour = timePickerState.hour,
-                        minute = timePickerState.minute,
-                        second = seconds
-                    )
+                    val scheduledAtMillis =
+                        ShenzhenCourseSelectionUiPolicy.combineDatePickerDateAndShenzhenTime(
+                            dateMillis = dateMillis,
+                            hour = timePickerState.hour,
+                            minute = timePickerState.minute,
+                            second = seconds
+                        )
                     when (ShenzhenCourseSelectionUiPolicy.validateSchedule(
                         now = System.currentTimeMillis(),
                         scheduled = scheduledAtMillis
@@ -1644,26 +1666,6 @@ private fun selectionJobStatusColor(status: CourseSelectionJobStatus) = when (st
 private fun defaultSelectionScheduleMillis(): Long = Calendar.getInstance().apply {
     add(Calendar.MINUTE, 1)
 }.timeInMillis
-
-private fun combineSelectionDateTime(
-    dateMillis: Long,
-    hour: Int,
-    minute: Int,
-    second: Int
-): Long {
-    val selectedDate = Calendar.getInstance(TimeZone.getTimeZone("UTC")).apply {
-        timeInMillis = dateMillis
-    }
-    return Calendar.getInstance().apply {
-        set(Calendar.YEAR, selectedDate.get(Calendar.YEAR))
-        set(Calendar.MONTH, selectedDate.get(Calendar.MONTH))
-        set(Calendar.DAY_OF_MONTH, selectedDate.get(Calendar.DAY_OF_MONTH))
-        set(Calendar.HOUR_OF_DAY, hour)
-        set(Calendar.MINUTE, minute)
-        set(Calendar.SECOND, second)
-        set(Calendar.MILLISECOND, 0)
-    }.timeInMillis
-}
 
 private fun formatSelectionDate(timeMillis: Long): String =
     SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).apply {

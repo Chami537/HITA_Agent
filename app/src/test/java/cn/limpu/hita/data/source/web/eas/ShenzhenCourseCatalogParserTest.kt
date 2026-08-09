@@ -205,6 +205,49 @@ class ShenzhenCourseCatalogParserTest {
     }
 
     @Test
+    fun `selection opening time continues to ksrq after malformed preferred alias`() {
+        val parsed = ShenzhenCourseCatalogParser.parseSelectionOpenTime(
+            """{"ktxkkssj":"not-a-time","ksrq":"2026-08-10 11:00:00"}"""
+        )
+
+        assertEquals("2026-08-10 11:00:00", parsed?.rawValue)
+        assertEquals(ShenzhenSelectionOpenTimeSource.POOL_OR_PAGE, parsed?.source)
+    }
+
+    @Test
+    fun `selection opening time reads content and data wrappers`() {
+        val content = ShenzhenCourseCatalogParser.parseSelectionOpenTime(
+            """{"content":{"ktxkkssj":"2026-08-10 09:00:00"}}"""
+        )
+        val data = ShenzhenCourseCatalogParser.parseSelectionOpenTime(
+            """{"data":{"xkgzszOne":{"ksrq":"2026-08-10 10:00:00"}}}"""
+        )
+
+        assertEquals("2026-08-10 09:00:00", content?.rawValue)
+        assertEquals(ShenzhenSelectionOpenTimeSource.POOL_OR_PAGE, content?.source)
+        assertEquals("2026-08-10 10:00:00", data?.rawValue)
+        assertEquals(ShenzhenSelectionOpenTimeSource.SELECTION_RULE, data?.source)
+    }
+
+    @Test
+    fun `selection pools map direct and rule opening time sources`() {
+        val pools = ShenzhenCourseCatalogParser.parseSelectionPools(
+            """{"xkgzszList":[
+                {"xkfsdm":"direct","xkfsmc":"Direct","ktxkkssj":"2026-08-10 09:00:00"},
+                {"xkfsdm":"rule","xkfsmc":"Rule","xkgzszOne":{"ksrq":"2026-08-10 10:00:00"}}
+            ]}"""
+        )
+
+        assertEquals(
+            listOf(
+                ShenzhenSelectionOpenTimeSource.POOL_OR_PAGE,
+                ShenzhenSelectionOpenTimeSource.SELECTION_RULE
+            ),
+            pools.map { it.selectionOpenTime?.source }
+        )
+    }
+
+    @Test
     fun `available page uses initialization opening time when final response omits it`() {
         val initialization = ShenzhenCourseCatalogParser.parseSelectionOpenTime(
             """{"xkgzszOne":{"ktxkkssj":"2026-08-10 09:30:00"}}"""

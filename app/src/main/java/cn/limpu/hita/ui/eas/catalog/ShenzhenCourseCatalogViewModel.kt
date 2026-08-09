@@ -29,6 +29,9 @@ import cn.limpu.hita.data.repository.CoursePlanConflictEngine
 import cn.limpu.hita.data.model.timetable.TimePeriodInDay
 import cn.limpu.hita.ui.eas.EASViewModel
 import dagger.hilt.android.lifecycle.HiltViewModel
+import java.time.Instant
+import java.time.ZoneId
+import java.time.ZoneOffset
 import javax.inject.Inject
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
@@ -41,6 +44,28 @@ data class ShenzhenCourseCatalogQuery(
     val keyword: String,
     val page: Int
 )
+
+internal data class ShenzhenCourseCatalogOpeningMetadataState(
+    val source: ShenzhenCourseCatalogSource? = null,
+    val termId: String? = null,
+    val poolCode: String? = null,
+    val suppressOfficialOpenTime: Boolean = false
+) {
+    fun beginQuery(query: ShenzhenCourseCatalogQuery): ShenzhenCourseCatalogOpeningMetadataState {
+        val contextChanged = source != query.source ||
+            termId != query.term.id ||
+            poolCode != query.pool.code
+        return copy(
+            source = query.source,
+            termId = query.term.id,
+            poolCode = query.pool.code,
+            suppressOfficialOpenTime = suppressOfficialOpenTime || contextChanged
+        )
+    }
+
+    fun completeQuery(): ShenzhenCourseCatalogOpeningMetadataState =
+        copy(suppressOfficialOpenTime = false)
+}
 
 data class ShenzhenHistoricalFailureRequest(
     val course: ShenzhenCourseCatalogItem,
@@ -78,6 +103,8 @@ sealed interface CourseSelectionSchedulePrefill {
 }
 
 object ShenzhenCourseSelectionUiPolicy {
+    private val SHENZHEN_ZONE = ZoneId.of("Asia/Shanghai")
+
     fun canSelect(course: ShenzhenCourseCatalogItem): Boolean =
         course.source == ShenzhenCourseCatalogSource.AVAILABLE
 
@@ -118,6 +145,27 @@ object ShenzhenCourseSelectionUiPolicy {
                 CourseSelectionSchedulePrefill.Manual
         }
     }
+
+    fun datePickerUtcDateMillis(instantMillis: Long): Long =
+        Instant.ofEpochMilli(instantMillis)
+            .atZone(SHENZHEN_ZONE)
+            .toLocalDate()
+            .atStartOfDay(ZoneOffset.UTC)
+            .toInstant()
+            .toEpochMilli()
+
+    fun combineDatePickerDateAndShenzhenTime(
+        dateMillis: Long,
+        hour: Int,
+        minute: Int,
+        second: Int
+    ): Long = Instant.ofEpochMilli(dateMillis)
+        .atZone(ZoneOffset.UTC)
+        .toLocalDate()
+        .atTime(hour, minute, second)
+        .atZone(SHENZHEN_ZONE)
+        .toInstant()
+        .toEpochMilli()
 }
 
 internal class ShenzhenCourseSelectionDraftState {
@@ -143,6 +191,12 @@ internal class ShenzhenCourseSelectionDraftState {
     fun requestIds(): Set<String> = LinkedHashSet(selectedCoursesByRequestId.keys)
 
     fun selectedCourses(cards: List<ShenzhenCourseCatalogItem>): List<ShenzhenCourseCatalogItem> {
+        cards.forEach { course ->
+            val requestId = course.selectionRequestId
+            if (selectedCoursesByRequestId.containsKey(requestId)) {
+                selectedCoursesByRequestId[requestId] = course
+            }
+        }
         val cardRequestIds = cards.mapNotNull { course ->
             course.selectionRequestId.takeIf(selectedCoursesByRequestId::containsKey)
         }

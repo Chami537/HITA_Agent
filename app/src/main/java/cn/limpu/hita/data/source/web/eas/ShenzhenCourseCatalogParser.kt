@@ -442,20 +442,24 @@ internal object ShenzhenCourseCatalogParser {
         source: ShenzhenSelectionOpenTimeSource
     ): ShenzhenSelectionOpenTime? {
         if (row == null) return null
-        val raw = first(row, "ktxkkssj", "KTXKKSSJ", "ksrq", "KSRQ")
-        if (raw.isBlank()) return null
-        val normalized = raw.replace(' ', 'T')
-        val epochMillis = runCatching {
-            OffsetDateTime.parse(normalized).toInstant().toEpochMilli()
-        }.recoverCatching {
-            LocalDateTime.parse(normalized, DateTimeFormatter.ISO_LOCAL_DATE_TIME)
-                .atZone(SHENZHEN_ZONE)
-                .toInstant()
-                .toEpochMilli()
-        }.getOrNull() ?: return null
-        return ShenzhenSelectionOpenTime(raw, epochMillis, source)
+        for (key in OPEN_TIME_KEYS) {
+            val raw = first(row, key)
+            if (raw.isBlank()) continue
+            val normalized = raw.replace(' ', 'T')
+            val epochMillis = runCatching {
+                OffsetDateTime.parse(normalized).toInstant().toEpochMilli()
+            }.recoverCatching {
+                LocalDateTime.parse(normalized, DateTimeFormatter.ISO_LOCAL_DATE_TIME)
+                    .atZone(SHENZHEN_ZONE)
+                    .toInstant()
+                    .toEpochMilli()
+            }.getOrNull() ?: continue
+            return ShenzhenSelectionOpenTime(raw, epochMillis, source)
+        }
+        return null
     }
 
+    private val OPEN_TIME_KEYS = arrayOf("ktxkkssj", "KTXKKSSJ", "ksrq", "KSRQ")
     private val SHENZHEN_ZONE = ZoneId.of("Asia/Shanghai")
     private val WEEK_REGEX = Regex("(?:第)?([0-9、,，\\-~至单双]+)周")
     private val PERIOD_REGEX = Regex("(?:第)?(\\d{1,2})(?:[-~至](\\d{1,2}))?节")
