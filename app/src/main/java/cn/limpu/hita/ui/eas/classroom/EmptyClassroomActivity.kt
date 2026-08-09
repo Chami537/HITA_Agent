@@ -51,6 +51,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.limpu.component.data.DataState
 import cn.limpu.hita.R
+import cn.limpu.hita.data.analytics.UsageAnalyticsClient
+import cn.limpu.hita.data.analytics.UsageAnalyticsDimensions
+import cn.limpu.hita.data.analytics.UsageAnalyticsEvent
 import cn.limpu.hita.data.model.eas.TermItem
 import cn.limpu.hita.ui.base.ComposeViewBinding
 import cn.limpu.hita.ui.design.HitaComposeTheme
@@ -138,6 +141,7 @@ class EmptyClassroomActivity :
             isRefreshing = false
             when (it.state) {
                 DataState.STATE.SUCCESS -> {
+                    UsageAnalyticsClient.record(UsageAnalyticsEvent.EMPTY_ROOM_SEARCH_SUCCEEDED)
                     classroomQueryInFlight = false
                     resetSessionRetryState()
                 }
@@ -151,6 +155,10 @@ class EmptyClassroomActivity :
                 }
 
                 else -> {
+                    UsageAnalyticsClient.record(
+                        UsageAnalyticsEvent.EMPTY_ROOM_SEARCH_FAILED,
+                        mapOf(UsageAnalyticsDimensions.ERROR_CATEGORY to UsageAnalyticsDimensions.ERROR_UNKNOWN)
+                    )
                     classroomQueryInFlight = false
                     resetSessionRetryState()
                 }
@@ -161,6 +169,7 @@ class EmptyClassroomActivity :
     override fun refresh() {
         isRefreshing = true
         classroomQueryInFlight = true
+        UsageAnalyticsClient.record(UsageAnalyticsEvent.EMPTY_ROOM_SEARCH_STARTED)
         viewModel.startRefresh()
     }
 

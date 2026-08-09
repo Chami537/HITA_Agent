@@ -1,5 +1,6 @@
 package cn.limpu.hita.ui.main
 
+import cn.limpu.hita.BuildConfig
 import android.app.Activity
 import android.content.DialogInterface
 import android.content.Intent
@@ -17,6 +18,8 @@ import android.widget.Toast
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
+import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.launch
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
@@ -115,6 +118,11 @@ import cn.limpu.hita.data.repository.EASRepository
 import cn.limpu.hita.data.repository.EasSettingsRepository
 import cn.limpu.hita.data.repository.KEY_WALLPAPER_PATH
 import cn.limpu.hita.data.repository.TimetableStyleRepository
+import cn.limpu.hita.data.analytics.UsageAnalyticsClient
+import cn.limpu.hita.data.analytics.UsageAnalyticsDimensions
+import cn.limpu.hita.data.analytics.UsageAnalyticsEvent
+import cn.limpu.hita.data.notice.AppNotice
+import cn.limpu.hita.data.notice.AppNoticeCenter
 import cn.limpu.hita.ui.about.ActivityAbout
 import cn.limpu.hita.ui.about.UserAgreementDialog
 import cn.limpu.hita.ui.base.ComposeViewBinding
@@ -344,10 +352,12 @@ class MainActivity : HiltBaseActivity<ComposeViewBinding>(),
         timetableStyleRepository.wallpaperLabelColorLiveData.observe(this) { color ->
             wallpaperLabelColor = color
         }
-        viewModel.checkUpdateResult.observe(this) {
-            if (it.state == DataState.STATE.SUCCESS) {
-                it.data?.let { cr ->
-                    if (cr.shouldUpdate) ActivityUtils.showUpdateNotification(cr, this)
+        lifecycleScope.launch {
+            viewModel.checkUpdateResult.collect { state ->
+                if (state.state == DataState.STATE.SUCCESS) {
+                    state.data?.let { cr ->
+                        if (cr.shouldUpdate) ActivityUtils.showUpdateNotification(cr, this@MainActivity)
+                    }
                 }
             }
         }
@@ -355,6 +365,7 @@ class MainActivity : HiltBaseActivity<ComposeViewBinding>(),
             refreshDrawerState()
         }
         onBackPressedDispatcher.addCallback(this, onBackPressedCallback)
+        checkNotices()
     }
 
     @Suppress("DEPRECATION")
@@ -388,8 +399,76 @@ class MainActivity : HiltBaseActivity<ComposeViewBinding>(),
         super.onStop()
     }
 
-    private fun maybeAutoReimportTimetable() {
-        val settings = EasSettingsRepository(application)
+    private var criticalNoticeHandled = false
+
+    private fun checkNotices() {
+        AppNoticeCenter.fetch(this) { fetched ->
+            val active = AppNoticeCenter.activeNotices(fetched)
+            val critical = active.firstOrNull { it.isCritical }
+            if (critical != null && !criticalNoticeHandled) {
+                criticalNoticeHandled = true
+                showCriticalNotice(critical)
+            } else {
+                val version = active.firstOrNull { it.isVersionKind }
+                version?.let { maybeShowVersionNotice(it) }
+            }
+        }
+    }
+
+    private fun showCriticalNotice(notice: AppNotice) {
+        UsageAnalyticsClient.record(
+            UsageAnalyticsEvent.NOTICE_SHOWN,
+            mapOf(
+                UsageAnalyticsDimensions.PRESENTATION to "fullscreen",
+                UsageAnalyticsDimensions.KIND to notice.kind,
+            )
+        )
+        MaterialAlertDialogBuilder(this)
+            .setTitle(notice.title)
+            .setMessage(notice.body)
+            .setCancelable(false)
+            .setPositiveButton("知道了") { _, _ ->
+                UsageAnalyticsClient.record(
+                    UsageAnalyticsEvent.NOTICE_ACTION_TAPPED,
+                    mapOf(
+                        UsageAnalyticsDimensions.PRESENTATION to "fullscreen",
+                        UsageAnalyticsDimensions.KIND to notice.kind,
+                    )
+                )
+            }
+            .show()
+    }
+
+    private fun maybeShowVersionNotice(notice: AppNotice) {
+        val minVersion = notice.minAppVersion ?: return
+        if (minVersion <= BuildConfig.VERSION_CODE.toLong()) return
+        UsageAnalyticsClient.record(
+            UsageAnalyticsEvent.NOTICE_SHOWN,
+            mapOf(
+                UsageAnalyticsDimensions.PRESENTATION to "version_dialog",
+                UsageAnalyticsDimensions.KIND to notice.kind,
+            )
+        )
+        MaterialAlertDialogBuilder(this)
+            .setTitle(notice.title)
+            .setMessage(notice.body)
+            .setPositiveButton("查看更新") { _, _ ->
+                UsageAnalyticsClient.record(
+                    UsageAnalyticsEvent.NOTICE_ACTION_TAPPED,
+                    mapOf(
+                        UsageAnalyticsDimensions.PRESENTATION to "version_dialog",
+                        UsageAnalyticsDimensions.KIND to notice.kind,
+                    )
+                )
+                runCatching {
+                    startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(BuildConfig.UPDATE_URL)))
+                }
+            }
+            .setNegativeButton("稍后", null)
+            .show()
+    }
+
+    private fun maybeAutoReimportTimetable() {        val settings = EasSettingsRepository(application)
         if (!settings.isAutoReimportEnabled()) return
         val token = easRepository.getEasToken()
         if (!token.isLogin()) return

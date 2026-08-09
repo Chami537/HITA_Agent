@@ -1,0 +1,38 @@
+# HITA Android Baseline Profile（手工维护的启动路径规则）
+# 规则语法见 https://developer.android.com/studio/profile/baselineprofiles
+# 覆盖冷启动关键路径：Application 初始化、MainActivity 装配、Compose 主题与首屏。
+# 更精确的 profile 可用 Macrobenchmark 生成（见 docs/unified-protocol.md 之外的性能专题）：
+#   ./gradlew :app:connectedBenchmarkAndroidTest （需模拟器）
+# 生成后替换本文件。
+
+# 应用入口
+HSPLcn/limpu/hita/HApplication;->onCreate()V
+HSPLcn/limpu/hita/HApplication;->reportAppVisit()V
+
+# 主壳
+HSPLcn/limpu/hita/ui/main/MainActivity;->onCreate(Landroid/os/Bundle;)V
+HSPLcn/limpu/hita/ui/main/MainActivity;->initViews()V
+HSPLcn/limpu/hita/ui/main/MainActivity;->onStart()V
+HSPLcn/limpu/hita/ui/main/MainActivity;->onResume()V
+
+# 主题与设计系统
+HSPLcn/limpu/hita/ui/design/HitaComposeThemeKt;->HitaComposeTheme(ZLandroidx/compose/ui/graphics/Color;Lkotlin/jvm/functions/Function0;Landroidx/compose/runtime/Composer;II)V
+HSPLcn/limpu/hita/ui/design/HitaTheme;-><clinit>()V
+
+# Compose 运行时核心（首帧渲染）
+HSPLandroidx/compose/runtime/ComposerImpl;->recompose()V
+HSPLandroidx/compose/runtime/ComposerImpl;->composeContent(Landroidx/compose/runtime/CompositionContext;Landroidx/compose/runtime/Composable;Landroidx/compose/ui/unit/Constraints;)V
+HSPLandroidx/compose/ui/platform/AndroidComposeView;->draw(Landroid/graphics/Canvas;)V
+HSPLandroidx/compose/ui/platform/AndroidComposeView;->dispatchDraw(Landroid/graphics/Canvas;)V
+HSPLandroidx/compose/ui/platform/ComposeView;-><init>(Landroid/content/Context;Landroid/util/AttributeSet;I)V
+
+# Material3 基础组件（首屏按钮/卡片/文字）
+HSPLandroidx/compose/material3/SurfaceKt;->Surface(Lkotlin/jvm/functions/Function0;Landroidx/compose/ui/Modifier;ZLandroidx/compose/ui/graphics/Color;Landroidx/compose/ui/graphics/Color;Landroidx/compose/foundation/BorderStroke;Landroidx/compose/ui/unit/Dp;Landroidx/compose/foundation/shape/Shape;Landroidx/compose/runtime/Composer;II)V
+HSPLandroidx/compose/material3/TextKt;->Text(Ljava/lang/String;Landroidx/compose/ui/Modifier;Landroidx/compose/ui/graphics/Color;Landroidx/compose/ui/unit/TextUnit;Landroidx/compose/ui/text/font/FontStyle;Landroidx/compose/ui/text/font/FontWeight;Landroidx/compose/ui/text/font/FontFamily;Landroidx/compose/ui/unit/TextUnit;Landroidx/compose/ui/text/style/TextOverflow;ZLandroidx/compose/ui/text/style/TextAlign;Landroidx/compose/ui/unit/IntOffset;ZLandroidx/compose/ui/text/style/TextIndent;Landroidx/compose/ui/text/TextStyle;Landroidx/compose/runtime/Composer;III)V
+
+# 图标与图片
+HSPLandroidx/compose/ui/res/PainterResourceKt;->painterResource(I)Landroidx/compose/ui/graphics/painter/Painter;
+
+# Glide 图片加载（头像）
+HSPLcom/bumptech/glide/Glide;->with(Landroid/content/Context;)Lcom/bumptech/glide/RequestManager;
+HSPLcom/bumptech/glide/RequestManager;->load(Ljava/lang/String;)Lcom/bumptech/glide/RequestBuilder;
