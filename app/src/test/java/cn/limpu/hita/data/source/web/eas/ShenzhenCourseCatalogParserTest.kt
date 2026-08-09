@@ -73,6 +73,22 @@ class ShenzhenCourseCatalogParserTest {
     }
 
     @Test
+    fun `selection target is added when generic term response omits it`() {
+        val terms = ShenzhenCourseCatalogParser.parseTerms(
+            """[{"xn":"2025-2026","xq":"3","xnmc":"2025-2026学年","xqmc":"夏季学期","sfdqxq":"1"}]"""
+        ).orEmpty()
+
+        val merged = ShenzhenCourseCatalogParser.mergeSelectionTarget(
+            terms = terms,
+            selectionTermId = "2026-2027-1"
+        )
+
+        assertEquals(listOf("2026-2027-1", "2025-2026-3"), merged.map { it.id })
+        assertTrue(merged.first().isCurrent)
+        assertFalse(merged.last().isCurrent)
+    }
+
+    @Test
     fun `available course page maps capacity and schedule`() {
         val page = ShenzhenCourseCatalogParser.parsePage(
             body = """{

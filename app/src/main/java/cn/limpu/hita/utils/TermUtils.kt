@@ -40,6 +40,9 @@ object TermUtils {
         return sortNewestFirst(if (filtered.isNotEmpty()) filtered else allTerms)
     }
 
+    fun courseSelectionTerms(allTerms: List<TermItem>): List<TermItem> =
+        sortNewestFirst(allTerms)
+
     /**
      * 过滤学期列表，只显示最近的学期
      *

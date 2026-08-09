@@ -101,6 +101,31 @@ internal object ShenzhenCourseCatalogParser {
         return result.takeIf { it.isNotEmpty() }
     }
 
+    fun mergeSelectionTarget(
+        terms: List<TermItem>,
+        selectionTermId: String?
+    ): List<TermItem> {
+        val match = Regex("^(20\\d{2}-20\\d{2})-(\\d+)$")
+            .matchEntire(selectionTermId.orEmpty()) ?: return terms
+        val year = match.groupValues[1]
+        val termCode = match.groupValues[2]
+        val target = terms.firstOrNull { it.id == selectionTermId }
+            ?: TermItem(
+                yearCode = year,
+                yearName = year,
+                termCode = termCode,
+                termName = when (termCode) {
+                    "1" -> "秋季"
+                    "2" -> "春季"
+                    "3" -> "夏季"
+                    else -> "第${termCode}学期"
+                }
+            )
+        return (listOf(target) + terms)
+            .distinctBy { it.id }
+            .onEach { it.isCurrent = it.id == selectionTermId }
+    }
+
     private fun collectTermRows(element: JsonElement, rows: MutableList<JsonObject>) {
         when {
             element.isJsonArray -> element.asJsonArray.forEach { collectTermRows(it, rows) }

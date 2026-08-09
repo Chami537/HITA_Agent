@@ -56,4 +56,16 @@ class TermUtilsTest {
 
         assertEquals(listOf("2026-2027-1", "2025-2026-3"), result.map { it.id })
     }
+
+    @Test
+    fun `course selection list keeps next academic year when summer remains current`() {
+        val currentSummer = TermItem("2025-2026", "2025-2026", "3", "夏季").apply {
+            isCurrent = true
+        }
+        val selectionAutumn = TermItem("2026-2027", "2026-2027", "1", "秋季")
+
+        val result = TermUtils.courseSelectionTerms(listOf(currentSummer, selectionAutumn))
+
+        assertEquals(listOf("2026-2027-1", "2025-2026-3"), result.map { it.id })
+    }
 }

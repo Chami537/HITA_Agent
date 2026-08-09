@@ -289,10 +289,7 @@ class ShenzhenCourseCatalogActivity :
         viewModel.termsLiveData.observe(this) { state ->
             when (state.state) {
                 DataState.STATE.SUCCESS -> {
-                    terms = TermUtils.filterTermsForStudent(
-                        state.data.orEmpty(),
-                        easRepository.getEasToken().grade
-                    )
+                    terms = TermUtils.courseSelectionTerms(state.data.orEmpty())
                     uiState = CatalogUiState.Ready(refreshing = true)
                     viewModel.reconcileTerms(terms)
                 }

@@ -768,14 +768,15 @@ class EASWebSource internal constructor(
                     } else {
                         ShenzhenCourseCatalogParser.parseSelectionTermId(selectionResponse.body())
                     }
-                    if (selectionTermId != null && terms.any { it.id == selectionTermId }) {
-                        terms.forEach { it.isCurrent = it.id == selectionTermId }
-                    }
-                    LogUtils.d(
-                        "getShenzhenWebTerms: count=${terms.size}, selectionTerm=$selectionTermId, " +
-                            "selectedPresent=${terms.any { it.id == selectionTermId }}"
+                    val resolvedTerms = ShenzhenCourseCatalogParser.mergeSelectionTarget(
+                        terms = checkNotNull(terms),
+                        selectionTermId = selectionTermId
                     )
-                    result.postValue(DataState(terms, DataState.STATE.SUCCESS))
+                    LogUtils.d(
+                        "getShenzhenWebTerms: count=${resolvedTerms.size}, selectionTerm=$selectionTermId, " +
+                            "selectedPresent=${resolvedTerms.any { it.id == selectionTermId }}"
+                    )
+                    result.postValue(DataState(resolvedTerms, DataState.STATE.SUCCESS))
                 }
             } catch (error: Exception) {
                 result.postValue(DataState(DataState.STATE.FETCH_FAILED, error.message))
