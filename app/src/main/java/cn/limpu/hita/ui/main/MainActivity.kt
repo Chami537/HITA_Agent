@@ -325,6 +325,14 @@ class MainActivity : HiltBaseActivity<ComposeViewBinding>(),
                     onDrawerAvatarClick = { showAvatarPicker() },
                     onThemeStyle = { showThemeStyleMenu() },
                     onDrawerAgreement = { UserAgreementDialog().show(supportFragmentManager, "ua") },
+                    onUserFeedback = {
+                        startActivity(
+                            Intent(
+                                Intent.ACTION_VIEW,
+                                Uri.parse("https://wj.qq.com/s2/27538298/9fr9/")
+                            )
+                        )
+                    },
                     onDrawerAbout = { ActivityUtils.startActivity(getThis(), ActivityAbout::class.java) },
                     onGitHubUser = { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://chami537.github.io/"))) },
                     onGitHubProject = { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/LiPu-jpg"))) },
@@ -806,6 +814,7 @@ private fun MainScreen(
     onDrawerAvatarClick: () -> Unit,
     onThemeStyle: () -> Unit,
     onDrawerAgreement: () -> Unit,
+    onUserFeedback: () -> Unit,
     onDrawerAbout: () -> Unit,
     onGitHubUser: () -> Unit,
     onGitHubProject: () -> Unit,
@@ -998,6 +1007,7 @@ private fun MainScreen(
             onAvatarClick = onDrawerAvatarClick,
             onThemeStyle = onThemeStyle,
             onAgreement = onDrawerAgreement,
+            onUserFeedback = onUserFeedback,
             onAbout = onDrawerAbout,
             onGitHubUser = onGitHubUser,
             onGitHubProject = onGitHubProject,
@@ -1693,6 +1703,7 @@ private fun MainDrawer(
     onAvatarClick: () -> Unit,
     onThemeStyle: () -> Unit,
     onAgreement: () -> Unit,
+    onUserFeedback: () -> Unit,
     onAbout: () -> Unit,
     onGitHubUser: () -> Unit,
     onGitHubProject: () -> Unit,
@@ -1836,6 +1847,11 @@ private fun MainDrawer(
                     onThemeStyle
                 )
                 DrawerItem(R.drawable.ic_info, stringResource(R.string.name_ua_and_pp), onAgreement)
+                DrawerItem(
+                    R.drawable.ic_baseline_edit_24,
+                    stringResource(R.string.main_drawer_menu_report),
+                    onUserFeedback
+                )
                 DrawerItem(R.drawable.logo, stringResource(R.string.main_drawer_menu_about), onAbout)
                 Spacer(Modifier.weight(1f))
                 Spacer(
