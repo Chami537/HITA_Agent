@@ -734,7 +734,7 @@ private fun TimetableDowHeader(startDate: Long, monthColor: Color) {
                         },
                         fontSize = 10.sp,
                         fontWeight = FontWeight.Bold,
-                        fontFamily = hitaSoraTitleFont(),
+                        fontFamily = HitaTheme.fonts.display,
                         textAlign = TextAlign.Center,
                     )
                 }
@@ -743,7 +743,7 @@ private fun TimetableDowHeader(startDate: Long, monthColor: Color) {
                     color = if (isToday) MaterialTheme.colorScheme.primary else monthColor,
                     fontSize = 10.sp,
                     fontWeight = if (isToday) FontWeight.Bold else FontWeight.Medium,
-                    fontFamily = hitaSoraTitleFont(),
+                    fontFamily = HitaTheme.fonts.display,
                     maxLines = 1,
                     modifier = Modifier.padding(top = 2.dp)
                 )
@@ -1349,7 +1349,7 @@ private fun TimetableEventCard(
                         fontSize = titleFontSize,
                         lineHeight = (titleFontSize.value * 1.2f).sp,
                         fontWeight = if (style.isBoldText) FontWeight.Bold else FontWeight.Normal,
-                        fontFamily = hitaPersonaTitleFont() ?: hitaSoraTitleFont() ?: hitaSumiTitleFont(),
+                        fontFamily = HitaTheme.fonts.display,
                         textAlign = textAlignFromGravity(style.titleGravity),
                         maxLines = maxTitleLines,
                         overflow = TextOverflow.Ellipsis,
