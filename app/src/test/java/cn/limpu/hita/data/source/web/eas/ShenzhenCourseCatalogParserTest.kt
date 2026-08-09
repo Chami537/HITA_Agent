@@ -205,6 +205,22 @@ class ShenzhenCourseCatalogParserTest {
     }
 
     @Test
+    fun `available page uses initialization opening time when final response omits it`() {
+        val initialization = ShenzhenCourseCatalogParser.parseSelectionOpenTime(
+            """{"xkgzszOne":{"ktxkkssj":"2026-08-10 09:30:00"}}"""
+        )
+        val page = ShenzhenCourseCatalogParser.parsePage(
+            body = """{"kxrwList":{"list":[{"id":"request","kcdm":"CS101","kcmc":"Course"}]}}""",
+            source = ShenzhenCourseCatalogSource.AVAILABLE,
+            studentType = "1",
+            fallbackOpenTime = initialization
+        )
+
+        assertEquals(initialization, page?.selectionOpenTime)
+        assertEquals(initialization, page?.items?.single()?.selectionOpenTime)
+    }
+
+    @Test
     fun `available page resolves course then page then selection rule opening time`() {
         val coursePage = ShenzhenCourseCatalogParser.parsePage(
             body = """{"ksrq":"2026-08-10 09:00:00","kxrwList":{"list":[{"id":"request","kcdm":"CS101","kcmc":"Course","ktxkkssj":"2026-08-10 08:00:00"}]}}""",

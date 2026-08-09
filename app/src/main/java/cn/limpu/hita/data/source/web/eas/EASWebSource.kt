@@ -31,6 +31,7 @@ import cn.limpu.hita.data.model.eas.ShenzhenCourseRecommendationResult
 import cn.limpu.hita.data.model.eas.ShenzhenCreditProgress
 import cn.limpu.hita.data.model.eas.ShenzhenCreditRequirement
 import cn.limpu.hita.data.model.eas.ShenzhenRecommendationOptions
+import cn.limpu.hita.data.model.eas.ShenzhenSelectionOpenTime
 import cn.limpu.hita.data.model.eas.ShenzhenSelectionPool
 import cn.limpu.hita.data.model.eas.ShenzhenTrainingPlan
 import cn.limpu.hita.data.model.eas.ShenzhenTrainingPlanCourse
@@ -986,6 +987,7 @@ class EASWebSource internal constructor(
                 return@Thread
             }
             try {
+                var initializationOpenTime: ShenzhenSelectionOpenTime? = null
                 if (source == ShenzhenCourseCatalogSource.AVAILABLE) {
                     // The portal binds queryKxrw to state initialized by queryYxkc for the same
                     // term and selection mode. Calling queryKxrw directly can return jg=-1 or an
@@ -1004,6 +1006,8 @@ class EASWebSource internal constructor(
                         result.postValue(DataState(DataState.STATE.FETCH_FAILED, "选课查询初始化失败"))
                         return@Thread
                     }
+                    initializationOpenTime =
+                        ShenzhenCourseCatalogParser.parseSelectionOpenTime(initialization.body())
                 }
                 val response = jwFormPost(token, path, form, refererPath)
                 if (isJwAuthenticationExpired(response)) {
@@ -1014,7 +1018,8 @@ class EASWebSource internal constructor(
                     response.body(),
                     source,
                     studentType,
-                    selectionPoolName
+                    selectionPoolName,
+                    fallbackOpenTime = initializationOpenTime
                 )
                 if (response.statusCode() != 200 || page == null) {
                     result.postValue(DataState(DataState.STATE.FETCH_FAILED, "课程数据解析失败"))
