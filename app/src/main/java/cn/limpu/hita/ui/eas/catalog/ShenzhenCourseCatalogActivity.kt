@@ -29,6 +29,7 @@ import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.AlertDialog
@@ -56,10 +57,12 @@ import androidx.compose.material3.rememberDatePickerState
 import androidx.compose.material3.rememberTimePickerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.livedata.observeAsState
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -112,6 +115,7 @@ import java.util.Calendar
 import java.util.Locale
 import java.util.TimeZone
 import javax.inject.Inject
+import kotlinx.coroutines.launch
 
 @AndroidEntryPoint
 class ShenzhenCourseCatalogActivity :
@@ -746,6 +750,16 @@ private fun ShenzhenCourseCatalogScreen(
     var scheduledDateMillis by remember { mutableStateOf<Long?>(null) }
     var showExactAlarmGuidance by remember { mutableStateOf(false) }
     var awaitingNotificationPermission by remember { mutableStateOf(false) }
+    val listState = rememberLazyListState()
+    val coroutineScope = rememberCoroutineScope()
+    val showFilterShortcut by remember(listState) {
+        derivedStateOf {
+            ShenzhenCourseSelectionUiPolicy.shouldShowFilterShortcut(
+                firstVisibleItemIndex = listState.firstVisibleItemIndex,
+                canScrollBackward = listState.canScrollBackward
+            )
+        }
+    }
 
     LaunchedEffect(notificationPermissionGranted, awaitingNotificationPermission) {
         if (notificationPermissionGranted && awaitingNotificationPermission) {
@@ -836,6 +850,20 @@ private fun ShenzhenCourseCatalogScreen(
                 }
             },
             actions = {
+                if (showFilterShortcut) {
+                    IconButton(
+                        onClick = {
+                            coroutineScope.launch {
+                                listState.animateScrollToItem(0)
+                            }
+                        }
+                    ) {
+                        Icon(
+                            painter = painterResource(R.drawable.ic_baseline_search_24),
+                            contentDescription = "返回筛选条件"
+                        )
+                    }
+                }
                 IconButton(onClick = onRefresh) {
                     if (isLoading) {
                         CircularProgressIndicator(modifier = Modifier.size(22.dp), strokeWidth = 2.dp)
@@ -884,84 +912,8 @@ private fun ShenzhenCourseCatalogScreen(
             return@Column
         }
 
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = tokens.spacing.lg),
-            horizontalArrangement = Arrangement.spacedBy(tokens.spacing.sm)
-        ) {
-            FilterChip(
-                selected = source == ShenzhenCourseCatalogSource.AVAILABLE,
-                onClick = { onSelectSource(ShenzhenCourseCatalogSource.AVAILABLE) },
-                label = { Text("教务选课池") },
-                modifier = Modifier.weight(1f)
-            )
-            FilterChip(
-                selected = source == ShenzhenCourseCatalogSource.SCHOOL,
-                onClick = { onSelectSource(ShenzhenCourseCatalogSource.SCHOOL) },
-                label = { Text("全校课表") },
-                modifier = Modifier.weight(1f)
-            )
-        }
-        Text(
-            text = if (source == ShenzhenCourseCatalogSource.AVAILABLE) {
-                "学校选课任务池 · “必修”是课程性质，不代表你的个人必修"
-            } else {
-                "深圳 Web 教务 · 全校开课数据，只读浏览"
-            },
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            fontSize = 12.sp,
-            modifier = Modifier.padding(horizontal = tokens.spacing.xl)
-        )
-
-        CatalogFilters(
-            termName = term?.let(TermNameFormatter::fullTermName) ?: "选择学期",
-            secondaryName = if (source == ShenzhenCourseCatalogSource.AVAILABLE) {
-                pool?.name ?: "选择课程类型"
-            } else if (studentType == "2") {
-                "研究生"
-            } else {
-                "本科"
-            },
-            keyword = keyword,
-            onKeywordChange = { keyword = it },
-            onSearch = { onSearch(keyword) },
-            onSelectTerm = onSelectTerm,
-            onSelectSecondary = if (source == ShenzhenCourseCatalogSource.AVAILABLE) {
-                onSelectPool
-            } else {
-                onSelectStudentType
-            },
-            modifier = Modifier.padding(horizontal = tokens.spacing.lg, vertical = tokens.spacing.sm)
-        )
-
-        Button(
-            onClick = onRecommend,
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = tokens.spacing.lg, vertical = tokens.spacing.xs)
-        ) {
-            Text("智能选课推荐")
-        }
-        OutlinedButton(
-            onClick = onShowCoursePlan,
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = tokens.spacing.lg, vertical = tokens.spacing.xs)
-        ) {
-            Text("选课预览 · $effectivePreviewCount（已选 ${selectedCourses.size}）")
-        }
-
-        if (errorMessage != null) {
-            Text(
-                text = errorMessage,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                fontSize = 13.sp,
-                modifier = Modifier.padding(horizontal = tokens.spacing.xl, vertical = tokens.spacing.xs)
-            )
-        }
-
         LazyColumn(
+            state = listState,
             modifier = Modifier.weight(1f),
             contentPadding = PaddingValues(
                 start = tokens.spacing.lg,
@@ -971,6 +923,89 @@ private fun ShenzhenCourseCatalogScreen(
             ),
             verticalArrangement = Arrangement.spacedBy(tokens.spacing.sm)
         ) {
+            item {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(tokens.spacing.sm)
+                ) {
+                    FilterChip(
+                        selected = source == ShenzhenCourseCatalogSource.AVAILABLE,
+                        onClick = { onSelectSource(ShenzhenCourseCatalogSource.AVAILABLE) },
+                        label = { Text("教务选课池") },
+                        modifier = Modifier.weight(1f)
+                    )
+                    FilterChip(
+                        selected = source == ShenzhenCourseCatalogSource.SCHOOL,
+                        onClick = { onSelectSource(ShenzhenCourseCatalogSource.SCHOOL) },
+                        label = { Text("全校课表") },
+                        modifier = Modifier.weight(1f)
+                    )
+                }
+            }
+            item {
+                Text(
+                    text = if (source == ShenzhenCourseCatalogSource.AVAILABLE) {
+                        "学校选课任务池 · “必修”是课程性质，不代表你的个人必修"
+                    } else {
+                        "深圳 Web 教务 · 全校开课数据，只读浏览"
+                    },
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    fontSize = 12.sp,
+                    modifier = Modifier.padding(horizontal = tokens.spacing.sm)
+                )
+            }
+            item {
+                CatalogFilters(
+                    termName = term?.let(TermNameFormatter::fullTermName) ?: "选择学期",
+                    secondaryName = if (source == ShenzhenCourseCatalogSource.AVAILABLE) {
+                        pool?.name ?: "选择课程类型"
+                    } else if (studentType == "2") {
+                        "研究生"
+                    } else {
+                        "本科"
+                    },
+                    keyword = keyword,
+                    onKeywordChange = { keyword = it },
+                    onSearch = { onSearch(keyword) },
+                    onSelectTerm = onSelectTerm,
+                    onSelectSecondary = if (source == ShenzhenCourseCatalogSource.AVAILABLE) {
+                        onSelectPool
+                    } else {
+                        onSelectStudentType
+                    },
+                    modifier = Modifier.padding(vertical = tokens.spacing.sm)
+                )
+            }
+            item {
+                Button(
+                    onClick = onRecommend,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = tokens.spacing.xs)
+                ) {
+                    Text("智能选课推荐")
+                }
+            }
+            item {
+                OutlinedButton(
+                    onClick = onShowCoursePlan,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = tokens.spacing.xs)
+                ) {
+                    Text("选课预览 · $effectivePreviewCount（已选 ${selectedCourses.size}）")
+                }
+            }
+            if (errorMessage != null) {
+                item {
+                    Text(
+                        text = errorMessage,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        fontSize = 13.sp,
+                        modifier = Modifier.padding(horizontal = tokens.spacing.sm, vertical = tokens.spacing.xs)
+                    )
+                }
+            }
             selectionJobItems(
                 activeJobs = activeSelectionJobs,
                 terminalJobs = terminalSelectionJobs,
