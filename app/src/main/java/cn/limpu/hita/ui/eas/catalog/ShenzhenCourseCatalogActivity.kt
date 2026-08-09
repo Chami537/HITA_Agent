@@ -744,10 +744,17 @@ private fun ShenzhenCourseCatalogScreen(
         is CatalogUiState.NeedsWebLogin -> uiState.message
         CatalogUiState.Loading -> null
     }
+    val catalogOpenTime = ShenzhenCourseSelectionUiPolicy.earliestOfficialOpenTime(
+        courses = page?.items.orEmpty(),
+        fallback = page?.selectionOpenTime
+    )
     var keyword by remember(query?.keyword) { mutableStateOf(query?.keyword.orEmpty()) }
     var showImmediateConfirmation by remember { mutableStateOf(false) }
     var showScheduleDatePicker by remember { mutableStateOf(false) }
     var scheduledDateMillis by remember { mutableStateOf<Long?>(null) }
+    var scheduleInitialMillis by remember { mutableStateOf<Long?>(null) }
+    var officialPrefillApplied by remember { mutableStateOf(false) }
+    var officialTimeTooFarMillis by remember { mutableStateOf<Long?>(null) }
     var showExactAlarmGuidance by remember { mutableStateOf(false) }
     var awaitingNotificationPermission by remember { mutableStateOf(false) }
     val listState = rememberLazyListState()
@@ -764,11 +771,36 @@ private fun ShenzhenCourseCatalogScreen(
         }
     }
 
+    val openScheduleConfirmation = {
+        scheduledDateMillis = null
+        officialTimeTooFarMillis = null
+        when (val prefill = ShenzhenCourseSelectionUiPolicy.schedulePrefill(
+            now = System.currentTimeMillis(),
+            courses = selectedSubmissionCourses
+        )) {
+            CourseSelectionSchedulePrefill.Manual -> {
+                scheduleInitialMillis = defaultSelectionScheduleMillis()
+                officialPrefillApplied = false
+                showScheduleDatePicker = true
+            }
+            is CourseSelectionSchedulePrefill.Official -> {
+                scheduleInitialMillis = prefill.scheduledAtMillis
+                officialPrefillApplied = true
+                showScheduleDatePicker = true
+            }
+            is CourseSelectionSchedulePrefill.TooFar -> {
+                scheduleInitialMillis = null
+                officialPrefillApplied = false
+                officialTimeTooFarMillis = prefill.officialAtMillis
+            }
+        }
+    }
+
     LaunchedEffect(notificationPermissionGranted, awaitingNotificationPermission) {
         if (notificationPermissionGranted && awaitingNotificationPermission) {
             awaitingNotificationPermission = false
             if (canScheduleExactAlarms()) {
-                showScheduleDatePicker = true
+                openScheduleConfirmation()
             } else {
                 showExactAlarmGuidance = true
             }
@@ -809,9 +841,33 @@ private fun ShenzhenCourseCatalogScreen(
             }
         )
     }
+    officialTimeTooFarMillis?.let { tooFarMillis ->
+        AlertDialog(
+            onDismissRequest = { officialTimeTooFarMillis = null },
+            title = { Text(stringResource(R.string.course_selection_official_time_too_far_title)) },
+            text = {
+                Text(
+                    stringResource(
+                        R.string.course_selection_official_time_too_far_message,
+                        formatSelectionTime(tooFarMillis)
+                    )
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = { officialTimeTooFarMillis = null }) {
+                    Text(stringResource(R.string.confirm))
+                }
+            }
+        )
+    }
     if (showScheduleDatePicker) {
         SelectionScheduleDateDialog(
-            onDismiss = { showScheduleDatePicker = false },
+            initialSelectionMillis = scheduleInitialMillis ?: defaultSelectionScheduleMillis(),
+            onDismiss = {
+                showScheduleDatePicker = false
+                scheduleInitialMillis = null
+                officialPrefillApplied = false
+            },
             onDateSelected = { dateMillis ->
                 showScheduleDatePicker = false
                 scheduledDateMillis = dateMillis
@@ -821,10 +877,18 @@ private fun ShenzhenCourseCatalogScreen(
     scheduledDateMillis?.let { dateMillis ->
         SelectionScheduleTimeDialog(
             dateMillis = dateMillis,
+            initialSelectionMillis = scheduleInitialMillis ?: defaultSelectionScheduleMillis(),
+            officialPrefill = officialPrefillApplied,
             courseCount = selectedSubmissionCourses.size,
-            onDismiss = { scheduledDateMillis = null },
+            onDismiss = {
+                scheduledDateMillis = null
+                scheduleInitialMillis = null
+                officialPrefillApplied = false
+            },
             onConfirm = { scheduledAtMillis ->
                 scheduledDateMillis = null
+                scheduleInitialMillis = null
+                officialPrefillApplied = false
                 onCreateScheduledSelection(scheduledAtMillis)
             }
         )
@@ -976,6 +1040,44 @@ private fun ShenzhenCourseCatalogScreen(
                     modifier = Modifier.padding(vertical = tokens.spacing.sm)
                 )
             }
+            if (source == ShenzhenCourseCatalogSource.AVAILABLE) {
+                item {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = tokens.spacing.sm),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = catalogOpenTime?.let {
+                                stringResource(
+                                    R.string.course_selection_official_open_time,
+                                    formatSelectionTime(it.epochMillis)
+                                )
+                            } ?: stringResource(R.string.course_selection_official_open_time_unavailable),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            fontSize = 13.sp,
+                            modifier = Modifier.weight(1f)
+                        )
+                        catalogOpenTime?.let { openTime ->
+                            Spacer(modifier = Modifier.width(tokens.spacing.sm))
+                            Text(
+                                text = stringResource(
+                                    if (openTime.epochMillis > System.currentTimeMillis()) {
+                                        R.string.course_selection_official_open_status_future
+                                    } else {
+                                        R.string.course_selection_official_open_status_open
+                                    }
+                                ),
+                                color = MaterialTheme.colorScheme.primary,
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Medium
+                            )
+                        }
+                    }
+                }
+            }
             item {
                 Button(
                     onClick = onRecommend,
@@ -1072,7 +1174,7 @@ private fun ShenzhenCourseCatalogScreen(
                             onRequestNotificationPermission()
                         }
                         !canScheduleExactAlarms() -> showExactAlarmGuidance = true
-                        else -> showScheduleDatePicker = true
+                        else -> openScheduleConfirmation()
                     }
                 }
             )
@@ -1202,11 +1304,11 @@ private fun ExactAlarmGuidanceDialog(
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun SelectionScheduleDateDialog(
+    initialSelectionMillis: Long,
     onDismiss: () -> Unit,
     onDateSelected: (Long) -> Unit
 ) {
-    val initialSelection = remember { defaultSelectionScheduleMillis() }
-    val datePickerState = rememberDatePickerState(initialSelectedDateMillis = initialSelection)
+    val datePickerState = rememberDatePickerState(initialSelectedDateMillis = initialSelectionMillis)
     DatePickerDialog(
         onDismissRequest = onDismiss,
         confirmButton = {
@@ -1238,17 +1340,21 @@ private fun SelectionScheduleDateDialog(
 @Composable
 private fun SelectionScheduleTimeDialog(
     dateMillis: Long,
+    initialSelectionMillis: Long,
+    officialPrefill: Boolean,
     courseCount: Int,
     onDismiss: () -> Unit,
     onConfirm: (Long) -> Unit
 ) {
-    val initialSelection = remember { Calendar.getInstance().apply { add(Calendar.MINUTE, 1) } }
+    val initialSelection = remember(initialSelectionMillis) {
+        Calendar.getInstance().apply { timeInMillis = initialSelectionMillis }
+    }
     val timePickerState = rememberTimePickerState(
         initialHour = initialSelection.get(Calendar.HOUR_OF_DAY),
         initialMinute = initialSelection.get(Calendar.MINUTE),
         is24Hour = true
     )
-    var secondsInput by remember {
+    var secondsInput by remember(initialSelectionMillis) {
         mutableStateOf(initialSelection.get(Calendar.SECOND).toString().padStart(2, '0'))
     }
     var validationError by remember { mutableStateOf<Int?>(null) }
@@ -1268,6 +1374,16 @@ private fun SelectionScheduleTimeDialog(
                         .fillMaxWidth()
                         .padding(bottom = 8.dp)
                 )
+                if (officialPrefill) {
+                    Text(
+                        text = stringResource(R.string.course_selection_official_prefill_note),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        fontSize = 12.sp,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(bottom = 8.dp)
+                    )
+                }
                 TimePicker(state = timePickerState)
                 OutlinedTextField(
                     value = secondsInput,

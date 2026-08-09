@@ -486,6 +486,13 @@
     <string name="course_selection_seconds">秒（0–59）</string>
     <string name="course_selection_invalid_seconds">请输入 0 至 59 之间的秒数。</string>
     <string name="course_selection_schedule_course_count">将为 %1$d 门课程创建定时任务；到点后每门课程只提交一次。</string>
+    <string name="course_selection_official_open_time">官方开放时间 · %1$s</string>
+    <string name="course_selection_official_open_time_unavailable">官方开放时间 · 暂未同步</string>
+    <string name="course_selection_official_open_status_future">待开放</string>
+    <string name="course_selection_official_open_status_open">已开放</string>
+    <string name="course_selection_official_prefill_note">已按所选课程中最早的官方开放时间预填，请确认后创建任务。</string>
+    <string name="course_selection_official_time_too_far_title">暂不可创建定时任务</string>
+    <string name="course_selection_official_time_too_far_message">官方开放时间为 %1$s，距离现在超过24小时。当前仅展示时间，不改变既有定时范围。</string>
     <string name="course_selection_create_schedule">创建定时任务</string>
     <string name="course_selection_active_jobs">进行中的选课任务</string>
     <string name="course_selection_recent_jobs">最近的已结束任务</string>
