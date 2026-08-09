@@ -5,6 +5,18 @@ enum class ShenzhenCourseCatalogSource {
     SCHOOL
 }
 
+enum class ShenzhenSelectionOpenTimeSource {
+    COURSE,
+    POOL_OR_PAGE,
+    SELECTION_RULE
+}
+
+data class ShenzhenSelectionOpenTime(
+    val rawValue: String,
+    val epochMillis: Long,
+    val source: ShenzhenSelectionOpenTimeSource
+)
+
 data class ShenzhenCourseCatalogItem(
     val id: String,
     val taskId: String = "",
@@ -31,7 +43,8 @@ data class ShenzhenCourseCatalogItem(
     val selectionPoolName: String = "",
     val classNumber: String = "",
     val meetings: List<ShenzhenCourseMeeting> = emptyList(),
-    val source: ShenzhenCourseCatalogSource
+    val source: ShenzhenCourseCatalogSource,
+    val selectionOpenTime: ShenzhenSelectionOpenTime? = null
 ) {
     val remainingSeats: Int?
         get() = if (capacity != null && selectedCount != null) capacity - selectedCount else null
@@ -57,7 +70,8 @@ data class ShenzhenCourseCatalogPage(
     val items: List<ShenzhenCourseCatalogItem>,
     val total: Int,
     val page: Int,
-    val pageSize: Int
+    val pageSize: Int,
+    val selectionOpenTime: ShenzhenSelectionOpenTime? = null
 ) {
     val hasNextPage: Boolean
         get() = items.isNotEmpty() && page * pageSize < total
@@ -65,7 +79,8 @@ data class ShenzhenCourseCatalogPage(
 
 data class ShenzhenSelectionPool(
     val code: String,
-    val name: String
+    val name: String,
+    val selectionOpenTime: ShenzhenSelectionOpenTime? = null
 )
 
 object ShenzhenSelectionPools {

@@ -2,8 +2,10 @@ package cn.limpu.hita.data.source.web.eas
 
 import cn.limpu.hita.data.model.eas.ShenzhenCourseCatalogSource
 import cn.limpu.hita.data.model.eas.ShenzhenCourseAttachmentKind
+import cn.limpu.hita.data.model.eas.ShenzhenSelectionOpenTimeSource
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -176,6 +178,74 @@ class ShenzhenCourseCatalogParserTest {
         assertFalse(item.schedule.contains("2026-07-26"))
         assertEquals(listOf(1, 3, 5, 7), item.meetings.single().weeks)
         assertEquals(3, item.meetings.single().weekday)
+    }
+
+    @Test
+    fun `selection opening time parses zoned and Shenzhen local values`() {
+        val zoned = ShenzhenCourseCatalogParser.parseSelectionOpenTime(
+            """{"ktxkkssj":"2026-08-10T09:30:15+08:00"}"""
+        )
+        val local = ShenzhenCourseCatalogParser.parseSelectionOpenTime(
+            """{"ksrq":"2026-08-10 09:30:15"}"""
+        )
+
+        assertEquals(1_786_325_415_000L, zoned?.epochMillis)
+        assertEquals(1_786_325_415_000L, local?.epochMillis)
+        assertEquals("2026-08-10T09:30:15+08:00", zoned?.rawValue)
+    }
+
+    @Test
+    fun `selection opening time prefers ktxkkssj and ignores malformed values`() {
+        val preferred = ShenzhenCourseCatalogParser.parseSelectionOpenTime(
+            """{"ktxkkssj":"2026-08-10 10:00:00","ksrq":"2026-08-10 11:00:00"}"""
+        )
+
+        assertEquals("2026-08-10 10:00:00", preferred?.rawValue)
+        assertNull(ShenzhenCourseCatalogParser.parseSelectionOpenTime("""{"ksrq":"not-a-time"}"""))
+    }
+
+    @Test
+    fun `available page resolves course then page then selection rule opening time`() {
+        val coursePage = ShenzhenCourseCatalogParser.parsePage(
+            body = """{"ksrq":"2026-08-10 09:00:00","kxrwList":{"list":[{"id":"request","kcdm":"CS101","kcmc":"Course","ktxkkssj":"2026-08-10 08:00:00"}]}}""",
+            source = ShenzhenCourseCatalogSource.AVAILABLE,
+            studentType = "1"
+        )
+        assertEquals(
+            ShenzhenSelectionOpenTimeSource.COURSE,
+            coursePage?.items?.single()?.selectionOpenTime?.source
+        )
+
+        val pageFallback = ShenzhenCourseCatalogParser.parsePage(
+            body = """{"ktxkkssj":"2026-08-10 09:00:00","kxrwList":{"list":[{"id":"request","kcdm":"CS101","kcmc":"Course"}]}}""",
+            source = ShenzhenCourseCatalogSource.AVAILABLE,
+            studentType = "1"
+        )
+        assertEquals(
+            ShenzhenSelectionOpenTimeSource.POOL_OR_PAGE,
+            pageFallback?.items?.single()?.selectionOpenTime?.source
+        )
+
+        val ruleFallback = ShenzhenCourseCatalogParser.parsePage(
+            body = """{"xkgzszOne":{"ksrq":"2026-08-10 10:00:00"},"kxrwList":{"list":[{"id":"request","kcdm":"CS101","kcmc":"Course"}]}}""",
+            source = ShenzhenCourseCatalogSource.AVAILABLE,
+            studentType = "1"
+        )
+        assertEquals(
+            ShenzhenSelectionOpenTimeSource.SELECTION_RULE,
+            ruleFallback?.items?.single()?.selectionOpenTime?.source
+        )
+    }
+
+    @Test
+    fun `xksj remains excluded from selection opening time`() {
+        val page = ShenzhenCourseCatalogParser.parsePage(
+            body = """{"kxrwList":{"list":[{"id":"request","kcdm":"CS101","kcmc":"Course","xksj":"2026-08-10 10:00:00"}]}}""",
+            source = ShenzhenCourseCatalogSource.AVAILABLE,
+            studentType = "1"
+        )
+
+        assertNull(page?.items?.single()?.selectionOpenTime)
     }
 
     @Test

@@ -6,12 +6,18 @@ import cn.limpu.hita.data.model.eas.ShenzhenCourseCatalogSource
 import cn.limpu.hita.data.model.eas.ShenzhenCourseMeeting
 import cn.limpu.hita.data.model.eas.ShenzhenCourseAttachment
 import cn.limpu.hita.data.model.eas.ShenzhenCourseAttachmentKind
+import cn.limpu.hita.data.model.eas.ShenzhenSelectionOpenTime
+import cn.limpu.hita.data.model.eas.ShenzhenSelectionOpenTimeSource
 import cn.limpu.hita.data.model.eas.ShenzhenSelectionPool
 import cn.limpu.hita.data.model.eas.TermItem
 import com.google.gson.JsonArray
 import com.google.gson.JsonElement
 import com.google.gson.JsonObject
 import com.google.gson.JsonParser
+import java.time.LocalDateTime
+import java.time.OffsetDateTime
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
 import org.jsoup.Jsoup
 
 internal object ShenzhenCourseCatalogParser {
@@ -26,9 +32,32 @@ internal object ShenzhenCourseCatalogParser {
             if (code.isBlank()) return@mapNotNull null
             ShenzhenSelectionPool(
                 code = code,
-                name = first(row, "xkfsmc", "XKFSMC").ifBlank { code }
+                name = first(row, "xkfsmc", "XKFSMC").ifBlank { code },
+                selectionOpenTime = parseOpenTime(row, ShenzhenSelectionOpenTimeSource.POOL_OR_PAGE)
+                    ?: parseOpenTime(
+                        row.get("xkgzszOne")?.takeIf { it.isJsonObject }?.asJsonObject,
+                        ShenzhenSelectionOpenTimeSource.SELECTION_RULE
+                    )
             )
         }.distinctBy { it.code }
+    }
+
+    fun parseSelectionOpenTime(body: String): ShenzhenSelectionOpenTime? {
+        val parsed = runCatching { JsonParser().parse(body) }.getOrNull()
+            ?.takeIf { it.isJsonObject }?.asJsonObject ?: return null
+        val payload = parsed.get("content")?.takeIf { it.isJsonObject }?.asJsonObject
+            ?: parsed.get("data")?.takeIf { it.isJsonObject }?.asJsonObject
+            ?: parsed
+        return parseOpenTime(payload, ShenzhenSelectionOpenTimeSource.POOL_OR_PAGE)
+            ?: parseOpenTime(parsed, ShenzhenSelectionOpenTimeSource.POOL_OR_PAGE)
+            ?: parseOpenTime(
+                payload.get("xkgzszOne")?.takeIf { it.isJsonObject }?.asJsonObject,
+                ShenzhenSelectionOpenTimeSource.SELECTION_RULE
+            )
+            ?: parseOpenTime(
+                parsed.get("xkgzszOne")?.takeIf { it.isJsonObject }?.asJsonObject,
+                ShenzhenSelectionOpenTimeSource.SELECTION_RULE
+            )
     }
 
     fun parseSelectionTermId(body: String): String? {
@@ -92,7 +121,8 @@ internal object ShenzhenCourseCatalogParser {
         body: String,
         source: ShenzhenCourseCatalogSource,
         studentType: String,
-        selectionPoolName: String = ""
+        selectionPoolName: String = "",
+        fallbackOpenTime: ShenzhenSelectionOpenTime? = null
     ): ShenzhenCourseCatalogPage? {
         val parsed: JsonElement = runCatching { JsonParser().parse(body) }.getOrNull() ?: return null
         if (!parsed.isJsonObject) return null
@@ -110,6 +140,18 @@ internal object ShenzhenCourseCatalogParser {
             ?: intValue(root, "pageSize")
             ?: rows.size().coerceAtLeast(20)
         val total = intValue(pageObject, "total") ?: intValue(root, "total") ?: rows.size()
+        val contextOpenTime =
+            parseOpenTime(pageObject, ShenzhenSelectionOpenTimeSource.POOL_OR_PAGE)
+                ?: parseOpenTime(root, ShenzhenSelectionOpenTimeSource.POOL_OR_PAGE)
+                ?: parseOpenTime(
+                    pageObject.get("xkgzszOne")?.takeIf { it.isJsonObject }?.asJsonObject,
+                    ShenzhenSelectionOpenTimeSource.SELECTION_RULE
+                )
+                ?: parseOpenTime(
+                    root.get("xkgzszOne")?.takeIf { it.isJsonObject }?.asJsonObject,
+                    ShenzhenSelectionOpenTimeSource.SELECTION_RULE
+                )
+                ?: fallbackOpenTime
 
         val items = buildList<ShenzhenCourseCatalogItem> {
             rows.forEachIndexed { index, element ->
@@ -170,12 +212,22 @@ internal object ShenzhenCourseCatalogParser {
                             "bjh", "BJH", "rwbh", "RWBH", "jxbh", "JXBH", "dgbjmc", "DGBJMC"
                         ),
                         meetings = parseMeetings(row, rawSchedule, teacher),
-                        source = source
+                        source = source,
+                        selectionOpenTime = parseOpenTime(
+                            row,
+                            ShenzhenSelectionOpenTimeSource.COURSE
+                        ) ?: contextOpenTime
                     )
                 )
             }
         }
-        return ShenzhenCourseCatalogPage(items, total.coerceAtLeast(items.size), page, pageSize)
+        return ShenzhenCourseCatalogPage(
+            items,
+            total.coerceAtLeast(items.size),
+            page,
+            pageSize,
+            contextOpenTime
+        )
     }
 
     fun parseAttachments(body: String, courseId: String): List<ShenzhenCourseAttachment>? {
@@ -385,6 +437,26 @@ internal object ShenzhenCourseCatalogParser {
             .trim()
     }
 
+    private fun parseOpenTime(
+        row: JsonObject?,
+        source: ShenzhenSelectionOpenTimeSource
+    ): ShenzhenSelectionOpenTime? {
+        if (row == null) return null
+        val raw = first(row, "ktxkkssj", "KTXKKSSJ", "ksrq", "KSRQ")
+        if (raw.isBlank()) return null
+        val normalized = raw.replace(' ', 'T')
+        val epochMillis = runCatching {
+            OffsetDateTime.parse(normalized).toInstant().toEpochMilli()
+        }.recoverCatching {
+            LocalDateTime.parse(normalized, DateTimeFormatter.ISO_LOCAL_DATE_TIME)
+                .atZone(SHENZHEN_ZONE)
+                .toInstant()
+                .toEpochMilli()
+        }.getOrNull() ?: return null
+        return ShenzhenSelectionOpenTime(raw, epochMillis, source)
+    }
+
+    private val SHENZHEN_ZONE = ZoneId.of("Asia/Shanghai")
     private val WEEK_REGEX = Regex("(?:第)?([0-9、,，\\-~至单双]+)周")
     private val PERIOD_REGEX = Regex("(?:第)?(\\d{1,2})(?:[-~至](\\d{1,2}))?节")
     private val NUMBER_REGEX = Regex("\\d+")
