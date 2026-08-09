@@ -74,6 +74,11 @@ object ShenzhenCourseSelectionUiPolicy {
     fun canSelect(course: ShenzhenCourseCatalogItem): Boolean =
         course.source == ShenzhenCourseCatalogSource.AVAILABLE
 
+    fun shouldShowFilterShortcut(
+        firstVisibleItemIndex: Int,
+        canScrollBackward: Boolean
+    ): Boolean = firstVisibleItemIndex > 0 && canScrollBackward
+
     fun validateSchedule(now: Long, scheduled: Long): CourseSelectionScheduleValidation {
         val delay = scheduled - now
         return when {

@@ -37,6 +37,28 @@ class ShenzhenCourseSelectionUiPolicyTest {
     }
 
     @Test
+    fun `filter shortcut appears only after a scrollable list leaves the top`() {
+        assertFalse(
+            ShenzhenCourseSelectionUiPolicy.shouldShowFilterShortcut(
+                firstVisibleItemIndex = 0,
+                canScrollBackward = false
+            )
+        )
+        assertFalse(
+            ShenzhenCourseSelectionUiPolicy.shouldShowFilterShortcut(
+                firstVisibleItemIndex = 1,
+                canScrollBackward = false
+            )
+        )
+        assertTrue(
+            ShenzhenCourseSelectionUiPolicy.shouldShowFilterShortcut(
+                firstVisibleItemIndex = 1,
+                canScrollBackward = true
+            )
+        )
+    }
+
+    @Test
     fun `selection rejects a blank request id instead of falling back to task or catalog id`() {
         val draft = ShenzhenCourseSelectionDraftState()
 
