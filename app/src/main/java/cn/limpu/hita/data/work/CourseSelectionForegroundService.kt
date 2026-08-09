@@ -111,6 +111,8 @@ class CourseSelectionForegroundService : Service() {
             CourseSelectionJobStatus.WAITING -> R.string.course_selection_notification_waiting
             CourseSelectionJobStatus.RUNNING -> R.string.course_selection_notification_running
             CourseSelectionJobStatus.COMPLETED -> R.string.course_selection_notification_completed
+            CourseSelectionJobStatus.NEEDS_CONFIRMATION ->
+                R.string.course_selection_notification_needs_confirmation
             else -> R.string.course_selection_notification_failed
         }
         updateNotification(

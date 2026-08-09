@@ -8,6 +8,7 @@ import cn.limpu.hita.data.model.eas.CourseSelectionJobStatus
 import cn.limpu.hita.data.model.eas.EASToken
 import cn.limpu.hita.data.source.web.eas.EASWebSource
 import cn.limpu.hita.data.source.web.eas.ShenzhenCourseSelectionTransport
+import java.io.IOException
 import java.net.InetAddress
 import java.net.ServerSocket
 import java.net.Socket
@@ -171,9 +172,9 @@ class CourseSelectionExecutorTest {
     }
 
     @Test
-    fun `duplicate course ids are submitted only once`() = runBlocking {
+    fun `duplicate request ids are submitted only once`() = runBlocking {
         val original = course(1)
-        val duplicate = original.copy(requestId = "duplicate-request", taskId = "duplicate-task")
+        val duplicate = original.copy(taskId = "duplicate-task", courseId = "duplicate-course")
         val fake = RecordingGateway(acceptedIds = setOf(original.requestId))
 
         val result = CourseSelectionExecutor(fake).execute(jobWithCourses(original, duplicate))
@@ -181,6 +182,90 @@ class CourseSelectionExecutorTest {
         assertEquals(listOf(original.requestId), fake.submittedIds)
         assertEquals(1, result.results.size)
         assertEquals(CourseSelectionJobStatus.COMPLETED, result.status)
+    }
+
+    @Test
+    fun `different request ids sharing one course id are each submitted`() = runBlocking {
+        val first = course(1)
+        val alternative = first.copy(
+            requestId = "request-2",
+            taskId = "task-2",
+            teacher = "Alternative Teacher"
+        )
+        val fake = RecordingGateway(acceptedIds = setOf(first.requestId, alternative.requestId))
+
+        val result = CourseSelectionExecutor(fake).execute(jobWithCourses(first, alternative))
+
+        assertEquals(setOf(first.requestId, alternative.requestId), fake.submittedIds.toSet())
+        assertEquals(2, result.results.size)
+        assertEquals(CourseSelectionJobStatus.COMPLETED, result.status)
+    }
+
+    @Test
+    fun `one runtime submission failure does not cancel sibling courses`() = runBlocking {
+        val submitted = Collections.synchronizedList(mutableListOf<String>())
+        val gateway = object : ShenzhenCourseSelectionGateway {
+            override suspend fun submitOnce(
+                job: CourseSelectionJob,
+                course: CourseSelectionJobCourse
+            ): CourseSelectionCourseResult {
+                submitted += course.requestId
+                if (course.requestId == "request-1") throw IllegalStateException("broken response")
+                return resultFor(course)
+            }
+
+            override suspend fun selectedRequestIds(job: CourseSelectionJob): Set<String> =
+                setOf("request-2")
+        }
+
+        val result = CourseSelectionExecutor(gateway).execute(jobWithCourses(2))
+
+        assertEquals(setOf("request-1", "request-2"), submitted.toSet())
+        assertEquals(CourseSelectionCourseStatus.UNKNOWN, result.results.single {
+            it.courseId == "course-1"
+        }.status)
+        assertEquals(CourseSelectionCourseStatus.CONFIRMED, result.results.single {
+            it.courseId == "course-2"
+        }.status)
+    }
+
+    @Test
+    fun `confirmation transport failure remains pending confirmation`() = runBlocking {
+        val gateway = object : ShenzhenCourseSelectionGateway {
+            override suspend fun submitOnce(
+                job: CourseSelectionJob,
+                course: CourseSelectionJobCourse
+            ): CourseSelectionCourseResult = resultFor(course)
+
+            override suspend fun selectedRequestIds(job: CourseSelectionJob): Set<String> =
+                throw IOException("confirmation unavailable")
+        }
+
+        val result = CourseSelectionExecutor(gateway).execute(jobWithCourses(1))
+
+        assertEquals("NEEDS_CONFIRMATION", result.status.name)
+        assertEquals(CourseSelectionCourseStatus.UNCONFIRMED, result.results.single().status)
+    }
+
+    @Test
+    fun `definitive business failure stays failed when confirmation is unavailable`() = runBlocking {
+        val gateway = object : ShenzhenCourseSelectionGateway {
+            override suspend fun submitOnce(
+                job: CourseSelectionJob,
+                course: CourseSelectionJobCourse
+            ): CourseSelectionCourseResult = resultFor(
+                course,
+                CourseSelectionCourseStatus.BUSINESS_FAILURE
+            )
+
+            override suspend fun selectedRequestIds(job: CourseSelectionJob): Set<String> =
+                throw IOException("confirmation unavailable")
+        }
+
+        val result = CourseSelectionExecutor(gateway).execute(jobWithCourses(1))
+
+        assertEquals(CourseSelectionJobStatus.FAILED, result.status)
+        assertEquals(CourseSelectionCourseStatus.BUSINESS_FAILURE, result.results.single().status)
     }
 
     @Test
@@ -453,6 +538,27 @@ class CourseSelectionExecutorTest {
     }
 
     @Test
+    fun `malformed selected course response makes confirmation unavailable`() {
+        LocalSelectionServer(
+            mapOf(
+                "/Xsxk/queryYxkc" to { request ->
+                    request.requirePost(AtomicInteger())
+                    LocalResponse(200, "{}")
+                }
+            )
+        ).use { server ->
+            val failure = runCatching {
+                localWebSource(server).getShenzhenSelectedRequestIdsOnce(
+                    webToken(),
+                    jobWithCourses(1)
+                )
+            }.exceptionOrNull()
+
+            assertTrue("failure=$failure", failure is IOException)
+        }
+    }
+
+    @Test
     fun `duplicate course code rows expose only their raw identity variants`() {
         val receivedQueries = AtomicInteger(0)
         LocalSelectionServer(
@@ -688,7 +794,7 @@ class CourseSelectionExecutorTest {
         }
     }
 
-    private class SimulatedProcessInterruption : RuntimeException()
+    private class SimulatedProcessInterruption : Error()
 
     companion object {
         private fun localWebSource(
@@ -735,6 +841,7 @@ class CourseSelectionExecutorTest {
             course: CourseSelectionJobCourse,
             status: CourseSelectionCourseStatus = CourseSelectionCourseStatus.UNCONFIRMED
         ) = CourseSelectionCourseResult(
+            requestId = course.requestId,
             courseId = course.courseId,
             status = status,
             message = "",

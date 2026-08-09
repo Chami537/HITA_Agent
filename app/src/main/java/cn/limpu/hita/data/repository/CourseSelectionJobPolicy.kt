@@ -19,13 +19,11 @@ object CourseSelectionJobPolicy {
         pool: ShenzhenSelectionPool
     ): List<CourseSelectionJobCourse> {
         val requestIds = mutableSetOf<String>()
-        val courseIds = mutableSetOf<String>()
         val courses = catalogItems.mapNotNull { item ->
             val requestId = item.selectionRequestId.ifBlank { item.taskId.ifBlank { item.id } }
             if (requestId.isBlank()) return@mapNotNull null
             if (!requestIds.add(requestId)) return@mapNotNull null
             val courseId = item.courseId.ifBlank { item.id }
-            if (!courseIds.add(courseId)) return@mapNotNull null
             CourseSelectionJobCourse(
                 requestId = requestId,
                 taskId = item.taskId.ifBlank { item.id },

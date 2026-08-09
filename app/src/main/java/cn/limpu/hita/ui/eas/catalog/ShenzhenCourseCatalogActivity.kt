@@ -1628,6 +1628,7 @@ private fun selectionJobStatusText(status: CourseSelectionJobStatus): String = s
         CourseSelectionJobStatus.RUNNING -> R.string.course_selection_status_running
         CourseSelectionJobStatus.COMPLETED -> R.string.course_selection_status_completed
         CourseSelectionJobStatus.PARTIAL -> R.string.course_selection_status_partial
+        CourseSelectionJobStatus.NEEDS_CONFIRMATION -> R.string.course_selection_status_needs_confirmation
         CourseSelectionJobStatus.FAILED -> R.string.course_selection_status_failed
         CourseSelectionJobStatus.CANCELLED -> R.string.course_selection_status_cancelled
     }
@@ -1657,6 +1658,7 @@ private fun selectionJobStatusColor(status: CourseSelectionJobStatus) = when (st
     CourseSelectionJobStatus.COMPLETED -> MaterialTheme.colorScheme.primary
     CourseSelectionJobStatus.PARTIAL,
     CourseSelectionJobStatus.FAILED -> MaterialTheme.colorScheme.error
+    CourseSelectionJobStatus.NEEDS_CONFIRMATION -> MaterialTheme.colorScheme.tertiary
     else -> MaterialTheme.colorScheme.onSurfaceVariant
 }
 

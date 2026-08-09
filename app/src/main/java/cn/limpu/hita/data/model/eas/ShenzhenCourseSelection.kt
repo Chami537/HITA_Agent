@@ -5,6 +5,7 @@ enum class CourseSelectionJobStatus {
     RUNNING,
     COMPLETED,
     PARTIAL,
+    NEEDS_CONFIRMATION,
     FAILED,
     CANCELLED
 }
@@ -32,7 +33,8 @@ data class CourseSelectionCourseResult(
     val status: CourseSelectionCourseStatus,
     val message: String,
     val submittedAtMillis: Long,
-    val confirmedAtMillis: Long? = null
+    val confirmedAtMillis: Long? = null,
+    val requestId: String = ""
 )
 
 data class CourseSelectionJob(

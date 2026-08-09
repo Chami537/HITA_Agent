@@ -74,14 +74,16 @@ internal fun interface ShenzhenCourseSelectionTransport {
 internal object ShenzhenSelectedCourseIdentityParser {
     private val rawIdentityKeys = setOf("id", "rwid", "rwh", "selectionrequestid", "taskid")
 
-    fun parse(body: String): Set<String> {
+    fun parse(body: String): Set<String> = parseOrNull(body).orEmpty()
+
+    fun parseOrNull(body: String): Set<String>? {
         val root = try {
             JsonParser().parse(body)
         } catch (_: JsonParseException) {
-            return emptySet()
+            return null
         }
-        if (!root.isJsonObject) return emptySet()
-        val rows = findSelectedRows(root) ?: return emptySet()
+        if (!root.isJsonObject) return null
+        val rows = findSelectedRows(root) ?: return null
         return buildSet {
             rows.forEach { element ->
                 val row = element.takeIf { it.isJsonObject }?.asJsonObject ?: return@forEach
@@ -868,6 +870,7 @@ class EASWebSource internal constructor(
             )
         } catch (_: IOException) {
             return CourseSelectionCourseResult(
+                requestId = course.requestId,
                 courseId = course.courseId,
                 status = CourseSelectionCourseStatus.UNKNOWN,
                 message = "",
@@ -881,6 +884,7 @@ class EASWebSource internal constructor(
             body = response.body()
         )
         return CourseSelectionCourseResult(
+            requestId = course.requestId,
             courseId = course.courseId,
             status = parsed.status,
             message = parsed.message,
@@ -894,23 +898,20 @@ class EASWebSource internal constructor(
         job: CourseSelectionJob
     ): Set<String> {
         require(token.hasShenzhenWebSession()) { "A Shenzhen Web session is required" }
-        val response = try {
-            jwSelectionFormPostOnce(
-                token = token,
-                path = "/Xsxk/queryYxkc?sf_request_type=ajax",
-                data = shenzhenSelectedSubjectsForm(
-                    token,
-                    TermItem(job.termYearCode, job.termYearCode, job.termCode, "")
-                )
+        val response = jwSelectionFormPostOnce(
+            token = token,
+            path = "/Xsxk/queryYxkc?sf_request_type=ajax",
+            data = shenzhenSelectedSubjectsForm(
+                token,
+                TermItem(job.termYearCode, job.termYearCode, job.termCode, "")
             )
-        } catch (_: IOException) {
-            return emptySet()
-        }
+        )
         mergeShenzhenCourseSelectionCookies(token, response)
         if (isJwAuthenticationExpired(response) || response.statusCode() !in 200..299) {
-            return emptySet()
+            throw IOException("Selected-course confirmation is unavailable")
         }
-        return ShenzhenSelectedCourseIdentityParser.parse(response.body())
+        return ShenzhenSelectedCourseIdentityParser.parseOrNull(response.body())
+            ?: throw IOException("Selected-course confirmation response is invalid")
     }
 
     fun queryShenzhenSchoolCourses(

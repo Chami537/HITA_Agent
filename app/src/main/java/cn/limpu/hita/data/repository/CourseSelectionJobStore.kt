@@ -175,6 +175,7 @@ object CourseSelectionJobCodec {
     )
 
     private data class ResultPayload(
+        val requestId: String,
         val courseId: String,
         val status: String,
         val message: String,
@@ -220,6 +221,7 @@ object CourseSelectionJobCodec {
         },
         results = job.results.map { result ->
             ResultPayload(
+                requestId = result.requestId,
                 courseId = result.courseId,
                 status = result.status.name,
                 message = CourseSelectionMessageSanitizer.sanitize(result.message),
@@ -270,6 +272,7 @@ object CourseSelectionJobCodec {
         val result = element.takeIf(JsonElement::isJsonObject)?.asJsonObject ?: return null
         val confirmedAt = result.optionalTimestamp("confirmedAtMillis") ?: return null
         return CourseSelectionCourseResult(
+            requestId = result.optionalString("requestId") ?: return null,
             courseId = result.requiredString("courseId", nonBlank = true) ?: return null,
             status = result.requiredEnum<CourseSelectionCourseStatus>("status") ?: return null,
             message = CourseSelectionMessageSanitizer.sanitize(
@@ -295,6 +298,9 @@ object CourseSelectionJobCodec {
             ?: return null
         return value.takeIf { !nonBlank || it.isNotBlank() }
     }
+
+    private fun JsonObject.optionalString(name: String): String? =
+        if (has(name)) requiredString(name) else ""
 
     private fun JsonObject.requiredTimestamp(name: String): Long? = get(name)
         ?.takeIf { it.isJsonPrimitive && it.asJsonPrimitive.isNumber }

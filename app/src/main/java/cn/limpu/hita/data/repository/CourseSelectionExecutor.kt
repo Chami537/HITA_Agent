@@ -6,6 +6,7 @@ import cn.limpu.hita.data.model.eas.CourseSelectionJob
 import cn.limpu.hita.data.model.eas.CourseSelectionJobCourse
 import cn.limpu.hita.data.model.eas.CourseSelectionJobStatus
 import cn.limpu.hita.data.model.eas.EASToken
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
@@ -64,21 +65,41 @@ internal class CourseSelectionExecutor(
         job: CourseSelectionJob,
         persistProgress: (CourseSelectionJob) -> Unit = {}
     ): CourseSelectionJob = coroutineScope {
-        val distinctCourses = job.courses.distinctBy { it.courseId }
+        val distinctCourses = job.courses.distinctBy { it.requestId }
         require(distinctCourses.size <= CourseSelectionJobPolicy.MAX_COURSES) {
             "At most ${CourseSelectionJobPolicy.MAX_COURSES} distinct courses may be submitted"
         }
         val progress = CourseSelectionExecutionProgress(job, nowMillis, persistProgress)
-        val attemptedCourseIds = job.results.mapTo(hashSetOf()) { it.courseId }
+        val requestIdByCourseId = distinctCourses.distinctBy { it.courseId }
+            .associate { it.courseId to it.requestId }
+        val attemptedRequestIds = job.results.mapTo(hashSetOf()) { result ->
+            result.requestId.ifBlank { requestIdByCourseId[result.courseId].orEmpty() }
+        }
         val owner = Any()
         try {
             gateway.beginExecution(job, owner)
             val semaphore = Semaphore(CourseSelectionJobPolicy.MAX_CONCURRENCY)
-            distinctCourses.filterNot { it.courseId in attemptedCourseIds }.map { course ->
+            distinctCourses.filterNot { it.requestId in attemptedRequestIds }.map { course ->
                 async {
                     semaphore.withPermit {
                         progress.markAttempted(course)
-                        progress.complete(gateway.submitOnce(job, course))
+                        val result = try {
+                            gateway.submitOnce(job, course).copy(
+                                requestId = course.requestId,
+                                courseId = course.courseId
+                            )
+                        } catch (cancellation: CancellationException) {
+                            throw cancellation
+                        } catch (_: Exception) {
+                            CourseSelectionCourseResult(
+                                requestId = course.requestId,
+                                courseId = course.courseId,
+                                status = CourseSelectionCourseStatus.UNKNOWN,
+                                message = "",
+                                submittedAtMillis = nowMillis()
+                            )
+                        }
+                        progress.complete(result)
                     }
                 }
             }.awaitAll()
@@ -104,13 +125,37 @@ internal class CourseSelectionExecutor(
     }
 
     private suspend fun confirmWithinExecution(job: CourseSelectionJob): CourseSelectionJob {
-        val selectedIds = gateway.selectedRequestIds(job)
-        val courseById = job.courses.distinctBy { it.courseId }.associateBy { it.courseId }
+        val selectedIds = try {
+            gateway.selectedRequestIds(job)
+        } catch (cancellation: CancellationException) {
+            throw cancellation
+        } catch (_: Exception) {
+            val hasUncertainResult = job.results.any { result ->
+                result.status == CourseSelectionCourseStatus.UNCONFIRMED ||
+                    result.status == CourseSelectionCourseStatus.UNKNOWN
+            }
+            return job.copy(
+                status = if (hasUncertainResult) {
+                    CourseSelectionJobStatus.NEEDS_CONFIRMATION
+                } else {
+                    CourseSelectionJobPolicy.aggregateStatus(
+                        expectedCourseCount = job.courses.distinctBy { it.requestId }.size,
+                        results = job.results
+                    )
+                }
+            )
+        }
+        val courses = job.courses.distinctBy { it.requestId }
+        val courseByRequestId = courses.associateBy { it.requestId }
+        val requestIdByCourseId = courses.distinctBy { it.courseId }
+            .associate { it.courseId to it.requestId }
         val confirmedAtMillis = nowMillis()
         val confirmedResults = job.results.map { result ->
-            val course = courseById[result.courseId]
+            val requestId = result.requestId.ifBlank { requestIdByCourseId[result.courseId].orEmpty() }
+            val course = courseByRequestId[requestId]
             if (course != null && course.identities().any(selectedIds::contains)) {
                 result.copy(
+                    requestId = course.requestId,
                     status = CourseSelectionCourseStatus.CONFIRMED,
                     confirmedAtMillis = confirmedAtMillis
                 )
@@ -120,7 +165,7 @@ internal class CourseSelectionExecutor(
         }
         return job.copy(
             status = CourseSelectionJobPolicy.aggregateStatus(
-                expectedCourseCount = courseById.size,
+                expectedCourseCount = courseByRequestId.size,
                 results = confirmedResults
             ),
             results = confirmedResults
@@ -141,6 +186,7 @@ private class CourseSelectionExecutionProgress(
 
     fun markAttempted(course: CourseSelectionJobCourse) {
         replaceResult(CourseSelectionCourseResult(
+            requestId = course.requestId,
             courseId = course.courseId,
             status = CourseSelectionCourseStatus.UNKNOWN,
             message = "",
@@ -157,10 +203,14 @@ private class CourseSelectionExecutionProgress(
 
     private fun replaceResult(result: CourseSelectionCourseResult) {
         synchronized(lock) {
-            val resultsByCourse = currentJob.results.associateByTo(linkedMapOf()) { it.courseId }
-            resultsByCourse[result.courseId] = result
-            val orderedResults = currentJob.courses.distinctBy { it.courseId }
-                .mapNotNull { resultsByCourse[it.courseId] }
+            val requestIdByCourseId = currentJob.courses.distinctBy { it.courseId }
+                .associate { it.courseId to it.requestId }
+            fun resultRequestId(value: CourseSelectionCourseResult): String =
+                value.requestId.ifBlank { requestIdByCourseId[value.courseId].orEmpty() }
+            val resultsByRequest = currentJob.results.associateByTo(linkedMapOf(), ::resultRequestId)
+            resultsByRequest[resultRequestId(result)] = result
+            val orderedResults = currentJob.courses.distinctBy { it.requestId }
+                .mapNotNull { resultsByRequest[it.requestId] }
             currentJob = currentJob.copy(results = orderedResults)
             persist(currentJob)
         }

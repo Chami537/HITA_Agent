@@ -212,10 +212,11 @@ class CourseSelectionJobCoordinator @Inject constructor(
     }
 
     private fun terminalMessage(status: CourseSelectionJobStatus): String = appContext.getString(
-        if (status == CourseSelectionJobStatus.COMPLETED) {
-            R.string.course_selection_notification_completed
-        } else {
-            R.string.course_selection_notification_failed
+        when (status) {
+            CourseSelectionJobStatus.COMPLETED -> R.string.course_selection_notification_completed
+            CourseSelectionJobStatus.NEEDS_CONFIRMATION ->
+                R.string.course_selection_notification_needs_confirmation
+            else -> R.string.course_selection_notification_failed
         }
     )
 }

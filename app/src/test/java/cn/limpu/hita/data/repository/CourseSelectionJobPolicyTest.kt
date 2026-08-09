@@ -26,18 +26,17 @@ class CourseSelectionJobPolicyTest {
     }
 
     @Test
-    fun `build courses keeps only the first request for a duplicate course id`() {
+    fun `build courses keeps distinct requests for the same course id`() {
         val first = course(id = "task-a", requestId = "request-a", courseId = "course-a")
-        val duplicateRequest = course(id = "task-b", requestId = "request-a", courseId = "course-b")
-        val laterUniqueRequest = course(id = "task-c", requestId = "request-b", courseId = "course-b")
+        val alternative = course(id = "task-b", requestId = "request-b", courseId = "course-a")
 
         val result = CourseSelectionJobPolicy.buildCourses(
-            listOf(first, duplicateRequest, laterUniqueRequest),
+            listOf(first, alternative),
             ShenzhenSelectionPool("xx-b-b", "限选课程池")
         )
 
         assertEquals(listOf("request-a", "request-b"), result.map { it.requestId })
-        assertEquals(listOf("course-a", "course-b"), result.map { it.courseId })
+        assertEquals(listOf("course-a", "course-a"), result.map { it.courseId })
     }
 
     @Test(expected = IllegalArgumentException::class)

@@ -37,7 +37,10 @@ class CourseSelectionJobStorePolicyTest {
 
     @Test
     fun `job payload round trips without credentials`() {
-        val job = job(status = CourseSelectionJobStatus.WAITING).copy(
+        val job = job(
+            status = CourseSelectionJobStatus.WAITING,
+            results = listOf(result())
+        ).copy(
             credentialScopeGeneration = 8_135_021L
         )
         val encoded = CourseSelectionJobCodec.encode(listOf(job))
@@ -50,7 +53,21 @@ class CourseSelectionJobStorePolicyTest {
         assertFalse(encoded.contains("JSESSIONID", ignoreCase = true))
         assertFalse(encoded.contains("Bearer", ignoreCase = true))
         assertEquals(8_135_021L, decoded.credentialScopeGeneration)
+        assertEquals("request-1", decoded.results.single().requestId)
         assertEquals(job, decoded)
+    }
+
+    @Test
+    fun `legacy result payload without request id remains readable`() {
+        val encoded = CourseSelectionJobCodec.encode(listOf(job(
+            status = CourseSelectionJobStatus.FAILED,
+            results = listOf(result())
+        ))).replace("\"results\":[{\"requestId\":\"request-1\",", "\"results\":[{")
+
+        val decoded = CourseSelectionJobCodec.decode(encoded).single()
+
+        assertEquals("", decoded.results.single().requestId)
+        assertEquals("course-1", decoded.results.single().courseId)
     }
 
     @Test
@@ -287,6 +304,7 @@ class CourseSelectionJobStorePolicyTest {
     )
 
     private fun result(message: String = "safe result") = CourseSelectionCourseResult(
+        requestId = "request-1",
         courseId = "course-1",
         status = CourseSelectionCourseStatus.UNKNOWN,
         message = message,
