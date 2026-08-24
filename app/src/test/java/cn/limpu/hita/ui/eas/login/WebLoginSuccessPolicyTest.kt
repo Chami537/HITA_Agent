@@ -30,6 +30,19 @@ class WebLoginSuccessPolicyTest {
     }
 
     @Test
+    fun `Weihai new EAS root page with authenticated cookies is success`() {
+        assertTrue(
+            WebLoginSuccessPolicy.isWeihaiAuthenticatedPage(
+                "https://webvpn.hitwh.edu.cn/http/eas/",
+                mapOf(
+                    "wengine_vpn_ticket" to "ticket",
+                    "JSESSIONID" to "session"
+                )
+            )
+        )
+    }
+
+    @Test
     fun `Shenzhen probes both proxy and direct hosts`() {
         val urls = WebLoginSuccessPolicy.shenzhenCookieProbeUrls(
             proxyBaseUrl = "https://jw-hitsz-edu-cn.hitsz.edu.cn",
