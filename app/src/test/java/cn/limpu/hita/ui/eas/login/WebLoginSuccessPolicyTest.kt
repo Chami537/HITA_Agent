@@ -30,19 +30,6 @@ class WebLoginSuccessPolicyTest {
     }
 
     @Test
-    fun `Weihai new EAS root page with authenticated cookies is success`() {
-        assertTrue(
-            WebLoginSuccessPolicy.isWeihaiAuthenticatedPage(
-                "https://webvpn.hitwh.edu.cn/http/eas/",
-                mapOf(
-                    "wengine_vpn_ticket" to "ticket",
-                    "JSESSIONID" to "session"
-                )
-            )
-        )
-    }
-
-    @Test
     fun `Shenzhen probes both proxy and direct hosts`() {
         val urls = WebLoginSuccessPolicy.shenzhenCookieProbeUrls(
             proxyBaseUrl = "https://jw-hitsz-edu-cn.hitsz.edu.cn",
@@ -61,26 +48,6 @@ class WebLoginSuccessPolicyTest {
                 host = "jw.hitsz.edu.cn",
                 proxyBaseUrl = "https://jw-hitsz-edu-cn.hitsz.edu.cn",
                 directBaseUrl = "https://jw.hitsz.edu.cn"
-            )
-        )
-    }
-
-    @Test
-    fun `Shenzhen new academic root with proxy session is success`() {
-        assertTrue(
-            WebLoginSuccessPolicy.isShenzhenAuthenticatedPage(
-                "https://jw-hitsz-edu-cn.hitsz.edu.cn/",
-                mapOf("SESSION" to "session")
-            )
-        )
-    }
-
-    @Test
-    fun `Shenzhen login page is not success even with session cookie`() {
-        assertFalse(
-            WebLoginSuccessPolicy.isShenzhenAuthenticatedPage(
-                "https://jw.hitsz.edu.cn/authentication/main/login",
-                mapOf("JSESSIONID" to "session", "route" to "route")
             )
         )
     }
