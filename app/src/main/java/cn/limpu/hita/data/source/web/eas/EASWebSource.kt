@@ -2,10 +2,15 @@ package cn.limpu.hita.data.source.web.eas
 
 import android.annotation.SuppressLint
 import android.util.Base64
+import androidx.annotation.WorkerThread
 import androidx.lifecycle.LiveData
 import androidx.lifecycle.MutableLiveData
 import cn.limpu.hita.utils.LogUtils
 import com.limpu.component.data.DataState
+import cn.limpu.hita.data.model.eas.CourseSelectionCourseResult
+import cn.limpu.hita.data.model.eas.CourseSelectionCourseStatus
+import cn.limpu.hita.data.model.eas.CourseSelectionJob
+import cn.limpu.hita.data.model.eas.CourseSelectionJobCourse
 import cn.limpu.hita.data.model.eas.CourseItem
 import cn.limpu.hita.data.model.eas.CourseScoreItem
 import cn.limpu.hita.data.model.eas.EASToken
@@ -40,9 +45,15 @@ import cn.limpu.hita.ui.eas.classroom.BuildingItem
 import cn.limpu.hita.ui.eas.classroom.ClassroomItem
 import cn.limpu.hita.utils.JsonUtils
 import cn.limpu.hita.utils.CourseCodeUtils
+import com.google.gson.JsonArray
+import com.google.gson.JsonElement
+import com.google.gson.JsonObject
+import com.google.gson.JsonParseException
+import com.google.gson.JsonParser
 import org.json.JSONObject
 import org.jsoup.Connection
 import org.jsoup.Jsoup
+import java.io.IOException
 import java.math.BigInteger
 import java.security.KeyFactory
 import java.security.PublicKey
@@ -54,6 +65,68 @@ import java.util.Locale
 import java.util.concurrent.ConcurrentHashMap
 import javax.crypto.Cipher
 
+internal fun interface ShenzhenCourseSelectionTransport {
+    @Throws(IOException::class)
+    fun execute(request: Connection): Connection.Response
+}
+
+internal object ShenzhenSelectedCourseIdentityParser {
+    private val rawIdentityKeys = setOf("id", "rwid", "rwh", "selectionrequestid", "taskid")
+
+    fun parse(body: String): Set<String> {
+        val root = try {
+            JsonParser().parse(body)
+        } catch (_: JsonParseException) {
+            return emptySet()
+        }
+        if (!root.isJsonObject) return emptySet()
+        val rows = findSelectedRows(root) ?: return emptySet()
+        return buildSet {
+            rows.forEach { element ->
+                val row = element.takeIf { it.isJsonObject }?.asJsonObject ?: return@forEach
+                row.entrySet().forEach { (key, value) ->
+                    val normalizedKey = key.replace("_", "").lowercase(Locale.ROOT)
+                    if (normalizedKey in rawIdentityKeys) {
+                        rawString(value)?.let(::add)
+                    }
+                }
+            }
+        }
+    }
+
+    private fun findSelectedRows(element: JsonElement): JsonArray? {
+        if (!element.isJsonObject) return null
+        val objectValue = element.asJsonObject
+        objectValue.entrySet()
+            .firstOrNull { (key, _) -> key.replace("_", "").equals("yxkclist", ignoreCase = true) }
+            ?.value
+            ?.let(::rowsFromContainer)
+            ?.let { return it }
+        for (wrapper in listOf("content", "data", "result")) {
+            objectValue.get(wrapper)?.let(::findSelectedRows)?.let { return it }
+        }
+        return null
+    }
+
+    private fun rowsFromContainer(element: JsonElement): JsonArray? = when {
+        element.isJsonArray -> element.asJsonArray
+        element.isJsonObject -> {
+            val objectValue = element.asJsonObject
+            sequenceOf("list", "rows")
+                .mapNotNull { key -> objectValue.get(key)?.takeIf { it.isJsonArray }?.asJsonArray }
+                .firstOrNull()
+        }
+        else -> null
+    }
+
+    private fun rawString(value: JsonElement): String? = value
+        .takeIf { it.isJsonPrimitive }
+        ?.asJsonPrimitive
+        ?.asString
+        ?.trim()
+        ?.takeIf { it.isNotEmpty() && !it.equals("null", ignoreCase = true) }
+}
+
 /**
  * 教务系统 API 数据源 —— 新版接口 (mjw.hitsz.edu.cn/incoSpringBoot)
  *
@@ -63,7 +136,11 @@ import javax.crypto.Cipher
  *  - route / JSESSIONID cookie 由 Jsoup session 维护；每次新建请求时手动注入已保存的 cookies
  */
 class EASWebSource internal constructor(
-    private val onTokenRefreshed: ((EASToken) -> Unit)? = null
+    private val onTokenRefreshed: ((EASToken) -> Unit)? = null,
+    private val courseSelectionHostOverride: String? = null,
+    private val courseSelectionTimeoutMillis: Int? = null,
+    private val courseSelectionTransport: ShenzhenCourseSelectionTransport =
+        ShenzhenCourseSelectionTransport { request -> request.execute() }
 ) : EASService {
 
     private val hostName = "https://mjw.hitsz.edu.cn/incoSpringBoot"
@@ -231,6 +308,46 @@ class EASWebSource internal constructor(
         }
         onTokenRefreshed?.invoke(token)
         return resp
+    }
+
+    private fun jwSelectionFormPostOnce(
+        token: EASToken,
+        path: String,
+        data: Map<String, String>,
+        refererPath: String = "/Xsxk/query/1"
+    ): Connection.Response {
+        require(token.hasShenzhenWebSession()) { "A Shenzhen Web session is required" }
+        val jwHostName = courseSelectionHostOverride?.trimEnd('/') ?: jwHostName(token)
+        val cookieSnapshot = synchronized(token) { HashMap(token.webCookies) }
+        val request = Jsoup.newSession()
+            .url("$jwHostName$path")
+            .header("Accept", "*/*")
+            .header("Accept-Language", "zh-CN,zh;q=0.9")
+            .header("RoleCode", "01")
+            .header("X-Requested-With", "XMLHttpRequest")
+            .header("Origin", jwHostName)
+            .header("Referer", "$jwHostName$refererPath")
+            .header("Content-Type", "application/x-www-form-urlencoded; charset=UTF-8")
+            .userAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36")
+            .cookies(cookieSnapshot)
+            .timeout(courseSelectionTimeoutMillis ?: jwRequestTimeout(path))
+            .followRedirects(false)
+            .ignoreContentType(true)
+            .ignoreHttpErrors(true)
+            .method(Connection.Method.POST)
+        data.forEach { (key, value) -> request.data(key, value) }
+
+        return courseSelectionTransport.execute(request)
+    }
+
+    private fun mergeShenzhenCourseSelectionCookies(
+        token: EASToken,
+        response: Connection.Response
+    ) {
+        synchronized(token) {
+            token.webCookies.putAll(response.cookies())
+        }
+        onTokenRefreshed?.invoke(token)
     }
 
     private fun jwJsonPost(
@@ -725,6 +842,73 @@ class EASWebSource internal constructor(
             source = ShenzhenCourseCatalogSource.AVAILABLE,
             selectionPoolName = pool.name
         )
+    }
+
+    @WorkerThread
+    fun submitShenzhenCourseOnce(
+        token: EASToken,
+        job: CourseSelectionJob,
+        course: CourseSelectionJobCourse
+    ): CourseSelectionCourseResult {
+        require(token.hasShenzhenWebSession()) { "A Shenzhen Web session is required" }
+        val submittedAtMillis = System.currentTimeMillis()
+        val response = try {
+            jwSelectionFormPostOnce(
+                token = token,
+                path = "/Xsxk/addGouwuche",
+                data = ShenzhenCourseSelectionForm.build(
+                    studentType = token.getStudentType(),
+                    termYearCode = job.termYearCode,
+                    termCode = job.termCode,
+                    poolCode = course.poolCode,
+                    requestId = course.requestId
+                )
+            )
+        } catch (_: IOException) {
+            return CourseSelectionCourseResult(
+                courseId = course.courseId,
+                status = CourseSelectionCourseStatus.UNKNOWN,
+                message = "",
+                submittedAtMillis = submittedAtMillis
+            )
+        }
+        mergeShenzhenCourseSelectionCookies(token, response)
+        val parsed = ShenzhenCourseSelectionResponseParser.parse(
+            statusCode = response.statusCode(),
+            responseUrl = response.url().toString(),
+            body = response.body()
+        )
+        return CourseSelectionCourseResult(
+            courseId = course.courseId,
+            status = parsed.status,
+            message = parsed.message,
+            submittedAtMillis = submittedAtMillis
+        )
+    }
+
+    @WorkerThread
+    fun getShenzhenSelectedRequestIdsOnce(
+        token: EASToken,
+        job: CourseSelectionJob
+    ): Set<String> {
+        require(token.hasShenzhenWebSession()) { "A Shenzhen Web session is required" }
+        val response = try {
+            jwSelectionFormPostOnce(
+                token = token,
+                path = "/Xsxk/queryYxkc?sf_request_type=ajax",
+                data = shenzhenSelectedSubjectsForm(
+                    token,
+                    TermItem(job.termYearCode, job.termYearCode, job.termCode, "")
+                )
+            )
+        } catch (_: IOException) {
+            return emptySet()
+        }
+        mergeShenzhenCourseSelectionCookies(token, response)
+        if (isJwAuthenticationExpired(response) || response.statusCode() !in 200..299) {
+            return emptySet()
+        }
+        return ShenzhenSelectedCourseIdentityParser.parse(response.body())
     }
 
     fun queryShenzhenSchoolCourses(
@@ -2317,7 +2501,14 @@ class EASWebSource internal constructor(
     ): Connection.Response = jwFormPost(
         token,
         "/Xsxk/queryYxkc?sf_request_type=ajax",
-        mapOf(
+        shenzhenSelectedSubjectsForm(token, term),
+        "/Xsxk/query/1"
+    )
+
+    private fun shenzhenSelectedSubjectsForm(
+        token: EASToken,
+        term: TermItem
+    ): Map<String, String> = mapOf(
             "cxsfmt" to "0",
             "p_pylx" to token.getStudentType(),
             "mxpylx" to token.getStudentType(),
@@ -2359,9 +2550,7 @@ class EASWebSource internal constructor(
             "p_chaxunxkfsdm" to "",
             "pageNum" to "1",
             "pageSize" to "200"
-        ),
-        "/Xsxk/query/1"
-    )
+        )
 
     fun getShenzhenSelectedCourses(
         token: EASToken,

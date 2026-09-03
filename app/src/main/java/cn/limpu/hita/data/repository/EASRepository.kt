@@ -49,25 +49,62 @@ import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicLong
+import java.security.SecureRandom
 import cn.limpu.hita.utils.LogUtils
 import org.json.JSONArray
 import org.json.JSONObject
 import kotlin.concurrent.thread
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+
+internal class CourseSelectionExecutionTokenStore(
+    private val loadToken: () -> EASToken
+) {
+    private data class ActiveExecution(
+        val owner: Any,
+        val token: EASToken
+    )
+
+    private val lock = Any()
+    private val activeExecutions = mutableMapOf<String, ActiveExecution>()
+
+    fun begin(job: CourseSelectionJob, owner: Any): EASToken = synchronized(lock) {
+        check(job.id !in activeExecutions) { "Course-selection job is already executing" }
+        loadToken().also { token ->
+            CourseSelectionCredentialScopePolicy.requireMatching(job, token)
+            activeExecutions[job.id] = ActiveExecution(owner, token)
+        }
+    }
+
+    fun requireToken(job: CourseSelectionJob): EASToken = synchronized(lock) {
+        CourseSelectionCredentialScopePolicy.requireMatching(job, loadToken())
+        activeExecutions[job.id]?.token ?: error("Course-selection job is not executing")
+    }
+
+    fun end(jobId: String, owner: Any) {
+        synchronized(lock) {
+            if (activeExecutions[jobId]?.owner === owner) {
+                activeExecutions.remove(jobId)
+            }
+        }
+    }
+}
 
 @Singleton
 class EASRepository @Inject constructor(
     application: Application,
     private val easPreferenceSource: EasPreferenceSource,
     private val timetablePreferenceSource: TimetablePreferenceSource
-) {
+) : ShenzhenCourseSelectionGateway {
     private val appContext = application.applicationContext
     private val tokenStateLock = Any()
     private val authEpoch = AtomicLong(easPreferenceSource.getEasToken().sessionGeneration)
+    private val credentialScopeRandom = SecureRandom()
     private val autoImportInProgress = AtomicBoolean(false)
     @Volatile private var acceptServiceTokenRefresh = easPreferenceSource.getEasToken().isLogin()
-    private val shenzhenService: EASWebSource = EASWebSource { token ->
-        saveRefreshedEasToken(token)
-    }
+    private val shenzhenService: EASWebSource = EASWebSource(
+        onTokenRefreshed = { token -> saveRefreshedEasToken(token) }
+    )
     private val benbuService: EASService = BenbuEASWebSource { token ->
         saveRefreshedEasToken(token)
     }
@@ -84,6 +121,8 @@ class EASRepository @Inject constructor(
     private val gson = Gson()
     private val scoreListType = object : TypeToken<List<CourseScoreItem>>() {}.type
     private val shenzhenGradeCourseListType = object : TypeToken<List<ShenzhenGradeCourse>>() {}.type
+    private val courseSelectionExecutionTokens =
+        CourseSelectionExecutionTokenStore(easPreferenceSource::getEasToken)
 
     companion object {
         private const val LOGIN_ENRICH_MAX_RETRIES = 3
@@ -119,6 +158,61 @@ class EASRepository @Inject constructor(
     fun getCurrentCampus(): EASToken.Campus {
         return easPreferenceSource.getEasToken().campus
     }
+
+    override suspend fun beginExecution(
+        job: CourseSelectionJob,
+        owner: Any
+    ) {
+        withContext(Dispatchers.IO) {
+            courseSelectionExecutionTokens.begin(job, owner)
+        }
+    }
+
+    override suspend fun endExecution(
+        job: CourseSelectionJob,
+        owner: Any
+    ) {
+        withContext(Dispatchers.IO) {
+            courseSelectionExecutionTokens.end(job.id, owner)
+        }
+    }
+
+    override suspend fun submitOnce(
+        job: CourseSelectionJob,
+        course: CourseSelectionJobCourse
+    ): CourseSelectionCourseResult = withContext(Dispatchers.IO) {
+        shenzhenService.submitShenzhenCourseOnce(
+            courseSelectionExecutionTokens.requireToken(job),
+            job,
+            course
+        )
+    }
+
+    override suspend fun selectedRequestIds(job: CourseSelectionJob): Set<String> =
+        withContext(Dispatchers.IO) {
+            shenzhenService.getShenzhenSelectedRequestIdsOnce(
+                courseSelectionExecutionTokens.requireToken(job),
+                job
+            )
+        }
+
+    internal fun currentCourseSelectionCredentialScopeGeneration(): Long =
+        synchronized(tokenStateLock) {
+            val token = easPreferenceSource.getEasToken()
+            require(token.campus == EASToken.Campus.SHENZHEN) {
+                "Course selection is available for Shenzhen only"
+            }
+            require(token.hasShenzhenWebSession()) {
+                "A Shenzhen Web session is required"
+            }
+            if (token.sessionGeneration <= 0L) {
+                token.sessionGeneration = nextCredentialScopeGeneration()
+                authEpoch.set(token.sessionGeneration)
+                easPreferenceSource.saveEasToken(token)
+                publishEasToken(token)
+            }
+            token.sessionGeneration
+        }
 
     /**
      * 进行登录
@@ -1662,7 +1756,14 @@ class EASRepository @Inject constructor(
             LogUtils.d("saveEasToken: ignored result from an operation cancelled by logout")
             return@synchronized false
         }
-        token.sessionGeneration = expectedEpoch
+        val storedToken = easPreferenceSource.getEasToken()
+        token.sessionGeneration = EasSessionGenerationGuard.resolveCredentialScopeGeneration(
+            storedToken = storedToken,
+            incomingToken = token,
+            currentGeneration = authEpoch.get(),
+            nextGeneration = ::nextCredentialScopeGeneration
+        )
+        authEpoch.set(token.sessionGeneration)
         val mergedToken = mergeWithStoredEasToken(token)
         easPreferenceSource.saveEasToken(mergedToken)
         acceptServiceTokenRefresh = mergedToken.isLogin()
@@ -1682,6 +1783,14 @@ class EASRepository @Inject constructor(
                 LogUtils.d("saveRefreshedEasToken: ignored stale refresh after logout")
                 return
             }
+            val storedToken = easPreferenceSource.getEasToken()
+            token.sessionGeneration = EasSessionGenerationGuard.resolveCredentialScopeGeneration(
+                storedToken = storedToken,
+                incomingToken = token,
+                currentGeneration = authEpoch.get(),
+                nextGeneration = ::nextCredentialScopeGeneration
+            )
+            authEpoch.set(token.sessionGeneration)
             val mergedToken = mergeWithStoredEasToken(token)
             easPreferenceSource.saveEasToken(mergedToken)
             publishEasToken(mergedToken)
@@ -1743,7 +1852,7 @@ class EASRepository @Inject constructor(
         val previousToken: EASToken
         synchronized(tokenStateLock) {
             previousToken = easPreferenceSource.getEasToken()
-            authEpoch.incrementAndGet()
+            authEpoch.set(nextCredentialScopeGeneration())
             acceptServiceTokenRefresh = false
             easPreferenceSource.clearEasToken()
             publishEasToken(easPreferenceSource.getEasToken())
@@ -1756,6 +1865,14 @@ class EASRepository @Inject constructor(
             }
         }
         clearShenzhenWebViewCookies(previousToken)
+    }
+
+    private fun nextCredentialScopeGeneration(): Long {
+        var generated: Long
+        do {
+            generated = credentialScopeRandom.nextLong() and Long.MAX_VALUE
+        } while (generated == 0L || generated == authEpoch.get())
+        return generated
     }
 
     private fun clearShenzhenWebViewCookies(token: EASToken) {

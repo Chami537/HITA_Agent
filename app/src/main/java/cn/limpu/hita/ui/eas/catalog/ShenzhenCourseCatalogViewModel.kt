@@ -4,7 +4,9 @@ import androidx.lifecycle.LiveData
 import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.MediatorLiveData
 import androidx.lifecycle.SavedStateHandle
+import androidx.lifecycle.asLiveData
 import androidx.lifecycle.switchMap
+import androidx.lifecycle.viewModelScope
 import com.limpu.component.data.DataState
 import com.limpu.component.data.Trigger
 import cn.limpu.hita.data.model.eas.ShenzhenCourseCatalogPage
@@ -15,6 +17,10 @@ import cn.limpu.hita.data.model.eas.ShenzhenHistoricalFailureReport
 import cn.limpu.hita.data.model.eas.ShenzhenSelectionPool
 import cn.limpu.hita.data.model.eas.ShenzhenSelectionPools
 import cn.limpu.hita.data.model.eas.TermItem
+import cn.limpu.hita.data.model.eas.CourseSelectionJob
+import cn.limpu.hita.data.model.eas.CourseSelectionJobStatus
+import cn.limpu.hita.data.repository.CourseSelectionJobCoordinator
+import cn.limpu.hita.data.repository.CourseSelectionJobPolicy
 import cn.limpu.hita.data.repository.EASRepository
 import cn.limpu.hita.data.repository.TimetableRepository
 import cn.limpu.hita.data.repository.CourseSelectionDraft
@@ -23,6 +29,8 @@ import cn.limpu.hita.data.model.timetable.TimePeriodInDay
 import cn.limpu.hita.ui.eas.EASViewModel
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.launch
 
 data class ShenzhenCourseCatalogQuery(
     val source: ShenzhenCourseCatalogSource,
@@ -39,11 +47,109 @@ data class ShenzhenHistoricalFailureRequest(
     val studentType: String
 )
 
+enum class CourseSelectionScheduleValidation {
+    VALID,
+    TOO_SOON,
+    TOO_FAR
+}
+
+enum class CourseSelectionCommandFailure {
+    NO_TERM,
+    NO_POOL,
+    NO_COURSES,
+    TOO_MANY_COURSES,
+    SCHEDULE_TOO_SOON,
+    SCHEDULE_TOO_FAR,
+    CREATION_FAILED,
+    CANNOT_CANCEL,
+    CANNOT_CONFIRM
+}
+
+sealed interface CourseSelectionCommandResult {
+    data class Created(val jobId: String) : CourseSelectionCommandResult
+    data class Rejected(val failure: CourseSelectionCommandFailure) : CourseSelectionCommandResult
+}
+
+object ShenzhenCourseSelectionUiPolicy {
+    fun canSelect(course: ShenzhenCourseCatalogItem): Boolean =
+        course.source == ShenzhenCourseCatalogSource.AVAILABLE
+
+    fun validateSchedule(now: Long, scheduled: Long): CourseSelectionScheduleValidation {
+        val delay = scheduled - now
+        return when {
+            delay < CourseSelectionJobPolicy.MIN_SCHEDULE_DELAY_MS ->
+                CourseSelectionScheduleValidation.TOO_SOON
+            delay > CourseSelectionJobPolicy.MAX_SCHEDULE_AHEAD_MS ->
+                CourseSelectionScheduleValidation.TOO_FAR
+            else -> CourseSelectionScheduleValidation.VALID
+        }
+    }
+}
+
+internal class ShenzhenCourseSelectionDraftState {
+    private val selectedCoursesByRequestId = linkedMapOf<String, ShenzhenCourseCatalogItem>()
+
+    fun toggle(course: ShenzhenCourseCatalogItem): Boolean {
+        if (!ShenzhenCourseSelectionUiPolicy.canSelect(course)) return false
+        val requestId = course.selectionRequestId
+        if (requestId.isBlank()) return false
+        if (selectedCoursesByRequestId.containsKey(requestId)) {
+            selectedCoursesByRequestId.remove(requestId)
+            return true
+        }
+        if (selectedCoursesByRequestId.size >= CourseSelectionJobPolicy.MAX_COURSES) return false
+        selectedCoursesByRequestId[requestId] = course
+        return true
+    }
+
+    fun clear() {
+        selectedCoursesByRequestId.clear()
+    }
+
+    fun requestIds(): Set<String> = LinkedHashSet(selectedCoursesByRequestId.keys)
+
+    fun selectedCourses(cards: List<ShenzhenCourseCatalogItem>): List<ShenzhenCourseCatalogItem> {
+        val cardRequestIds = cards.mapNotNull { course ->
+            course.selectionRequestId.takeIf(selectedCoursesByRequestId::containsKey)
+        }
+        val cardRequestIdSet = cardRequestIds.toSet()
+        return (cardRequestIds + selectedCoursesByRequestId.keys.filterNot(cardRequestIdSet::contains))
+            .mapNotNull(selectedCoursesByRequestId::get)
+    }
+
+    fun <T> create(
+        cards: List<ShenzhenCourseCatalogItem>,
+        create: (List<ShenzhenCourseCatalogItem>) -> T
+    ): Result<T> = runCatching { create(selectedCourses(cards)) }
+        .onSuccess { clear() }
+
+    fun routeCancellation(jobId: String, cancel: (String) -> Boolean): Boolean =
+        jobId.isNotBlank() && cancel(jobId)
+
+    fun routeReadOnlyConfirmation(
+        jobId: String,
+        status: CourseSelectionJobStatus,
+        confirm: (String) -> Unit
+    ): Boolean {
+        if (jobId.isBlank() || status in setOf(
+                CourseSelectionJobStatus.WAITING,
+                CourseSelectionJobStatus.RUNNING,
+                CourseSelectionJobStatus.CANCELLED
+            )
+        ) {
+            return false
+        }
+        confirm(jobId)
+        return true
+    }
+}
+
 @HiltViewModel
 class ShenzhenCourseCatalogViewModel @Inject constructor(
     easRepo: EASRepository,
     private val timetableRepository: TimetableRepository,
-    private val savedStateHandle: SavedStateHandle
+    private val savedStateHandle: SavedStateHandle,
+    private val courseSelectionJobCoordinator: CourseSelectionJobCoordinator
 ) : EASViewModel(easRepo) {
     companion object {
         private const val STATE_TERM_ID = "shenzhen_catalog_term_id"
@@ -123,6 +229,17 @@ class ShenzhenCourseCatalogViewModel @Inject constructor(
             )
         }
     }
+    private val submissionDraftState = ShenzhenCourseSelectionDraftState()
+    val selectedForSubmissionLiveData = MutableLiveData<Set<String>>(emptySet())
+    val selectedSubmissionCoursesLiveData = MediatorLiveData<List<ShenzhenCourseCatalogItem>>().apply {
+        addSource(selectedForSubmissionLiveData) { value = selectedSubmissionCoursesInCardOrder() }
+        addSource(coursesLiveData) { value = selectedSubmissionCoursesInCardOrder() }
+    }
+    val selectionJobsLiveData: LiveData<List<CourseSelectionJob>> =
+        courseSelectionJobCoordinator.jobs.asLiveData()
+    private val _selectionCommandEventLiveData = MutableLiveData<CourseSelectionCommandResult?>()
+    val selectionCommandEventLiveData: LiveData<CourseSelectionCommandResult?> =
+        _selectionCommandEventLiveData
     private val attachmentCourseLiveData = MutableLiveData<ShenzhenCourseCatalogItem>()
     val attachmentsLiveData: LiveData<DataState<List<ShenzhenCourseAttachment>>> =
         attachmentCourseLiveData.switchMap { course ->
@@ -153,6 +270,7 @@ class ShenzhenCourseCatalogViewModel @Inject constructor(
     }
 
     fun selectTerm(term: TermItem, resetPage: Boolean = true) {
+        if (selectedTermLiveData.value?.id != term.id) clearSubmissionDraft()
         selectedTermLiveData.value = term
         savedStateHandle[STATE_TERM_ID] = term.id
         followedSectionIdsLiveData.value = timetableRepository.followedSchoolSectionIds(term)
@@ -161,12 +279,14 @@ class ShenzhenCourseCatalogViewModel @Inject constructor(
     }
 
     fun selectSource(source: ShenzhenCourseCatalogSource) {
+        if (sourceLiveData.value != source) clearSubmissionDraft()
         sourceLiveData.value = source
         savedStateHandle[STATE_SOURCE] = source.name
         submitQuery(page = 1)
     }
 
     fun selectPool(pool: ShenzhenSelectionPool) {
+        if (selectedPoolLiveData.value?.code != pool.code) clearSubmissionDraft()
         selectedPoolLiveData.value = pool
         savedStateHandle[STATE_POOL] = pool.code
         submitQuery(page = 1)
@@ -197,6 +317,84 @@ class ShenzhenCourseCatalogViewModel @Inject constructor(
         val query = queryLiveData.value ?: return false
         queryLiveData.value = query.copy()
         return true
+    }
+
+    fun toggleCourseForSubmission(course: ShenzhenCourseCatalogItem): Boolean {
+        if (!submissionDraftState.toggle(course)) {
+            if (
+                ShenzhenCourseSelectionUiPolicy.canSelect(course) &&
+                course.selectionRequestId.isNotBlank() &&
+                course.selectionRequestId !in submissionDraftState.requestIds() &&
+                submissionDraftState.requestIds().size >= CourseSelectionJobPolicy.MAX_COURSES
+            ) {
+                publishSelectionCommand(CourseSelectionCommandResult.Rejected(
+                    CourseSelectionCommandFailure.TOO_MANY_COURSES
+                ))
+            }
+            return false
+        }
+        publishSubmissionSelection()
+        return true
+    }
+
+    fun clearSubmissionDraft() {
+        submissionDraftState.clear()
+        publishSubmissionSelection()
+    }
+
+    fun createImmediateSelectionJob(): CourseSelectionCommandResult = createSelectionJob { term, pool, courses ->
+        courseSelectionJobCoordinator.createImmediate(term, pool, courses)
+    }
+
+    fun createScheduledSelectionJob(scheduledAtMillis: Long): CourseSelectionCommandResult {
+        val validation = ShenzhenCourseSelectionUiPolicy.validateSchedule(
+            now = System.currentTimeMillis(),
+            scheduled = scheduledAtMillis
+        )
+        if (validation != CourseSelectionScheduleValidation.VALID) {
+            return publishSelectionCommand(CourseSelectionCommandResult.Rejected(
+                validation.toCommandFailure()
+            ))
+        }
+        return createSelectionJob { term, pool, courses ->
+            courseSelectionJobCoordinator.createScheduled(term, pool, courses, scheduledAtMillis)
+        }
+    }
+
+    fun cancelSelectionJob(jobId: String): Boolean {
+        val cancelled = submissionDraftState.routeCancellation(
+            jobId,
+            courseSelectionJobCoordinator::cancel
+        )
+        if (!cancelled) {
+            publishSelectionCommand(CourseSelectionCommandResult.Rejected(
+                CourseSelectionCommandFailure.CANNOT_CANCEL
+            ))
+        }
+        return cancelled
+    }
+
+    fun confirmSelectionJob(jobId: String): Boolean {
+        val job = courseSelectionJobCoordinator.jobs.value.firstOrNull { it.id == jobId }
+            ?: return false
+        var confirmationJobId: String? = null
+        if (!submissionDraftState.routeReadOnlyConfirmation(jobId, job.status) { confirmationJobId = it }) return false
+        viewModelScope.launch {
+            try {
+                courseSelectionJobCoordinator.confirm(checkNotNull(confirmationJobId))
+            } catch (cancellation: CancellationException) {
+                throw cancellation
+            } catch (_: Exception) {
+                publishSelectionCommand(CourseSelectionCommandResult.Rejected(
+                    CourseSelectionCommandFailure.CANNOT_CONFIRM
+                ))
+            }
+        }
+        return true
+    }
+
+    fun consumeSelectionCommandEvent() {
+        _selectionCommandEventLiveData.value = null
     }
 
     fun retryCoursePlanPreviewDependencies(): Boolean {
@@ -419,5 +617,57 @@ class ShenzhenCourseCatalogViewModel @Inject constructor(
             keyword = keyword,
             page = page
         )
+    }
+
+    private fun createSelectionJob(
+        create: (TermItem, ShenzhenSelectionPool, List<ShenzhenCourseCatalogItem>) -> CourseSelectionJob
+    ): CourseSelectionCommandResult {
+        val term = selectedTermLiveData.value ?: return publishSelectionCommand(
+            CourseSelectionCommandResult.Rejected(CourseSelectionCommandFailure.NO_TERM)
+        )
+        val cards = coursesLiveData.value?.data?.items.orEmpty()
+        val courses = submissionDraftState.selectedCourses(cards)
+        if (courses.isEmpty()) {
+            return publishSelectionCommand(CourseSelectionCommandResult.Rejected(
+                CourseSelectionCommandFailure.NO_COURSES
+            ))
+        }
+        val pool = selectedPoolLiveData.value ?: return publishSelectionCommand(
+            CourseSelectionCommandResult.Rejected(CourseSelectionCommandFailure.NO_POOL)
+        )
+        return submissionDraftState.create(cards) { create(term, pool, it) }
+            .fold(
+                onSuccess = { job ->
+                    publishSubmissionSelection()
+                    publishSelectionCommand(CourseSelectionCommandResult.Created(job.id))
+                },
+                onFailure = {
+                    publishSelectionCommand(CourseSelectionCommandResult.Rejected(
+                        CourseSelectionCommandFailure.CREATION_FAILED
+                    ))
+                }
+            )
+    }
+
+    private fun publishSubmissionSelection() {
+        selectedForSubmissionLiveData.value = submissionDraftState.requestIds()
+        selectedSubmissionCoursesLiveData.value = selectedSubmissionCoursesInCardOrder()
+    }
+
+    private fun publishSelectionCommand(
+        result: CourseSelectionCommandResult
+    ): CourseSelectionCommandResult {
+        _selectionCommandEventLiveData.value = result
+        return result
+    }
+
+    private fun selectedSubmissionCoursesInCardOrder(): List<ShenzhenCourseCatalogItem> {
+        return submissionDraftState.selectedCourses(coursesLiveData.value?.data?.items.orEmpty())
+    }
+
+    private fun CourseSelectionScheduleValidation.toCommandFailure(): CourseSelectionCommandFailure = when (this) {
+        CourseSelectionScheduleValidation.TOO_SOON -> CourseSelectionCommandFailure.SCHEDULE_TOO_SOON
+        CourseSelectionScheduleValidation.TOO_FAR -> CourseSelectionCommandFailure.SCHEDULE_TOO_FAR
+        CourseSelectionScheduleValidation.VALID -> error("A valid schedule has no command failure")
     }
 }
