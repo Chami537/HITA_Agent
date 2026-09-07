@@ -260,7 +260,7 @@ class WeihaiEASWebSource(
 
                 ensureTimetableResponse(term, body, statusCode)
                 val parsedCourses = BenbuScheduleParser.parseScheduleHtml(body)
-                val courses = mergeAdjacentCourses(parsedCourses)
+                val courses = mergeAdjacentCourses(parsedCourses, scheduleFor(token))
                 logEmptyTimetableDetails(term, body, courses)
                 LogUtils.d("getTimetableOfTerm: parsed, term=$termCode rawCourseCount=${parsedCourses.size} mergedCourseCount=${courses.size}")
                 result.postValue(DataState(courses))
@@ -284,7 +284,9 @@ class WeihaiEASWebSource(
             try {
                 val courses = getTimetableOfTermSync(term, token)
                 val maxPeriod = courses.maxOfOrNull { it.begin + it.last - 1 } ?: 0
-                val schedule = defaultScheduleStructure()
+                val schedule = defaultScheduleStructure(
+                    isUndergraduate ?: (token.stutype == EASToken.TYPE.UNDERGRAD)
+                )
                 val resolved = if (maxPeriod in 1 until schedule.size) {
                     schedule.take(maxPeriod).toMutableList()
                 } else {
@@ -294,7 +296,9 @@ class WeihaiEASWebSource(
                 result.postValue(DataState(resolved, DataState.STATE.SUCCESS))
             } catch (e: Exception) {
                 LogUtils.w("getScheduleStructure: fallback to default: ${e.message}")
-                result.postValue(DataState(defaultScheduleStructure(), DataState.STATE.SUCCESS))
+                result.postValue(DataState(defaultScheduleStructure(
+                    isUndergraduate ?: (token.stutype == EASToken.TYPE.UNDERGRAD)
+                ), DataState.STATE.SUCCESS))
             }
         }
         return result
@@ -591,7 +595,7 @@ class WeihaiEASWebSource(
         val body = response.body()
         ensureTimetableResponse(term, body, response.statusCode())
         val parsedCourses = BenbuScheduleParser.parseScheduleHtml(body)
-        val courses = mergeAdjacentCourses(parsedCourses)
+        val courses = mergeAdjacentCourses(parsedCourses, scheduleFor(token))
         logEmptyTimetableDetails(term, body, courses)
         LogUtils.d( "getTimetableOfTermSync: term=${term.getCode()} rawCourseCount=${parsedCourses.size} mergedCourseCount=${courses.size} cookieKeys=${token.cookies.keys.sorted()} ${cookieFingerprintSummary(token.cookies)}")
         return courses
@@ -647,7 +651,10 @@ class WeihaiEASWebSource(
         }
     }
 
-    private fun mergeAdjacentCourses(courses: List<CourseItem>): List<CourseItem> {
+    private fun mergeAdjacentCourses(
+        courses: List<CourseItem>,
+        schedule: List<TimePeriodInDay>
+    ): List<CourseItem> {
         if (courses.isEmpty()) return courses
         val sorted = courses.sortedWith(
             compareBy<CourseItem> { it.dow }
@@ -660,7 +667,7 @@ class WeihaiEASWebSource(
         val merged = mutableListOf<CourseItem>()
         for (course in sorted) {
             val last = merged.lastOrNull()
-            if (last != null && canMergeCourses(last, course)) {
+            if (last != null && canMergeCourses(last, course, schedule)) {
                 last.last += course.last
                 if (last.classroom.isNullOrBlank()) {
                     last.classroom = course.classroom
@@ -675,7 +682,11 @@ class WeihaiEASWebSource(
         return merged
     }
 
-    private fun canMergeCourses(left: CourseItem, right: CourseItem): Boolean {
+    private fun canMergeCourses(
+        left: CourseItem,
+        right: CourseItem,
+        schedule: List<TimePeriodInDay>
+    ): Boolean {
         if (left.dow != right.dow) return false
         if (normalized(left.name) != normalized(right.name)) return false
         if (normalized(left.teacher) != normalized(right.teacher)) return false
@@ -684,7 +695,6 @@ class WeihaiEASWebSource(
         val leftEndPeriod = left.begin + left.last - 1
         if (leftEndPeriod + 1 != right.begin) return false
 
-        val schedule = defaultScheduleStructure()
         if (leftEndPeriod !in 1..schedule.size || right.begin !in 1..schedule.size) return false
 
         val leftEndTime = schedule[leftEndPeriod - 1].to
@@ -724,8 +734,40 @@ class WeihaiEASWebSource(
         }
     }
 
-    private fun defaultScheduleStructure(): MutableList<TimePeriodInDay> {
-        return mutableListOf(
+    private val undergraduateSchedule = mutableListOf(
+        TimePeriodInDay(TimeInDay(8, 30), TimeInDay(9, 20)),
+        TimePeriodInDay(TimeInDay(9, 25), TimeInDay(10, 15)),
+        TimePeriodInDay(TimeInDay(10, 30), TimeInDay(11, 20)),
+        TimePeriodInDay(TimeInDay(11, 25), TimeInDay(12, 15)),
+        TimePeriodInDay(TimeInDay(14, 0), TimeInDay(14, 50)),
+        TimePeriodInDay(TimeInDay(14, 55), TimeInDay(15, 45)),
+        TimePeriodInDay(TimeInDay(16, 0), TimeInDay(16, 50)),
+        TimePeriodInDay(TimeInDay(16, 55), TimeInDay(17, 45)),
+        TimePeriodInDay(TimeInDay(18, 45), TimeInDay(19, 35)),
+        TimePeriodInDay(TimeInDay(19, 40), TimeInDay(20, 30)),
+        TimePeriodInDay(TimeInDay(20, 45), TimeInDay(21, 35)),
+        TimePeriodInDay(TimeInDay(21, 40), TimeInDay(22, 30))
+    )
+
+    private fun scheduleFor(token: EASToken): List<TimePeriodInDay> =
+        if (token.stutype == EASToken.TYPE.UNDERGRAD) undergraduateSchedule
+        else defaultScheduleStructure(false)
+
+    private fun defaultScheduleStructure(isUndergraduate: Boolean): MutableList<TimePeriodInDay> {
+        return if (isUndergraduate) mutableListOf(
+            TimePeriodInDay(TimeInDay(8, 30), TimeInDay(9, 20)),
+            TimePeriodInDay(TimeInDay(9, 25), TimeInDay(10, 15)),
+            TimePeriodInDay(TimeInDay(10, 30), TimeInDay(11, 20)),
+            TimePeriodInDay(TimeInDay(11, 25), TimeInDay(12, 15)),
+            TimePeriodInDay(TimeInDay(14, 0), TimeInDay(14, 50)),
+            TimePeriodInDay(TimeInDay(14, 55), TimeInDay(15, 45)),
+            TimePeriodInDay(TimeInDay(16, 0), TimeInDay(16, 50)),
+            TimePeriodInDay(TimeInDay(16, 55), TimeInDay(17, 45)),
+            TimePeriodInDay(TimeInDay(18, 45), TimeInDay(19, 35)),
+            TimePeriodInDay(TimeInDay(19, 40), TimeInDay(20, 30)),
+            TimePeriodInDay(TimeInDay(20, 45), TimeInDay(21, 35)),
+            TimePeriodInDay(TimeInDay(21, 40), TimeInDay(22, 30))
+        ) else mutableListOf(
             TimePeriodInDay(TimeInDay(8, 0), TimeInDay(8, 45)),
             TimePeriodInDay(TimeInDay(9, 0), TimeInDay(9, 45)),
             TimePeriodInDay(TimeInDay(10, 5), TimeInDay(10, 50)),

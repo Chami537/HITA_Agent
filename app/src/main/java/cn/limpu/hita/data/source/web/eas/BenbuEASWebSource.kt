@@ -302,7 +302,9 @@ class BenbuEASWebSource(
             try {
                 val courses = getCachedOrFetchCourses(term, token)
                 val maxPeriod = courses.maxOfOrNull { it.begin + it.last - 1 } ?: 0
-                val schedule = defaultScheduleStructure()
+                val schedule = defaultScheduleStructure(
+                    isUndergraduate ?: (token.stutype == EASToken.TYPE.UNDERGRAD)
+                )
                 val resolved = if (maxPeriod in 1 until schedule.size) {
                     schedule.take(maxPeriod).toMutableList()
                 } else {
@@ -311,7 +313,9 @@ class BenbuEASWebSource(
                 result.postValue(DataState(resolved, DataState.STATE.SUCCESS))
             } catch (e: Exception) {
                 LogUtils.w("getScheduleStructure: fallback to default: ${e.message}")
-                result.postValue(DataState(defaultScheduleStructure(), DataState.STATE.SUCCESS))
+                result.postValue(DataState(defaultScheduleStructure(
+                    isUndergraduate ?: (token.stutype == EASToken.TYPE.UNDERGRAD)
+                ), DataState.STATE.SUCCESS))
             }
         }
         return result
@@ -530,7 +534,7 @@ class BenbuEASWebSource(
 
         // 合并所有课程
         val allCourses = regularCourses + experimentCourses + electronicExperimentCourses
-        val mergedCourses = mergeAdjacentCourses(allCourses)
+        val mergedCourses = mergeAdjacentCourses(allCourses, scheduleFor(token))
 
         LogUtils.d(
             "getTimetableOfTermSync: term=${term.getCode()} " +
@@ -916,7 +920,10 @@ class BenbuEASWebSource(
         )
     }
 
-    private fun mergeAdjacentCourses(courses: List<CourseItem>): List<CourseItem> {
+    private fun mergeAdjacentCourses(
+        courses: List<CourseItem>,
+        schedule: List<TimePeriodInDay>
+    ): List<CourseItem> {
         if (courses.isEmpty()) return courses
 
         // Separate free time courses (experiment courses) from period-based courses
@@ -939,7 +946,7 @@ class BenbuEASWebSource(
         val merged = mutableListOf<CourseItem>()
         for (course in sorted) {
             val last = merged.lastOrNull()
-            if (last != null && canMergeCourses(last, course)) {
+            if (last != null && canMergeCourses(last, course, schedule)) {
                 last.last += course.last
                 if (last.classroom.isNullOrBlank()) {
                     last.classroom = course.classroom
@@ -962,7 +969,11 @@ class BenbuEASWebSource(
         return merged
     }
 
-    private fun canMergeCourses(left: CourseItem, right: CourseItem): Boolean {
+    private fun canMergeCourses(
+        left: CourseItem,
+        right: CourseItem,
+        schedule: List<TimePeriodInDay>
+    ): Boolean {
         if (left.dow != right.dow) return false
         if (normalized(left.name) != normalized(right.name)) return false
         if (normalized(left.teacher) != normalized(right.teacher)) return false
@@ -971,7 +982,6 @@ class BenbuEASWebSource(
         val leftEndPeriod = left.begin + left.last - 1
         if (leftEndPeriod + 1 != right.begin) return false
 
-        val schedule = defaultSchedule
         if (leftEndPeriod !in 1..schedule.size || right.begin !in 1..schedule.size) return false
 
         val leftEndTime = schedule[leftEndPeriod - 1].to
@@ -1029,8 +1039,28 @@ class BenbuEASWebSource(
         )
     }
 
-    private fun defaultScheduleStructure(): MutableList<TimePeriodInDay> {
-        return mutableListOf(*defaultSchedule.toTypedArray())
+    private val undergraduateSchedule by lazy {
+        mutableListOf(
+            TimePeriodInDay(TimeInDay(8, 30), TimeInDay(9, 20)),
+            TimePeriodInDay(TimeInDay(9, 25), TimeInDay(10, 15)),
+            TimePeriodInDay(TimeInDay(10, 30), TimeInDay(11, 20)),
+            TimePeriodInDay(TimeInDay(11, 25), TimeInDay(12, 15)),
+            TimePeriodInDay(TimeInDay(14, 0), TimeInDay(14, 50)),
+            TimePeriodInDay(TimeInDay(14, 55), TimeInDay(15, 45)),
+            TimePeriodInDay(TimeInDay(16, 0), TimeInDay(16, 50)),
+            TimePeriodInDay(TimeInDay(16, 55), TimeInDay(17, 45)),
+            TimePeriodInDay(TimeInDay(18, 45), TimeInDay(19, 35)),
+            TimePeriodInDay(TimeInDay(19, 40), TimeInDay(20, 30)),
+            TimePeriodInDay(TimeInDay(20, 45), TimeInDay(21, 35)),
+            TimePeriodInDay(TimeInDay(21, 40), TimeInDay(22, 30))
+        )
+    }
+
+    private fun scheduleFor(token: EASToken): List<TimePeriodInDay> =
+        if (token.stutype == EASToken.TYPE.UNDERGRAD) undergraduateSchedule else defaultSchedule
+
+    private fun defaultScheduleStructure(isUndergraduate: Boolean): MutableList<TimePeriodInDay> {
+        return mutableListOf(*(if (isUndergraduate) undergraduateSchedule else defaultSchedule).toTypedArray())
     }
 
     override fun queryEmptyClassroom(
