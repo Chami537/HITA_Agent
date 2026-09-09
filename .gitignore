@@ -31,3 +31,13 @@ CLAUDE.md
 *.apk
 *.aab
 **/*-sources.jar
+
+# Repository checker cache and runtime data
+__pycache__/
+*.pyc
+*.db
+*.db-wal
+*.db-shm
+*.sqlite
+*.sqlite3
+*.log
