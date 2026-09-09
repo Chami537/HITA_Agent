@@ -6,14 +6,14 @@ HITA Agent 是一款面向哈工大三校区的 Android 校园助手 App，集�
 ## 技术栈
 - **开发语言**：Kotlin
 - **最低 SDK**：26 (Android 8.0)
-- **目标 SDK**：34 (Android 14)
-- **构建工具**：Gradle 8.7, AGP 8.6.1, Kotlin 2.2.21
-- **JDK**：21
+- **目标 / 编译 SDK**：35 (Android 15)
+- **构建工具**：Gradle 8.11.1, AGP 8.10.1, Kotlin 2.2.21
+- **JDK**：17
 
 ## 环境要求
 - Android Studio 2025.3.2 或更高
-- JDK 21
-- Android SDK 26+
+- JDK 17
+- Android SDK Platform 35（应用最低支持 API 26）
 
 ## 项目结构
 
@@ -60,3 +60,9 @@ HITA_Agent/
 
 - 问题反馈：[Issues](https://github.com/HIT-A/HITA_Android/issues)
 - 邮箱：2720649216@qq.com
+
+## 文档与构建产物
+
+使用统计契约和验证范围见 [统计 v2](docs/analytics-v2.md)。设计说明保留在 `docs/superpowers/specs/`；已完成的用户反馈实施清单已从当前树移除，未实施的字体计划保留。
+
+APK 和构建元信息从 CI / Release 获取；源码树不保存旧 `app/debug/` 安装包。`app/schemas/` 和 `hitauser/schemas/` 是 Room 数据库历史结构，供迁移验证使用，不能作为旧生成数据删除。

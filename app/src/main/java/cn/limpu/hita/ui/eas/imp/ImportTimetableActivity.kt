@@ -276,10 +276,6 @@ class ImportTimetableActivity :
             importing = false
             importSuccess = it.state == DataState.STATE.SUCCESS
             if (it.state == DataState.STATE.SUCCESS) {
-                UsageAnalyticsClient.record(
-                    UsageAnalyticsEvent.TIMETABLE_IMPORT_SUCCEEDED,
-                    mapOf(UsageAnalyticsDimensions.SOURCE to "eas")
-                )
                 importActionInFlight = false
                 resetSessionRetryState()
                 Toast.makeText(this, R.string.import_success, Toast.LENGTH_SHORT).show()
@@ -289,13 +285,6 @@ class ImportTimetableActivity :
                     importActionInFlight = false
                 }
             } else if (it.state != DataState.STATE.SUCCESS) {
-                UsageAnalyticsClient.record(
-                    UsageAnalyticsEvent.TIMETABLE_IMPORT_FAILED,
-                    mapOf(
-                        UsageAnalyticsDimensions.SOURCE to "eas",
-                        UsageAnalyticsDimensions.ERROR_CATEGORY to UsageAnalyticsDimensions.ERROR_UNKNOWN
-                    )
-                )
                 importActionInFlight = false
                 resetSessionRetryState()
                 val msg = it.message?.trim().orEmpty()
@@ -371,10 +360,6 @@ class ImportTimetableActivity :
 
     private fun startImportFlow(): Boolean {
         if (viewModel.startImportTimetable()) {
-            UsageAnalyticsClient.record(
-                UsageAnalyticsEvent.TIMETABLE_IMPORT_STARTED,
-                mapOf(UsageAnalyticsDimensions.SOURCE to "eas")
-            )
             importActionInFlight = true
             importing = true
             importSuccess = null

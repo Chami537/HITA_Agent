@@ -1,5 +1,7 @@
 package cn.limpu.hita.ui.eas.imp
 
+import cn.limpu.hita.data.analytics.UsageAnalyticsClient
+import cn.limpu.hita.data.analytics.UsageAnalyticsEvent
 import androidx.lifecycle.LiveData
 import androidx.lifecycle.MediatorLiveData
 import androidx.lifecycle.MutableLiveData
@@ -32,7 +34,19 @@ class ImportTimetableViewModel @Inject constructor(
     val selectedTermLiveData: MutableLiveData<TermItem?> = MutableLiveData()
     val startDateLiveData = MediatorLiveData<DataState<Calendar>>()
     val benbuCalibrationConfirmedLiveData = MediatorLiveData<Boolean>()
-    val importTimetableResultLiveData = MediatorLiveData<DataState<Boolean>>()
+    private var importOperation: UsageAnalyticsClient.Operation? = null
+    val importTimetableResultLiveData = object : MediatorLiveData<DataState<Boolean>>() {
+        override fun setValue(value: DataState<Boolean>?) {
+            if (value != null && value.state !in setOf(DataState.STATE.NOTHING, DataState.STATE.LOADING)) {
+                val success = value.state == DataState.STATE.SUCCESS
+                UsageAnalyticsClient.finish(importOperation,
+                    if (success) UsageAnalyticsEvent.TIMETABLE_IMPORT_SUCCEEDED else UsageAnalyticsEvent.TIMETABLE_IMPORT_FAILED,
+                    if (success) mapOf("source" to "eas") else mapOf("source" to "eas", "error_category" to if (value.state in setOf(DataState.STATE.NOT_LOGGED_IN, DataState.STATE.TOKEN_INVALID)) "authentication" else "unknown"))
+                importOperation = null
+            }
+            super.setValue(value)
+        }
+    }
     val isUndergraduateLiveData = MutableLiveData<Boolean>()
     val scheduleStructureLiveData: MediatorLiveData<DataState<MutableList<TimePeriodInDay>>> =
         MediatorLiveData()
@@ -118,6 +132,7 @@ class ImportTimetableViewModel @Inject constructor(
             startDateLiveData.value?.let { date ->
                 scheduleStructureLiveData.value?.let { schedule ->
                     if (schedule.data != null && date.state == DataState.STATE.SUCCESS && date.data != null) {
+                        importOperation = UsageAnalyticsClient.begin(UsageAnalyticsEvent.TIMETABLE_IMPORT_STARTED, mapOf("source" to "eas"))
                         easRepo.startImportTimetableOfTerm(
                             term,
                             date.data!!,

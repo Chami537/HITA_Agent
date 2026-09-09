@@ -141,7 +141,6 @@ class EmptyClassroomActivity :
             isRefreshing = false
             when (it.state) {
                 DataState.STATE.SUCCESS -> {
-                    UsageAnalyticsClient.record(UsageAnalyticsEvent.EMPTY_ROOM_SEARCH_SUCCEEDED)
                     classroomQueryInFlight = false
                     resetSessionRetryState()
                 }
@@ -155,10 +154,6 @@ class EmptyClassroomActivity :
                 }
 
                 else -> {
-                    UsageAnalyticsClient.record(
-                        UsageAnalyticsEvent.EMPTY_ROOM_SEARCH_FAILED,
-                        mapOf(UsageAnalyticsDimensions.ERROR_CATEGORY to UsageAnalyticsDimensions.ERROR_UNKNOWN)
-                    )
                     classroomQueryInFlight = false
                     resetSessionRetryState()
                 }
@@ -169,7 +164,6 @@ class EmptyClassroomActivity :
     override fun refresh() {
         isRefreshing = true
         classroomQueryInFlight = true
-        UsageAnalyticsClient.record(UsageAnalyticsEvent.EMPTY_ROOM_SEARCH_STARTED)
         viewModel.startRefresh()
     }
 

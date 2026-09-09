@@ -1,5 +1,7 @@
 package cn.limpu.hita.ui.eas.exam
 
+import cn.limpu.hita.data.analytics.UsageAnalyticsClient
+import cn.limpu.hita.data.analytics.UsageAnalyticsEvent
 import android.app.Application
 import android.content.Context
 import androidx.lifecycle.LiveData
@@ -124,6 +126,7 @@ class ExamViewModel @Inject constructor(
         LogUtils.d("🌐 calling getExamInfo API with term: ${selectedTerm.name}", "ExamViewModel")
 
         // 获取新的 LiveData（每次调用 getExamInfo 返回新实例，只取一次避免双重网络请求）
+        val operation = UsageAnalyticsClient.begin(UsageAnalyticsEvent.EXAMS_REFRESH_STARTED)
         val newLiveData = easRepo.getExamInfo(selectedTerm)
 
         // 从旧的 LiveData 上移除旧的观察者
@@ -133,6 +136,11 @@ class ExamViewModel @Inject constructor(
 
         // 创建新的观察者并保存引用
         val newObserver = androidx.lifecycle.Observer<DataState<List<ExamItem>>> { result ->
+            when (result.state) {
+                DataState.STATE.SUCCESS -> UsageAnalyticsClient.finish(operation, UsageAnalyticsEvent.EXAMS_REFRESH_SUCCEEDED)
+                DataState.STATE.NOTHING, DataState.STATE.LOADING -> Unit
+                else -> UsageAnalyticsClient.finish(operation, UsageAnalyticsEvent.EXAMS_REFRESH_FAILED, mapOf("error_category" to "unknown"))
+            }
             LogUtils.d("📥 API response received: state=${result.state}, data size=${result.data?.size}", "ExamViewModel")
             when (result.state) {
                 DataState.STATE.SUCCESS -> {

@@ -1,6 +1,8 @@
 package cn.limpu.hita.ui.eas.classroom
 
 import androidx.lifecycle.*
+import cn.limpu.hita.data.analytics.UsageAnalyticsClient
+import cn.limpu.hita.data.analytics.UsageAnalyticsEvent
 import cn.limpu.hita.data.model.eas.TermItem
 import cn.limpu.hita.data.model.timetable.TimePeriodInDay
 import cn.limpu.hita.data.repository.EASRepository
@@ -60,9 +62,16 @@ class EmptyClassroomViewModel @Inject constructor(
                 lastQueryKey = queryKey
 
                 currentQuerySource?.let { removeSource(it) }
+                val operation = UsageAnalyticsClient.begin(UsageAnalyticsEvent.EMPTY_ROOM_SEARCH_STARTED)
                 val source = easRepo.queryEmptyClassroom(term, building, week)
                 currentQuerySource = source
                 addSource(source) { state ->
+                    when (state.state) {
+                        DataState.STATE.SUCCESS -> UsageAnalyticsClient.finish(operation, UsageAnalyticsEvent.EMPTY_ROOM_SEARCH_SUCCEEDED)
+                        DataState.STATE.NOTHING, DataState.STATE.LOADING -> Unit
+                        else -> UsageAnalyticsClient.finish(operation, UsageAnalyticsEvent.EMPTY_ROOM_SEARCH_FAILED,
+                            mapOf("error_category" to if (state.state in setOf(DataState.STATE.NOT_LOGGED_IN, DataState.STATE.TOKEN_INVALID)) "authentication" else "unknown"))
+                    }
                     value = state
                 }
             }

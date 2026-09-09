@@ -1,5 +1,7 @@
 package cn.limpu.hita.ui.credit
 
+import cn.limpu.hita.data.analytics.UsageAnalyticsClient
+import cn.limpu.hita.data.analytics.UsageAnalyticsEvent
 import androidx.lifecycle.LiveData
 import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.map
@@ -51,7 +53,15 @@ class CreditStatsViewModel @Inject constructor(
 
     val shenzhenProgress: LiveData<DataState<ShenzhenCreditProgress>> =
         officialRefreshTrigger.switchMap {
-            easRepo.getShenzhenCreditProgress(selectedTermLiveData.value)
+            val operation = UsageAnalyticsClient.begin(UsageAnalyticsEvent.CREDIT_SUMMARY_LOAD_STARTED)
+            easRepo.getShenzhenCreditProgress(selectedTermLiveData.value).map { result ->
+                when (result.state) {
+                    DataState.STATE.SUCCESS -> UsageAnalyticsClient.finish(operation, UsageAnalyticsEvent.CREDIT_SUMMARY_LOAD_SUCCEEDED)
+                    DataState.STATE.NOTHING, DataState.STATE.LOADING -> Unit
+                    else -> UsageAnalyticsClient.finish(operation, UsageAnalyticsEvent.CREDIT_SUMMARY_LOAD_FAILED, mapOf("error_category" to "unknown"))
+                }
+                result
+            }
         }
 
     val creditStats: LiveData<CreditStatsState> = refreshTrigger.switchMap {

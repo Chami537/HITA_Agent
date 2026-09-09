@@ -25,3 +25,9 @@ app/hita-release.jks
 CLAUDE.md
 /docs/AI_LEARNING_BRANCH_PLAN.md
 /docs/EAS_DAO_REVIEW_ARCHIVE.md
+
+# Build outputs are distributed by CI/releases, not source control
+/app/debug/
+*.apk
+*.aab
+**/*-sources.jar
