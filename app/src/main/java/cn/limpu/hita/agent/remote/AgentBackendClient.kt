@@ -1,6 +1,9 @@
 package cn.limpu.hita.agent.remote
 
 import cn.limpu.hita.BuildConfig
+import cn.limpu.hita.data.analytics.AnalyticsCorrelationInterceptor
+import cn.limpu.hita.data.analytics.UsageAnalyticsClient
+import okhttp3.HttpUrl.Companion.toHttpUrl
 import cn.limpu.hita.utils.LogUtils
 import okhttp3.OkHttpClient
 import retrofit2.Call
@@ -118,6 +121,7 @@ object AgentBackendClient {
 
     val api: AgentBackendApi by lazy {
         val client = OkHttpClient.Builder()
+            .addNetworkInterceptor(AnalyticsCorrelationInterceptor(BASE_URL.toHttpUrl(), UsageAnalyticsClient::currentOperationId))
             .connectTimeout(30, TimeUnit.SECONDS)
             .readTimeout(60, TimeUnit.SECONDS)
             .writeTimeout(30, TimeUnit.SECONDS)

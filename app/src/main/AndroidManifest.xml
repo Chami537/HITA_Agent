@@ -13,6 +13,8 @@
     <application
         android:name=".HApplication"
         android:allowBackup="true"
+        android:fullBackupContent="@xml/analytics_backup_rules"
+        android:dataExtractionRules="@xml/analytics_data_extraction_rules"
         android:icon="@mipmap/ic_launcher"
         android:label="@string/app_name"
         android:enableOnBackInvokedCallback="true"

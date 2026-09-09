@@ -1,5 +1,7 @@
 package cn.limpu.hita.ui.resource
 
+import cn.limpu.hita.data.analytics.UsageAnalyticsClient
+import cn.limpu.hita.data.analytics.UsageAnalyticsEvent
 import androidx.lifecycle.LiveData
 import androidx.lifecycle.MediatorLiveData
 import androidx.lifecycle.MutableLiveData
@@ -43,6 +45,7 @@ class UnifiedResourceSearchViewModel @Inject constructor(
 
     private fun searchAll(query: String): LiveData<DataState<List<UnifiedResourceItem>>> {
         val mediator = MediatorLiveData<DataState<List<UnifiedResourceItem>>>()
+        val operation = UsageAnalyticsClient.begin(UsageAnalyticsEvent.RESOURCE_SEARCH_STARTED)
         val hoaCampus = easRepository.getHoaCampus()
 
         var hoaResult: List<UnifiedResourceItem>? = null
@@ -64,10 +67,14 @@ class UnifiedResourceSearchViewModel @Inject constructor(
             merged.sortBy { it.displayName }
 
             if (merged.isNotEmpty()) {
+                UsageAnalyticsClient.finish(operation, UsageAnalyticsEvent.RESOURCE_SEARCH_SUCCEEDED)
                 mediator.value = DataState(merged, DataState.STATE.SUCCESS)
             } else if (hoaFailed && externalFailed) {
+                UsageAnalyticsClient.finish(operation, UsageAnalyticsEvent.RESOURCE_SEARCH_FAILED, mapOf("error_category" to "unknown"))
                 mediator.value = DataState(DataState.STATE.FETCH_FAILED, "所有数据源均不可用")
             } else {
+                if (hoaFailed || externalFailed) UsageAnalyticsClient.finish(operation, UsageAnalyticsEvent.RESOURCE_SEARCH_FAILED, mapOf("error_category" to "unknown"))
+                else UsageAnalyticsClient.finish(operation, UsageAnalyticsEvent.RESOURCE_SEARCH_NO_RESULTS)
                 mediator.value = DataState(merged, DataState.STATE.SUCCESS)
             }
         }
@@ -84,7 +91,7 @@ class UnifiedResourceSearchViewModel @Inject constructor(
                     )
                 } ?: emptyList()
                 hoaResult = items
-            } else {
+            } else if (state.state !in setOf(DataState.STATE.NOTHING, DataState.STATE.LOADING)) {
                 hoaFailed = true
             }
             mergeAndPost()
@@ -101,7 +108,7 @@ class UnifiedResourceSearchViewModel @Inject constructor(
                     )
                 } ?: emptyList()
                 externalResult = items
-            } else {
+            } else if (state.state !in setOf(DataState.STATE.NOTHING, DataState.STATE.LOADING)) {
                 externalFailed = true
             }
             mergeAndPost()

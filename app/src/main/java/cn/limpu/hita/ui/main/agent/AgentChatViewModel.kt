@@ -294,9 +294,9 @@ class AgentChatViewModel @Inject constructor(
         agentProvider: cn.limpu.hita.agent.core.AgentProvider<TimetableAgentInput, TimetableAgentOutput>,
     ) {
         ensureSession()
-        UsageAnalyticsClient.record(UsageAnalyticsEvent.AI_CHAT_STARTED)
         val sid = currentSessionId ?: return
         val history = sessionChatHistories.getOrPut(sid) { mutableListOf() }
+        val analyticsOperation = UsageAnalyticsClient.begin(UsageAnalyticsEvent.AI_CHAT_STARTED)
         history.add(ChatMessage(role = "user", content = text))
 
         viewModelScope.launch {
@@ -341,6 +341,7 @@ class AgentChatViewModel @Inject constructor(
                     updateOrCreatePlaceholder(statusText, currentThinking, targetSessionId = sid)
                 },
                 onResult = { result ->
+                    UsageAnalyticsClient.finish(analyticsOperation, UsageAnalyticsEvent.AI_CHAT_FINISHED, mapOf("outcome" to if (result is LlmChatResult.Success) "success" else "failure"))
                     sessionLoadingStates[sid] = false
                     if (sid == currentSessionId) publishLoading(false)
                     when (result) {
@@ -382,6 +383,7 @@ class AgentChatViewModel @Inject constructor(
         val sid = currentSessionId ?: return
         val history = sessionChatHistories.getOrPut(sid) { mutableListOf() }
 
+        val analyticsOperation = UsageAnalyticsClient.begin(UsageAnalyticsEvent.AI_CHAT_STARTED)
         val userMessage = "$text\n\n[文件: $fileName]"
         history.add(ChatMessage(role = "user", content = userMessage))
 
@@ -429,6 +431,7 @@ class AgentChatViewModel @Inject constructor(
                     updateOrCreatePlaceholder(statusText, currentThinking, targetSessionId = sid)
                 },
                 onResult = { result: LlmChatResult ->
+                    UsageAnalyticsClient.finish(analyticsOperation, UsageAnalyticsEvent.AI_CHAT_FINISHED, mapOf("outcome" to if (result is LlmChatResult.Success) "success" else "failure"))
                     sessionLoadingStates[sid] = false
                     if (sid == currentSessionId) publishLoading(false)
                     when (result) {

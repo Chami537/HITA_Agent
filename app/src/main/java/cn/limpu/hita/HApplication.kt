@@ -17,7 +17,6 @@ import com.limpu.hitauser.data.repository.LocalUserRepository
 import javax.inject.Inject
 import cn.limpu.hita.agent.remote.AgentBackendClient
 import cn.limpu.hita.data.analytics.UsageAnalyticsClient
-import cn.limpu.hita.data.analytics.UsageAnalyticsEvent
 import cn.limpu.hita.data.work.CourseReminderScheduler
 import cn.limpu.hita.data.work.WidgetRefreshScheduler
 import cn.limpu.hita.ui.widgets.WidgetUtils
@@ -93,30 +92,9 @@ class HApplication : Application() {
         }
 
         try {
-            reportAppVisit()
-        } catch (e: Exception) {
-            LogUtils.e("reportAppVisit failed", e)
-        }
-
-        try {
             UsageAnalyticsClient.initialize(this)
-            UsageAnalyticsClient.record(UsageAnalyticsEvent.APP_FOREGROUND)
         } catch (e: Exception) {
             LogUtils.e("UsageAnalytics init failed", e)
-        }
-    }
-
-    private fun reportAppVisit() {
-        val prefs = getSharedPreferences("stats", android.content.Context.MODE_PRIVATE)
-        val deviceId = prefs.getString("device_id", null) ?: java.util.UUID.randomUUID().toString().also {
-            prefs.edit().putString("device_id", it).apply()
-        }
-        applicationScope.launch {
-            try {
-                AgentBackendClient.reportVisit(deviceId)
-            } catch (e: Exception) {
-                LogUtils.e( "报告访问失败", e)
-            }
         }
     }
 

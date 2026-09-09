@@ -1,5 +1,8 @@
 package cn.limpu.hita.agent.llm
 
+import cn.limpu.hita.data.analytics.UsageAnalyticsClient
+import cn.limpu.hita.data.analytics.UsageAnalyticsEvent
+import android.os.SystemClock
 import android.content.Context
 import cn.limpu.hita.BuildConfig
 import cn.limpu.hita.data.repository.AiChatProvider
@@ -107,10 +110,20 @@ object LlmClient {
             builtInKey = BuildConfig.DEEPSEEK_API_KEY,
             customKey = settings.customDeepSeekApiKey,
         )
-        return directService.chatCompletion(
-            authHeader(apiKey),
-            request,
-        ).execute()
+        val started = SystemClock.elapsedRealtime()
+        var outcome = "failure"
+        var inputTokens: Long? = null
+        var outputTokens: Long? = null
+        try {
+            val response = directService.chatCompletion(authHeader(apiKey), request).execute()
+            if (response.isSuccessful && response.body() != null) outcome = "success"
+            response.body()?.usage?.let { inputTokens = it.promptTokens?.toLong(); outputTokens = it.completionTokens?.toLong() }
+            return response
+        } finally {
+            UsageAnalyticsClient.measurement(UsageAnalyticsEvent.MODEL_REQUEST_FINISHED,
+                mapOf("provider" to "deepseek", "model" to request.model, "outcome" to outcome),
+                SystemClock.elapsedRealtime() - started, inputTokens, outputTokens)
+        }
     }
 
     private fun authHeader(apiKeyOrToken: String): String {

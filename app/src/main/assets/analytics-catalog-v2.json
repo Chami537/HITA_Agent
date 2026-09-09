@@ -1,0 +1,846 @@
+{
+  "schema_version": 2,
+  "events": {
+    "app_foreground": {
+      "producers": [
+        "client"
+      ],
+      "dimensions": {},
+      "operation_required": false,
+      "active": true
+    },
+    "timetable_import_started": {
+      "producers": [
+        "client"
+      ],
+      "dimensions": {
+        "source": [
+          "eas",
+          "ics",
+          "hoa",
+          "hitcs",
+          "spark_notes",
+          "faculty_homepage",
+          "other"
+        ]
+      },
+      "operation_required": true,
+      "active": true
+    },
+    "timetable_import_succeeded": {
+      "producers": [
+        "client"
+      ],
+      "dimensions": {
+        "source": [
+          "eas",
+          "ics",
+          "hoa",
+          "hitcs",
+          "spark_notes",
+          "faculty_homepage",
+          "other"
+        ]
+      },
+      "operation_required": true,
+      "active": false
+    },
+    "timetable_import_failed": {
+      "producers": [
+        "client"
+      ],
+      "dimensions": {
+        "source": [
+          "eas",
+          "ics",
+          "hoa",
+          "hitcs",
+          "spark_notes",
+          "faculty_homepage",
+          "other"
+        ],
+        "error_category": [
+          "network",
+          "authentication",
+          "permission",
+          "server",
+          "parsing",
+          "timeout",
+          "cancelled",
+          "unknown"
+        ]
+      },
+      "operation_required": true,
+      "active": false
+    },
+    "timetable_export_ics": {
+      "producers": [
+        "client"
+      ],
+      "dimensions": {},
+      "operation_required": false,
+      "active": false
+    },
+    "credit_summary_viewed": {
+      "producers": [
+        "client"
+      ],
+      "dimensions": {},
+      "operation_required": false,
+      "active": true
+    },
+    "credit_summary_load_succeeded": {
+      "producers": [
+        "client"
+      ],
+      "dimensions": {},
+      "operation_required": true,
+      "active": false
+    },
+    "credit_summary_load_failed": {
+      "producers": [
+        "client"
+      ],
+      "dimensions": {
+        "error_category": [
+          "network",
+          "authentication",
+          "permission",
+          "server",
+          "parsing",
+          "timeout",
+          "cancelled",
+          "unknown"
+        ]
+      },
+      "operation_required": true,
+      "active": false
+    },
+    "scores_viewed": {
+      "producers": [
+        "client"
+      ],
+      "dimensions": {},
+      "operation_required": false,
+      "active": true
+    },
+    "scores_refresh_succeeded": {
+      "producers": [
+        "client"
+      ],
+      "dimensions": {},
+      "operation_required": true,
+      "active": false
+    },
+    "scores_refresh_failed": {
+      "producers": [
+        "client"
+      ],
+      "dimensions": {
+        "error_category": [
+          "network",
+          "authentication",
+          "permission",
+          "server",
+          "parsing",
+          "timeout",
+          "cancelled",
+          "unknown"
+        ]
+      },
+      "operation_required": true,
+      "active": false
+    },
+    "exams_viewed": {
+      "producers": [
+        "client"
+      ],
+      "dimensions": {},
+      "operation_required": false,
+      "active": true
+    },
+    "exams_refresh_succeeded": {
+      "producers": [
+        "client"
+      ],
+      "dimensions": {},
+      "operation_required": true,
+      "active": false
+    },
+    "exams_refresh_failed": {
+      "producers": [
+        "client"
+      ],
+      "dimensions": {
+        "error_category": [
+          "network",
+          "authentication",
+          "permission",
+          "server",
+          "parsing",
+          "timeout",
+          "cancelled",
+          "unknown"
+        ]
+      },
+      "operation_required": true,
+      "active": false
+    },
+    "empty_room_search_started": {
+      "producers": [
+        "client"
+      ],
+      "dimensions": {},
+      "operation_required": true,
+      "active": true
+    },
+    "empty_room_search_succeeded": {
+      "producers": [
+        "client"
+      ],
+      "dimensions": {},
+      "operation_required": true,
+      "active": false
+    },
+    "empty_room_search_failed": {
+      "producers": [
+        "client"
+      ],
+      "dimensions": {
+        "error_category": [
+          "network",
+          "authentication",
+          "permission",
+          "server",
+          "parsing",
+          "timeout",
+          "cancelled",
+          "unknown"
+        ]
+      },
+      "operation_required": true,
+      "active": false
+    },
+    "search_page_viewed": {
+      "producers": [
+        "client"
+      ],
+      "dimensions": {},
+      "operation_required": false,
+      "active": true
+    },
+    "system_calendar_write_started": {
+      "producers": [
+        "client"
+      ],
+      "dimensions": {},
+      "operation_required": true,
+      "active": true
+    },
+    "system_calendar_write_succeeded": {
+      "producers": [
+        "client"
+      ],
+      "dimensions": {},
+      "operation_required": true,
+      "active": false
+    },
+    "system_calendar_write_failed": {
+      "producers": [
+        "client"
+      ],
+      "dimensions": {
+        "error_category": [
+          "network",
+          "authentication",
+          "permission",
+          "server",
+          "parsing",
+          "timeout",
+          "cancelled",
+          "unknown"
+        ]
+      },
+      "operation_required": true,
+      "active": false
+    },
+    "resource_search_started": {
+      "producers": [
+        "client"
+      ],
+      "dimensions": {},
+      "operation_required": true,
+      "active": true
+    },
+    "resource_search_succeeded": {
+      "producers": [
+        "client"
+      ],
+      "dimensions": {},
+      "operation_required": true,
+      "active": false
+    },
+    "resource_search_no_results": {
+      "producers": [
+        "client"
+      ],
+      "dimensions": {},
+      "operation_required": true,
+      "active": false
+    },
+    "resource_search_failed": {
+      "producers": [
+        "client"
+      ],
+      "dimensions": {
+        "error_category": [
+          "network",
+          "authentication",
+          "permission",
+          "server",
+          "parsing",
+          "timeout",
+          "cancelled",
+          "unknown"
+        ]
+      },
+      "operation_required": true,
+      "active": false
+    },
+    "resource_result_opened": {
+      "producers": [
+        "client"
+      ],
+      "dimensions": {
+        "source": [
+          "eas",
+          "ics",
+          "hoa",
+          "hitcs",
+          "spark_notes",
+          "faculty_homepage",
+          "other"
+        ]
+      },
+      "operation_required": false,
+      "active": true
+    },
+    "teacher_search_started": {
+      "producers": [
+        "client"
+      ],
+      "dimensions": {},
+      "operation_required": true,
+      "active": true
+    },
+    "teacher_result_opened": {
+      "producers": [
+        "client"
+      ],
+      "dimensions": {},
+      "operation_required": false,
+      "active": true
+    },
+    "ai_chat_started": {
+      "producers": [
+        "client"
+      ],
+      "dimensions": {},
+      "operation_required": true,
+      "active": true
+    },
+    "ai_tool_invoked": {
+      "producers": [
+        "client"
+      ],
+      "dimensions": {
+        "tool": [
+          "get_timetable",
+          "add_activity",
+          "search_empty_classroom",
+          "search_timetable",
+          "search_course",
+          "get_course_detail",
+          "search_external_resource",
+          "search_teacher",
+          "web_search",
+          "rag_search",
+          "crawl_page",
+          "crawl_site",
+          "crawl_status",
+          "submit_review",
+          "other"
+        ]
+      },
+      "operation_required": false,
+      "active": false
+    },
+    "ai_chat_failed": {
+      "producers": [
+        "client"
+      ],
+      "dimensions": {
+        "error_category": [
+          "network",
+          "authentication",
+          "permission",
+          "server",
+          "parsing",
+          "timeout",
+          "cancelled",
+          "unknown"
+        ]
+      },
+      "operation_required": true,
+      "active": false
+    },
+    "custom_wallpaper_applied": {
+      "producers": [
+        "client"
+      ],
+      "dimensions": {},
+      "operation_required": false,
+      "active": true
+    },
+    "custom_wallpaper_active": {
+      "producers": [
+        "client"
+      ],
+      "dimensions": {},
+      "operation_required": false,
+      "active": false
+    },
+    "custom_avatar_applied": {
+      "producers": [
+        "client"
+      ],
+      "dimensions": {},
+      "operation_required": false,
+      "active": true
+    },
+    "custom_avatar_active": {
+      "producers": [
+        "client"
+      ],
+      "dimensions": {},
+      "operation_required": false,
+      "active": false
+    },
+    "notice_shown": {
+      "producers": [
+        "client"
+      ],
+      "dimensions": {
+        "presentation": [
+          "fullscreen",
+          "version_dialog",
+          "notice_list"
+        ],
+        "kind": [
+          "version",
+          "service",
+          "incident",
+          "info",
+          "other"
+        ]
+      },
+      "operation_required": false,
+      "active": false
+    },
+    "notice_dismissed": {
+      "producers": [
+        "client"
+      ],
+      "dimensions": {
+        "presentation": [
+          "fullscreen",
+          "version_dialog",
+          "notice_list"
+        ],
+        "kind": [
+          "version",
+          "service",
+          "incident",
+          "info",
+          "other"
+        ]
+      },
+      "operation_required": false,
+      "active": false
+    },
+    "notice_action_tapped": {
+      "producers": [
+        "client"
+      ],
+      "dimensions": {
+        "presentation": [
+          "fullscreen",
+          "version_dialog",
+          "notice_list"
+        ],
+        "kind": [
+          "version",
+          "service",
+          "incident",
+          "info",
+          "other"
+        ]
+      },
+      "operation_required": false,
+      "active": true
+    },
+    "grade_submission_opened": {
+      "producers": [
+        "client"
+      ],
+      "dimensions": {},
+      "operation_required": false,
+      "active": true
+    },
+    "grade_submission_submitted": {
+      "producers": [
+        "client"
+      ],
+      "dimensions": {},
+      "operation_required": false,
+      "active": false
+    },
+    "grade_submission_deleted": {
+      "producers": [
+        "client"
+      ],
+      "dimensions": {},
+      "operation_required": false,
+      "active": false
+    },
+    "session_started": {
+      "producers": [
+        "client"
+      ],
+      "dimensions": {
+        "cause": [
+          "cold_start",
+          "resume",
+          "midnight",
+          "user_action"
+        ]
+      },
+      "operation_required": false,
+      "active": true
+    },
+    "app_active_day": {
+      "producers": [
+        "client"
+      ],
+      "dimensions": {
+        "cause": [
+          "cold_start",
+          "resume",
+          "midnight",
+          "user_action"
+        ]
+      },
+      "operation_required": false,
+      "active": true
+    },
+    "screen_viewed": {
+      "producers": [
+        "client"
+      ],
+      "dimensions": {
+        "screen": [
+          "today",
+          "timetable",
+          "scores",
+          "exams",
+          "credits",
+          "empty_room",
+          "resources",
+          "teacher",
+          "ai",
+          "settings",
+          "notices"
+        ]
+      },
+      "operation_required": false,
+      "active": true
+    },
+    "widget_clicked": {
+      "producers": [
+        "client"
+      ],
+      "dimensions": {},
+      "operation_required": false,
+      "active": true
+    },
+    "scores_refresh_started": {
+      "producers": [
+        "client"
+      ],
+      "dimensions": {},
+      "operation_required": true,
+      "active": true
+    },
+    "exams_refresh_started": {
+      "producers": [
+        "client"
+      ],
+      "dimensions": {},
+      "operation_required": true,
+      "active": true
+    },
+    "credit_summary_load_started": {
+      "producers": [
+        "client"
+      ],
+      "dimensions": {},
+      "operation_required": true,
+      "active": true
+    },
+    "ai_chat_finished": {
+      "producers": [
+        "client"
+      ],
+      "dimensions": {
+        "outcome": [
+          "success",
+          "failure",
+          "cancelled",
+          "timeout",
+          "no_results",
+          "unknown"
+        ],
+        "error_category": [
+          "network",
+          "authentication",
+          "permission",
+          "server",
+          "parsing",
+          "timeout",
+          "cancelled",
+          "unknown"
+        ]
+      },
+      "operation_required": true,
+      "active": false
+    },
+    "ai_tool_started": {
+      "producers": [
+        "client"
+      ],
+      "dimensions": {
+        "tool": [
+          "get_timetable",
+          "add_activity",
+          "search_empty_classroom",
+          "search_timetable",
+          "search_course",
+          "get_course_detail",
+          "search_external_resource",
+          "search_teacher",
+          "web_search",
+          "rag_search",
+          "crawl_page",
+          "crawl_site",
+          "crawl_status",
+          "submit_review",
+          "other"
+        ],
+        "execution": [
+          "local",
+          "remote"
+        ]
+      },
+      "operation_required": true,
+      "active": true
+    },
+    "ai_tool_finished": {
+      "producers": [
+        "client"
+      ],
+      "dimensions": {
+        "tool": [
+          "get_timetable",
+          "add_activity",
+          "search_empty_classroom",
+          "search_timetable",
+          "search_course",
+          "get_course_detail",
+          "search_external_resource",
+          "search_teacher",
+          "web_search",
+          "rag_search",
+          "crawl_page",
+          "crawl_site",
+          "crawl_status",
+          "submit_review",
+          "other"
+        ],
+        "execution": [
+          "local",
+          "remote"
+        ],
+        "outcome": [
+          "success",
+          "failure",
+          "cancelled",
+          "timeout",
+          "no_results",
+          "unknown"
+        ],
+        "error_category": [
+          "network",
+          "authentication",
+          "permission",
+          "server",
+          "parsing",
+          "timeout",
+          "cancelled",
+          "unknown"
+        ]
+      },
+      "operation_required": true,
+      "active": false
+    },
+    "model_request_finished": {
+      "producers": [
+        "client"
+      ],
+      "dimensions": {
+        "provider": [
+          "deepseek",
+          "bigmodel",
+          "minimax",
+          "other"
+        ],
+        "model": [
+          "deepseek-chat",
+          "deepseek-reasoner",
+          "glm-4-flash",
+          "other"
+        ],
+        "outcome": [
+          "success",
+          "failure",
+          "cancelled",
+          "timeout",
+          "no_results",
+          "unknown"
+        ],
+        "error_category": [
+          "network",
+          "authentication",
+          "permission",
+          "server",
+          "parsing",
+          "timeout",
+          "cancelled",
+          "unknown"
+        ]
+      },
+      "operation_required": true,
+      "active": false
+    },
+    "service_request_finished": {
+      "producers": [
+        "agent-backend",
+        "course-server"
+      ],
+      "dimensions": {
+        "status_class": [
+          "2xx",
+          "3xx",
+          "4xx",
+          "5xx",
+          "network",
+          "unknown"
+        ],
+        "outcome": [
+          "success",
+          "failure",
+          "cancelled",
+          "timeout",
+          "no_results",
+          "unknown"
+        ],
+        "error_category": [
+          "network",
+          "authentication",
+          "permission",
+          "server",
+          "parsing",
+          "timeout",
+          "cancelled",
+          "unknown"
+        ],
+        "route_template": [
+          "courses_search",
+          "courses_read",
+          "rag_query",
+          "rag_ingest",
+          "crawl_page",
+          "crawl_site",
+          "crawl_status",
+          "search_bocha",
+          "search_bocha_ai",
+          "teachers_search",
+          "hitsz_fetch",
+          "temp_upload",
+          "temp_download",
+          "temp_parse",
+          "temp_list",
+          "course_detail",
+          "course_resource",
+          "other"
+        ]
+      },
+      "operation_required": true,
+      "active": false
+    },
+    "service_tool_finished": {
+      "producers": [
+        "agent-backend",
+        "course-server"
+      ],
+      "dimensions": {
+        "tool": [
+          "get_timetable",
+          "add_activity",
+          "search_empty_classroom",
+          "search_timetable",
+          "search_course",
+          "get_course_detail",
+          "search_external_resource",
+          "search_teacher",
+          "web_search",
+          "rag_search",
+          "crawl_page",
+          "crawl_site",
+          "crawl_status",
+          "submit_review",
+          "other"
+        ],
+        "outcome": [
+          "success",
+          "failure",
+          "cancelled",
+          "timeout",
+          "no_results",
+          "unknown"
+        ],
+        "error_category": [
+          "network",
+          "authentication",
+          "permission",
+          "server",
+          "parsing",
+          "timeout",
+          "cancelled",
+          "unknown"
+        ]
+      },
+      "operation_required": true,
+      "active": false
+    }
+  }
+}

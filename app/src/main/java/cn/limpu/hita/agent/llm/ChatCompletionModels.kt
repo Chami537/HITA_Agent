@@ -27,9 +27,9 @@ data class ChatCompletionResponse(
 
     data class Usage(
         @SerializedName("prompt_tokens")
-        val promptTokens: Int = 0,
+        val promptTokens: Int? = null,
         @SerializedName("completion_tokens")
-        val completionTokens: Int = 0,
+        val completionTokens: Int? = null,
         @SerializedName("total_tokens")
         val totalTokens: Int = 0,
     )
