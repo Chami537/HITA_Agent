@@ -15,7 +15,7 @@ HITA Agent is an Android app for Harbin Institute of Technology (HIT) students a
 ./gradlew testClasses            # Alias for testDebugUnitTest
 ```
 
-**Environment**: JDK 21 required (configured in `gradle.properties` via `org.gradle.java.home`). Gradle 8.7, AGP 8.6.1, Kotlin 2.2.21.
+**Environment**: JDK 17, Gradle 8.11.1, AGP 8.10.1, Kotlin 2.2.21; compile/target SDK 35 and minimum SDK 26. Set `JAVA_HOME` locally; do not commit a machine-specific JDK path. The maintained setup and build instructions are in [README_DEV.md](README_DEV.md).
 
 **Maven mirrors**: All repos use Chinese mirrors (Aliyun, Tencent, JitPack) — see `build.gradle`.
 
@@ -56,7 +56,7 @@ data/
 └── work/            # WorkManager workers (CourseReminder, ScoreReminder)
 ```
 
-Two Room databases: `AppDatabase` (app module) and `UserDatabase` (hitauser module).
+Room databases: `AppDatabase` (app module), `UserDatabase` (hitauser module), and the independent `UsageQueueDatabase` analytics queue. Keep historical exported schemas for migrations. See [analytics v2](docs/analytics-v2.md).
 
 ### Agent / AI System (ReAct Framework)
 
@@ -65,7 +65,7 @@ The AI assistant lives under `app/.../agent/`:
 ```
 agent/
 ├── core/        # AgentEngine, AgentOrchestrator, AgentTool (interface), AgentToolRegistry
-├── llm/         # LlmClient, LlmChatService, ReactPromptBuilder (MiniMax API)
+├── llm/         # LlmClient, LlmChatService, ReactPromptBuilder (configured model providers)
 ├── remote/      # AgentBackendClient (agent-backend HTTP), PrServerClient (course resource HTTP)
 ├── tools/       # Concrete tools: WebSearch, RagSearch, CrawlPage, SearchCourse, etc.
 ├── subject/     # Subject README agent (course detail fetcher)
@@ -73,12 +73,12 @@ agent/
 └── document/    # File parsers: PDF, DOCX, XLSX, PPTX, TXT — Strategy pattern via FileParserDispatcher
 ```
 
-**Key design**: Tools implement `AgentTool` interface, registered in `ReActToolRegistry`. The `AgentOrchestrator` drives the ReAct loop (thought → action → observation). LLM calls go through `LlmClient` → MiniMax API. Course resource queries hit `PrServerClient`; other tools route through `AgentBackendClient`.
+**Key design**: Tools implement `AgentTool` interface, registered in `ReActToolRegistry`. The `AgentOrchestrator` drives the ReAct loop (thought → action → observation). LLM calls go through `LlmClient` and the configured provider. Course resource queries hit `PrServerClient`; other tools route through `AgentBackendClient`.
 
 ### Network Clients
 
 - **PrServerClient**: GitHub HOA repo interactions (course resources, README, PR submission)
-- **AgentBackendClient**: AI tool backend (Brave search, RAG, web crawling)
+- **AgentBackendClient**: AI tool backend (Bocha search, RAG, web crawling)
 - **EASWebSource**: 教务系统 HTML scraping with Jsoup (BenbuEASWebSource for 本部, WeihaiEASWebSource for 威海)
 - Retrofit services defined in `data/source/web/service/`
 
@@ -104,7 +104,13 @@ Defined in `app/build.gradle`:
 - Null safety: prefer `?.` and `?.let{}` over `!!`
 - Coroutines: use `viewModelScope.launch`, never `GlobalScope`
 - Room schema exports to `app/schemas/`
-- ProGuard enabled for release builds (`minifyEnabled true`, `shrinkResources true`)
+- ProGuard enabled for release builds (`minifyEnabled true`, `shrinkResources false`)
+
+### Repository and PDF checks
+
+`./project_health_check.sh` validates required project files and repository hygiene. `./code_consistency_check.sh` runs the same hygiene gate; it does not assign arbitrary scores to names or constants. CI also runs JVM tests and Debug assembly. Local Markdown file links, runtime databases, APKs and stale build artifacts are checked by `python3 scripts/check_repository.py`; Room JSON schemas and source fonts are retained.
+
+PDF resources come from the pinned PDFBox Android dependency. Initialize `PDFBoxResourceLoader` in `HApplication` before parsing; do not reflect into internal CMap caches or re-copy library assets. Chinese PDF regression tests use predefined GB1/CNS1 CMaps without embedded ToUnicode shortcuts; run `PdfResourceInstrumentedTest` on a device after changing PDF dependencies or packaging.
 
 ## Development Workflow
 
