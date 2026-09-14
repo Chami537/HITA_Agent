@@ -3,13 +3,25 @@ package cn.limpu.hita.data.analytics
 /**
  * 统一使用统计事件目录。
  *
- * 与 iOS 端共用同一协议（见仓库 docs/unified-protocol.md §2）：
+ * v2 契约见 docs/analytics-v2.md，旧 iOS 接口继续兼容：
  * 事件名 snake_case、`模块_动作_结果`；维度键值走白名单。
- * 服务端端点：POST {AGENT_BACKEND_BASE_URL}/api/usage
+ * 服务端端点：POST {AGENT_BACKEND_BASE_URL}/api/telemetry/v2/events
  */
 enum class UsageAnalyticsEvent(val eventName: String) {
     // 启动 / 生命周期
     APP_FOREGROUND("app_foreground"),
+
+    SESSION_STARTED("session_started"),
+    APP_ACTIVE_DAY("app_active_day"),
+    SCREEN_VIEWED("screen_viewed"),
+    WIDGET_CLICKED("widget_clicked"),
+    AI_CHAT_FINISHED("ai_chat_finished"),
+    AI_TOOL_STARTED("ai_tool_started"),
+    AI_TOOL_FINISHED("ai_tool_finished"),
+    MODEL_REQUEST_FINISHED("model_request_finished"),
+    SCORES_REFRESH_STARTED("scores_refresh_started"),
+    EXAMS_REFRESH_STARTED("exams_refresh_started"),
+    CREDIT_SUMMARY_LOAD_STARTED("credit_summary_load_started"),
 
     // 课表
     TIMETABLE_IMPORT_STARTED("timetable_import_started"),

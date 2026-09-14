@@ -1,5 +1,7 @@
 package cn.limpu.hita.ui.eas.score
 
+import cn.limpu.hita.data.analytics.UsageAnalyticsClient
+import cn.limpu.hita.data.analytics.UsageAnalyticsEvent
 import androidx.lifecycle.LiveData
 import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.SavedStateHandle
@@ -60,7 +62,15 @@ class ScoreInquiryViewModel @Inject constructor(
 
     private val scoresWithSummaryLiveData =
         MTransformations.switchMap(selectedTermLiveData, selectedTestTypeLiveData) {
-            return@switchMap easRepo.getPersonalScoresWithSummary(it.first, it.second)
+            val operation = UsageAnalyticsClient.begin(UsageAnalyticsEvent.SCORES_REFRESH_STARTED)
+            return@switchMap easRepo.getPersonalScoresWithSummary(it.first, it.second).map { result ->
+                when (result.state) {
+                    DataState.STATE.SUCCESS -> UsageAnalyticsClient.finish(operation, UsageAnalyticsEvent.SCORES_REFRESH_SUCCEEDED)
+                    DataState.STATE.NOTHING, DataState.STATE.LOADING -> Unit
+                    else -> UsageAnalyticsClient.finish(operation, UsageAnalyticsEvent.SCORES_REFRESH_FAILED, mapOf("error_category" to "unknown"))
+                }
+                result
+            }
         }
 
     val scoresLiveData: LiveData<DataState<List<CourseScoreItem>>> =

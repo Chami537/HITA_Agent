@@ -136,4 +136,45 @@ class ShenzhenCreditProgressParserTest {
         assertEquals(10.0, progress.categories.single().requiredCredits, 0.001)
         assertEquals(64, progress.categories.single().completedHours)
     }
+
+    @Test
+    fun `missing optional summary still keeps category and group data`() {
+        val progress = ShenzhenCreditProgressParser.parseProgress(
+            summaryBody = "",
+            categoriesBody = """{"content":{"xflbyq":[{
+                "kclbmc":"专业选修","yqwcxf":"12","ywcxf":"3"
+            }]}}""",
+            groupsBody = """{"content":[{
+                "kzid":"GROUP","title":"专业方向","yqxdxf":"6","wc_xf":"3"
+            }]}""",
+            courseRecordBodies = emptyList(),
+            currentTerm = "2025-20262",
+            allowMissingSummary = true
+        )
+
+        requireNotNull(progress)
+        assertEquals(0.0, progress.requiredCredits, 0.001)
+        assertEquals("专业选修", progress.categories.single().name)
+        assertEquals("GROUP", progress.groups.single().id)
+    }
+
+    @Test
+    fun `parses nested category and module response shapes`() {
+        val progress = ShenzhenCreditProgressParser.parseProgress(
+            summaryBody = "",
+            categoriesBody = """{"content":{"xflbyq":{"list":[{
+                "kclbdm":"01","kclbmc":"专业必修","yqwcxf":"20","ywcxf":"8"
+            }]}}}""",
+            groupsBody = """{"content":{"mkyq":[{
+                "kzid":"MODULE","title":"专业模块","yqxdxf":"10","wc_xf":"4"
+            }]}}""",
+            courseRecordBodies = emptyList(),
+            currentTerm = "2025-20262",
+            allowMissingSummary = true
+        )
+
+        requireNotNull(progress)
+        assertEquals("专业必修", progress.categories.single().name)
+        assertEquals("MODULE", progress.groups.single().id)
+    }
 }

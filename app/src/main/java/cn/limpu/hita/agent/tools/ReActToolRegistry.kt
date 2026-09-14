@@ -1,13 +1,30 @@
 package cn.limpu.hita.agent.tools
 
+import cn.limpu.hita.data.analytics.UsageAnalyticsClient
+import cn.limpu.hita.data.analytics.UsageAnalyticsEvent
+
 class ReActToolRegistry {
     private val tools = mutableMapOf<String, ReActTool>()
 
     fun register(name: String, tool: ReActTool) {
-        tools[normalizeName(name)] = tool
+        val normalized = normalizeName(name)
+        tools[normalized] = observed(normalized, tool)
     }
 
     fun get(name: String): ReActTool? = tools[normalizeName(name)]
+
+    private fun observed(normalized: String, tool: ReActTool): ReActTool {
+        return ReActTool { input ->
+            val dimensions = mapOf("tool" to normalized, "execution" to if (normalized in setOf("get_timetable", "add_activity", "search_empty_classroom", "search_timetable")) "local" else "remote")
+            val operation = UsageAnalyticsClient.begin(UsageAnalyticsEvent.AI_TOOL_STARTED, dimensions)
+            // Current tools return free text, which may contain an error message.
+            // A nonthrowing string is not proof of business success.
+            var outcome = "unknown"
+            try { UsageAnalyticsClient.withinOperation(operation) { tool.execute(input) } }
+            catch (error: Exception) { outcome = if (error is java.util.concurrent.CancellationException) "cancelled" else "failure"; throw error }
+            finally { UsageAnalyticsClient.finish(operation, UsageAnalyticsEvent.AI_TOOL_FINISHED, dimensions + ("outcome" to outcome)) }
+        }
+    }
 
     fun names(): List<String> = tools.keys.toList()
 

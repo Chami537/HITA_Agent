@@ -6,7 +6,6 @@ import cn.limpu.hita.utils.LogUtils
 import dagger.hilt.android.HiltAndroidApp
 import androidx.annotation.WorkerThread
 import com.google.gson.Gson
-import java.util.concurrent.ConcurrentHashMap
 import com.google.gson.JsonObject
 import cn.limpu.hita.data.AppDatabase
 import cn.limpu.hita.data.model.GsonBuilderUtil
@@ -17,7 +16,6 @@ import com.limpu.hitauser.data.repository.LocalUserRepository
 import javax.inject.Inject
 import cn.limpu.hita.agent.remote.AgentBackendClient
 import cn.limpu.hita.data.analytics.UsageAnalyticsClient
-import cn.limpu.hita.data.analytics.UsageAnalyticsEvent
 import cn.limpu.hita.data.work.CourseReminderScheduler
 import cn.limpu.hita.data.work.WidgetRefreshScheduler
 import cn.limpu.hita.ui.widgets.WidgetUtils
@@ -47,17 +45,8 @@ class HApplication : Application() {
         // 启用 Material You 动态配色（Android 12+ 自动跟随系统壁纸颜色）
         DynamicColors.applyToActivitiesIfAvailable(this)
 
-        try {
-            applicationScope.launch(Dispatchers.IO) {
-                try {
-                    initPdfCMapResources()
-                } catch (e: Exception) {
-                    LogUtils.e("initPdfCMapResources failed", e)
-                }
-            }
-        } catch (e: Exception) {
-            LogUtils.e("Failed to launch pdf init", e)
-        }
+        // PDFBox uses the assets bundled in its AAR; initialize before any parser can run.
+        com.tom_roush.pdfbox.android.PDFBoxResourceLoader.init(this)
 
         try {
             applicationScope.launch(Dispatchers.IO) {
@@ -93,30 +82,9 @@ class HApplication : Application() {
         }
 
         try {
-            reportAppVisit()
-        } catch (e: Exception) {
-            LogUtils.e("reportAppVisit failed", e)
-        }
-
-        try {
             UsageAnalyticsClient.initialize(this)
-            UsageAnalyticsClient.record(UsageAnalyticsEvent.APP_FOREGROUND)
         } catch (e: Exception) {
             LogUtils.e("UsageAnalytics init failed", e)
-        }
-    }
-
-    private fun reportAppVisit() {
-        val prefs = getSharedPreferences("stats", android.content.Context.MODE_PRIVATE)
-        val deviceId = prefs.getString("device_id", null) ?: java.util.UUID.randomUUID().toString().also {
-            prefs.edit().putString("device_id", it).apply()
-        }
-        applicationScope.launch {
-            try {
-                AgentBackendClient.reportVisit(deviceId)
-            } catch (e: Exception) {
-                LogUtils.e( "报告访问失败", e)
-            }
         }
     }
 
@@ -148,109 +116,5 @@ class HApplication : Application() {
             LogUtils.e( "SSL握手设置失败", e)
         }
     }
-
-    private fun initPdfCMapResources() {
-        try {
-            LogUtils.d( "📚 开始初始化 PDFBox CMap 资源...")
-            val cmapDir = "com/tom_roush/pdfbox/resources/cmap/"
-            val assets = assets
-
-            val cmapFiles = assets.list(cmapDir)
-            if (cmapFiles == null) {
-                LogUtils.e( "❌ 无法列出 CMap 目录")
-                return
-            }
-
-            LogUtils.d( "📂 找到 ${cmapFiles.size} 个 CMap 文件")
-
-            val cMapManagerClass = Class.forName("com.tom_roush.pdfbox.pdmodel.font.CMapManager")
-            val cMapParserClass = Class.forName("com.tom_roush.fontbox.cmap.CMapParser")
-
-            // 探查 CMapManager 的实际结构
-            LogUtils.d( "🔍 探查 CMapManager 类结构...")
-            val declaredFields = cMapManagerClass.declaredFields
-            LogUtils.d( "📋 CMapManager 字段列表 (${declaredFields.size} 个):")
-            declaredFields.forEach { field ->
-                LogUtils.d( "   - ${field.name}: ${field.type.name} (static=${java.lang.reflect.Modifier.isStatic(field.modifiers)})")
-            }
-
-            // 探查 CMapParser 的方法
-            LogUtils.d( "🔍 探查 CMapParser 类方法...")
-            val declaredMethods = cMapParserClass.declaredMethods
-            LogUtils.d( "📋 CMapParser 方法列表 (${declaredMethods.size} 个):")
-            declaredMethods.filter { it.name == "parse" }.forEach { method ->
-                val paramTypes = method.parameterTypes.joinToString(", ") { it.simpleName }
-                LogUtils.d( "   - parse($paramTypes): ${method.returnType.simpleName} (static=${java.lang.reflect.Modifier.isStatic(method.modifiers)})")
-            }
-
-            // 尝试找到所有可能的缓存字段
-            val cacheField = declaredFields.firstOrNull {
-                it.type == Map::class.java || it.type == ConcurrentHashMap::class.java
-            }
-
-            if (cacheField != null) {
-                LogUtils.d( "✅ 找到缓存字段: ${cacheField.name}")
-
-                // 检查是否需要实例
-                if (java.lang.reflect.Modifier.isStatic(cacheField.modifiers)) {
-                    cacheField.isAccessible = true
-                    val cache = cacheField.get(null)
-                    LogUtils.d( "✅ 缓存类型: ${cache?.javaClass?.name}")
-
-                    @Suppress("UNCHECKED_CAST")
-                    val cmapCache = cache as? MutableMap<String, Any>
-                    if (cmapCache != null) {
-                        // 创建 CMapParser 实例
-                        val parserConstructor = cMapParserClass.getDeclaredConstructor()
-                        parserConstructor.isAccessible = true
-                        val parserInstance = parserConstructor.newInstance()
-                        LogUtils.d( "✅ 创建 CMapParser 实例: $parserInstance")
-
-                        val parseMethod = cMapParserClass.getDeclaredMethod("parse", java.io.InputStream::class.java)
-                        parseMethod.isAccessible = true
-
-                        var registeredCount = 0
-                        val keyCMaps = listOf(
-                            "Identity-H",
-                            "Adobe-GB1-UCS2",
-                            "Adobe-CNS1-UCS2",
-                            "Adobe-Japan1-UCS2",
-                            "Adobe-Korea1-UCS2",
-                            "GBK-EUC-H",
-                            "UniGB-UTF16-H"
-                        )
-
-                        for (cmapFile in keyCMaps) {
-                            if (cmapFile in cmapFiles) {
-                                try {
-                                    LogUtils.d( "📖 注册: $cmapFile")
-                                    val inputStream = assets.open("$cmapDir$cmapFile")
-                                    val cmap = parseMethod.invoke(parserInstance, inputStream)
-                                    inputStream.close()
-
-                                    cmapCache[cmapFile] = cmap!!
-                                    registeredCount++
-                                    LogUtils.d( "✅ 注册成功: $cmapFile")
-                                } catch (e: Exception) {
-                                    LogUtils.w( "⚠️ 注册失败 $cmapFile: ${e::class.simpleName} - ${e.message}")
-                                }
-                            } else {
-                                LogUtils.w( "⚠️ 文件不存在: $cmapFile")
-                            }
-                        }
-
-                        LogUtils.d( "📊 注册完成: $registeredCount, 缓存大小: ${cmapCache.size}")
-                    }
-                }
-            } else {
-                LogUtils.w( "⚠️ 未找到 Map 类型的缓存字段")
-            }
-
-            LogUtils.d( "✅ PDFBox CMap 资源初始化完成")
-        } catch (e: Exception) {
-            LogUtils.e( "❌ 初始化 CMap 资源失败: ${e.message}", e)
-        }
-    }
-
 
 }
