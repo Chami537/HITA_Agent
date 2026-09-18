@@ -151,7 +151,7 @@ feat/xxx        # 新功能
 fix/xxx         # bug 修复
 refactor/xxx    # 重构（不改行为）
 ```
-一个分支只做一个功能。合完就删。不要直接在 master 上改。
+一个分支只做一个功能。合完就删。不要直接在 main 上改。
 
 ### 提交与推送纪律
 
@@ -198,4 +198,4 @@ gh release upload v<version> app/build/outputs/apk/release/app-release.apk#HITA_
 - **EAS HTML 解析**：三校区（深圳/本部/威海）的 HTML 结构不同，改 EAS 相关代码要同时确认三校区
 - **数据库迁移**：Room schema 变更需要升 `@Database` version + 写 migration，否则老用户安装会 crash
 - **主线程网络请求**：所有 EAS/Retrofit 调用必须在协程里，不要在主线程做网络 IO
-- **Hardcoded 中文**：UI 文字放 `strings.xml`（已有中英文两版本）
+- **Hardcoded 中文**：UI 文字放 `strings.xml`（当前仅中文 `values/`，无英文资源）
