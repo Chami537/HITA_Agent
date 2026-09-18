@@ -914,9 +914,9 @@ private fun TimetableEventLayer(
                     clusterEnd = maxOf(clusterEnd, next.event.to.time)
                     i++
                 }
-                cluster.sortBy { it.columnIndex }
                 val clusterEvents = cluster.map { it.event }
-                cluster.forEach { rp -> result.add(rp to clusterEvents) }
+                // 冲突簇只渲染一张合并卡片，不再逐门课级联堆叠
+                result.add(cluster.first() to clusterEvents)
             } else {
                 result.add(pe to null)
                 i++
@@ -929,46 +929,34 @@ private fun TimetableEventLayer(
     val baseMinutes = startHour * 60
     BoxWithConstraintsCompat {
         val sectionWidth = maxWidth / 7f
-        val cascadeOffset = 6.dp
         val cardPlacements = renderList.map { (positioned, clusterEvents) ->
             val event = positioned.event
-            val overlapCount = positioned.overlapCount
-            val eventMinutesPastMidnight = eventMinutes(event.from.time)
-            val minutesFromBase = (eventMinutesPastMidnight - baseMinutes).coerceAtLeast(0)
-            val duration = event.getDurationInMinutes().coerceAtLeast(15)
-            val top = minutesFromBase.toFloat() * dpPerMinute
-            val rawHeight = duration.toFloat() * dpPerMinute
             val dayLeft = sectionWidth * (event.getDow() - 1)
-            val isCascade = clusterEvents != null
-            if (isCascade) {
-                val offsetTotal = overlapCount - 1
-                val cardWidth = (sectionWidth - cascadeOffset * offsetTotal).coerceAtLeast(0.dp)
-                val cardHeight = (rawHeight - cascadeOffset * offsetTotal).coerceAtLeast(0.dp)
-                val xOffset = dayLeft + cascadeOffset * positioned.columnIndex
-                val yOffset = top + cascadeOffset * positioned.columnIndex
-                val elevation = 2.dp + 2.dp * positioned.columnIndex
+            if (clusterEvents != null) {
+                // 合并卡片：覆盖冲突簇的时间并集，宽度与普通卡片一致
+                val clusterMinFrom = clusterEvents.minOf { it.from.time }
+                val clusterMaxTo = clusterEvents.maxOf { it.to.time }
+                val clusterTop =
+                    (eventMinutes(clusterMinFrom) - baseMinutes).coerceAtLeast(0).toFloat() * dpPerMinute
+                val clusterDuration = ((clusterMaxTo - clusterMinFrom) / 60000L).toInt().coerceAtLeast(15)
                 TimetableCardPlacement(
                     positioned = positioned,
                     clusterEvents = clusterEvents,
-                    xOffset = xOffset,
-                    yOffset = yOffset,
-                    width = cardWidth,
-                    height = cardHeight,
-                    columnCount = overlapCount,
-                    cardElevation = elevation,
-                    isBottomCascadeCard = positioned.columnIndex < overlapCount - 1
+                    xOffset = dayLeft + 2.dp,
+                    yOffset = clusterTop,
+                    width = (sectionWidth - 4.dp).coerceAtLeast(0.dp),
+                    height = clusterDuration.toFloat() * dpPerMinute,
                 )
             } else {
+                val minutesFromBase = (eventMinutes(event.from.time) - baseMinutes).coerceAtLeast(0)
+                val duration = event.getDurationInMinutes().coerceAtLeast(15)
                 TimetableCardPlacement(
                     positioned = positioned,
                     clusterEvents = null,
                     xOffset = dayLeft + 2.dp,
-                    yOffset = top,
+                    yOffset = minutesFromBase.toFloat() * dpPerMinute,
                     width = (sectionWidth - 4.dp).coerceAtLeast(0.dp),
-                    height = rawHeight,
-                    columnCount = 1,
-                    cardElevation = 0.dp,
-                    isBottomCascadeCard = false
+                    height = duration.toFloat() * dpPerMinute,
                 )
             }
         }
@@ -976,23 +964,21 @@ private fun TimetableEventLayer(
         cardPlacements.forEach { placement ->
             val event = placement.positioned.event
             val clusterEvents = placement.clusterEvents
-            key(event.id) {
-                if (clusterEvents != null) {
-                    TimetableEventCard(
-                        event = event,
+            if (clusterEvents != null) {
+                key("conflict_" + clusterEvents.joinToString("_") { it.id }) {
+                    TimetableConflictCard(
+                        count = clusterEvents.size,
                         style = style,
                         modifier = Modifier
                             .offset(x = placement.xOffset, y = placement.yOffset)
                             .width(placement.width)
                             .height(placement.height),
                         cardHeight = placement.height,
-                        columnCount = placement.columnCount,
-                        cardElevation = placement.cardElevation,
-                        isBottomCascadeCard = placement.isBottomCascadeCard,
-                        onClick = { conflictCluster = clusterEvents },
-                        onLongClick = { position -> onEventLongClick(event, position) }
+                        onShowConflicts = { conflictCluster = clusterEvents },
                     )
-                } else {
+                }
+            } else {
+                key(event.id) {
                     TimetableEventCard(
                         event = event,
                         style = style,
@@ -1001,7 +987,6 @@ private fun TimetableEventLayer(
                             .width(placement.width)
                             .height(placement.height),
                         cardHeight = placement.height,
-                        columnCount = placement.columnCount,
                         onClick = { onEventClick(event) },
                         onLongClick = { position -> onEventLongClick(event, position) }
                     )
@@ -1011,7 +996,11 @@ private fun TimetableEventLayer(
     }
 
     conflictCluster?.let { cluster ->
-        val title = "${TimeTools.printTime(cluster.minOf { it.from.time })} - ${TimeTools.printTime(cluster.maxOf { it.to.time })} 课程冲突"
+        val title = stringResource(
+            R.string.timetable_conflict_sheet_title,
+            TimeTools.printTime(cluster.minOf { it.from.time }),
+            TimeTools.printTime(cluster.maxOf { it.to.time })
+        )
         ModalBottomSheet(onDismissRequest = { conflictCluster = null }) {
             Column(
                 modifier = Modifier
@@ -1092,6 +1081,185 @@ private fun ConflictEventRow(
     }
 }
 
+/**
+ * 冲突合并卡片：同一时段多门课冲突时，课表上只渲染这一张卡片，
+ * 配色跟随主题（tint 取 colorScheme.primary，等同关闭课程颜色时的卡片观感），
+ * 单击/长按都弹出冲突课程列表。
+ */
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun TimetableConflictCard(
+    count: Int,
+    style: TimetableStyleSheet,
+    modifier: Modifier = Modifier,
+    cardHeight: Dp,
+    onShowConflicts: () -> Unit,
+) {
+    val view = LocalView.current
+    val isAppleGlass = hitaIsAppleGlassSurface()
+    val isCyber = hitaIsCyber()
+    val isPersona = hitaIsPersona()
+    val isSoraCloud = hitaIsSoraCloud()
+    val isDeepSpace = hitaIsDeepSpace()
+    val isSumi = hitaIsSumi()
+    val usesIllustratedFill = isAppleGlass || isSoraCloud
+    val courseTint = MaterialTheme.colorScheme.primary
+    val baseAlpha = (if (isSumi) 20 else style.cardOpacity).coerceIn(20, 100) / 100f
+    val bubbleStyle = style.courseBubbleStyle
+    val backgroundAlpha = if (isAppleGlass) {
+        when (bubbleStyle) {
+            CourseBubbleStyle.SOLID -> (baseAlpha * 0.34f).coerceIn(0.10f, 0.18f)
+            CourseBubbleStyle.TONAL -> (baseAlpha * 0.22f).coerceIn(0.08f, 0.14f)
+            CourseBubbleStyle.OUTLINE -> (baseAlpha * 0.10f).coerceIn(0.04f, 0.08f)
+        }
+    } else if (isPersona) {
+        // P5 统一配置：实色面板，不跟随气泡质感选项
+        1f
+    } else {
+        val styleMultiplier = when (bubbleStyle) {
+            CourseBubbleStyle.SOLID -> 1f
+            CourseBubbleStyle.TONAL -> 0.32f
+            CourseBubbleStyle.OUTLINE -> 0.12f
+        }
+        baseAlpha * styleMultiplier
+    }
+    val background = courseTint.copy(alpha = backgroundAlpha)
+    val backgroundBrush = if (isPersona) {
+        SolidColor(background)
+    } else if (style.isFadeEnabled) {
+        Brush.linearGradient(
+            colors = listOf(
+                background.copy(alpha = background.alpha * 0.72f),
+                background,
+            )
+        )
+    } else {
+        SolidColor(background)
+    }
+    val borderColor = when {
+        isPersona -> Color.Transparent
+        bubbleStyle == CourseBubbleStyle.OUTLINE -> courseTint.copy(alpha = 0.88f)
+        isAppleGlass || isCyber || isSoraCloud || isDeepSpace || isSumi -> Color.Transparent
+        else -> courseTint.copy(alpha = 0.28f)
+    }
+    val borderWidth = if (bubbleStyle == CourseBubbleStyle.OUTLINE && !isPersona) 1.25.dp else 0.5.dp
+    val cardShape = hitaStyleCardShape(HitaTheme.tokens.radius.md, 10.dp)
+    // 文字对比度基于可见合成色计算，半透明卡片在深色/壁纸上也能读清
+    val effectiveBg = background.compositeOver(MaterialTheme.colorScheme.surface).toArgb()
+    val titleColor = if (isSoraCloud) {
+        if (bubbleStyle == CourseBubbleStyle.SOLID) {
+            Color(ColorContrast.contrastText(courseTint.toArgb()))
+        } else {
+            soraCloudCourseContentColor(HitaTheme.isDark)
+        }
+    } else if (isAppleGlass || (bubbleStyle != CourseBubbleStyle.SOLID && !isPersona)) {
+        MaterialTheme.colorScheme.onSurface.copy(alpha = 0.90f)
+    } else {
+        Color(ColorContrast.contrastText(effectiveBg))
+    }
+    val subtitleColor = if (isSoraCloud) {
+        if (bubbleStyle == CourseBubbleStyle.SOLID) {
+            Color(ColorContrast.contrastText(courseTint.toArgb())).copy(alpha = 0.76f)
+        } else {
+            soraCloudCourseContentColor(HitaTheme.isDark).copy(alpha = 0.72f)
+        }
+    } else if (isAppleGlass || (bubbleStyle != CourseBubbleStyle.SOLID && !isPersona)) {
+        MaterialTheme.colorScheme.onSurface.copy(alpha = 0.72f)
+    } else {
+        Color(ColorContrast.contrastText(effectiveBg)).copy(alpha = 0.78f)
+    }
+    Box(
+        modifier = modifier
+            .then(
+                if (isAppleGlass || isSoraCloud) {
+                    Modifier
+                } else {
+                    Modifier.hitaGlassCardModifier(cardShape, elevation = 8.dp, edgeTint = courseTint)
+                }
+            )
+            .then(
+                if (usesIllustratedFill && bubbleStyle != CourseBubbleStyle.OUTLINE) {
+                    Modifier
+                } else {
+                    Modifier.border(borderWidth, borderColor, cardShape)
+                }
+            )
+            .pointerInput(Unit) {
+                detectTapGestures(
+                    onLongPress = {
+                        view.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
+                        onShowConflicts()
+                    },
+                    onTap = { onShowConflicts() }
+                )
+            }
+            .then(if (isSoraCloud) Modifier else Modifier.clip(cardShape))
+            .then(
+                if (usesIllustratedFill) {
+                    Modifier.background(Color.Transparent)
+                } else {
+                    Modifier.background(backgroundBrush)
+                }
+            )
+    ) {
+        if (usesIllustratedFill) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .zIndex(0f)
+                    .hitaCourseCrystalGlassModifier(
+                        shape = cardShape,
+                        tint = courseTint,
+                        isMuted = false,
+                        gradientEnabled = style.isFadeEnabled,
+                        opacity = when (bubbleStyle) {
+                            CourseBubbleStyle.SOLID -> baseAlpha
+                            CourseBubbleStyle.TONAL -> baseAlpha * 0.68f
+                            CourseBubbleStyle.OUTLINE -> baseAlpha * 0.34f
+                        },
+                        treatment = when (bubbleStyle) {
+                            CourseBubbleStyle.SOLID -> HitaCourseBubbleTreatment.SOLID
+                            CourseBubbleStyle.TONAL -> HitaCourseBubbleTreatment.TONAL
+                            CourseBubbleStyle.OUTLINE -> HitaCourseBubbleTreatment.OUTLINE
+                        },
+                    )
+            )
+        }
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .zIndex(1f)
+                .padding(horizontal = 4.dp, vertical = 2.dp),
+            verticalArrangement = Arrangement.Center,
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Text(
+                text = stringResource(R.string.timetable_conflict_card_title),
+                color = titleColor,
+                fontSize = 12.sp,
+                lineHeight = 15.sp,
+                fontWeight = if (style.isBoldText) FontWeight.Bold else FontWeight.Normal,
+                fontFamily = HitaTheme.fonts.display,
+                textAlign = TextAlign.Center,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
+            if (cardHeight >= 36.dp) {
+                Text(
+                    text = stringResource(R.string.timetable_conflict_card_subtitle, count),
+                    color = subtitleColor,
+                    fontSize = 9.sp,
+                    lineHeight = 12.sp,
+                    fontWeight = if (style.isBoldText) FontWeight.Bold else FontWeight.Normal,
+                    textAlign = TextAlign.Center,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+        }
+    }
+}
+
 
 @Composable
 private fun BoxWithConstraintsCompat(content: @Composable androidx.compose.foundation.layout.BoxWithConstraintsScope.() -> Unit) {
@@ -1105,9 +1273,6 @@ private data class TimetableCardPlacement(
     val yOffset: Dp,
     val width: Dp,
     val height: Dp,
-    val columnCount: Int,
-    val cardElevation: Dp,
-    val isBottomCascadeCard: Boolean,
 )
 
 @OptIn(ExperimentalFoundationApi::class)
@@ -1117,11 +1282,8 @@ private fun TimetableEventCard(
     style: TimetableStyleSheet,
     modifier: Modifier = Modifier,
     cardHeight: Dp,
-    columnCount: Int,
     onClick: () -> Unit,
     onLongClick: (IntOffset) -> Unit,
-    cardElevation: Dp = 0.dp,
-    isBottomCascadeCard: Boolean = false,
 ) {
     val view = LocalView.current
     var cardPositionInWindow by remember { mutableStateOf(IntOffset.Zero) }
@@ -1145,25 +1307,21 @@ private fun TimetableEventCard(
     val baseAlpha = (if (isSumi) 20 else style.cardOpacity).coerceIn(20, 100) / 100f
     val bubbleStyle = style.courseBubbleStyle
     val backgroundAlpha = if (isAppleGlass) {
-        if (isBottomCascadeCard) {
-            0.04f
-        } else {
-            when (bubbleStyle) {
-                CourseBubbleStyle.SOLID -> (baseAlpha * 0.34f).coerceIn(0.10f, 0.18f)
-                CourseBubbleStyle.TONAL -> (baseAlpha * 0.22f).coerceIn(0.08f, 0.14f)
-                CourseBubbleStyle.OUTLINE -> (baseAlpha * 0.10f).coerceIn(0.04f, 0.08f)
-            }
+        when (bubbleStyle) {
+            CourseBubbleStyle.SOLID -> (baseAlpha * 0.34f).coerceIn(0.10f, 0.18f)
+            CourseBubbleStyle.TONAL -> (baseAlpha * 0.22f).coerceIn(0.08f, 0.14f)
+            CourseBubbleStyle.OUTLINE -> (baseAlpha * 0.10f).coerceIn(0.04f, 0.08f)
         }
     } else if (isPersona) {
         // P5 统一配置：实色面板，不跟随气泡质感选项
-        if (isBottomCascadeCard) 0.52f else 1f
+        1f
     } else {
         val styleMultiplier = when (bubbleStyle) {
             CourseBubbleStyle.SOLID -> 1f
             CourseBubbleStyle.TONAL -> 0.32f
             CourseBubbleStyle.OUTLINE -> 0.12f
         }
-        baseAlpha * styleMultiplier * if (isBottomCascadeCard) 0.5f else 1f
+        baseAlpha * styleMultiplier
     }
     val background = courseTint.copy(alpha = backgroundAlpha)
     val backgroundBrush = if (isPersona) {
@@ -1211,11 +1369,11 @@ private fun TimetableEventCard(
     } else {
         resolveCardTextColor(style.subTitleColor, style.isColorEnabled, courseTint.toArgb(), effectiveBg)
     }
-    val textScale = TimetableCardTextScale.forColumnCount(columnCount)
-    val marginScale = TimetableCardTextScale.marginScaleForColumnCount(columnCount)
+    val textScale = TimetableCardTextScale.forColumnCount(1)
+    val marginScale = TimetableCardTextScale.marginScaleForColumnCount(1)
     val horizontalPadding = (5 * marginScale).dp
     val verticalPadding = (3 * marginScale).dp
-    val minTitleSize = if (columnCount > 1) 5f else 6f
+    val minTitleSize = 6f
     val hasPlace = !event.place.isNullOrBlank()
     val nameLength = event.name.length
     val lengthScale = when {
@@ -1292,7 +1450,7 @@ private fun TimetableEventCard(
                     .hitaCourseCrystalGlassModifier(
                         shape = cardShape,
                         tint = courseTint,
-                        isMuted = isBottomCascadeCard,
+                        isMuted = false,
                         gradientEnabled = style.isFadeEnabled,
                         opacity = when (bubbleStyle) {
                             CourseBubbleStyle.SOLID -> baseAlpha
@@ -1314,7 +1472,7 @@ private fun TimetableEventCard(
                 .zIndex(1f)
                 .padding(horizontal = horizontalPadding, vertical = verticalPadding)
         ) {
-            if (hasPlace && !isBottomCascadeCard) {
+            if (hasPlace) {
                 Text(
                     text = event.place ?: "",
                     color = subtitleColor,
@@ -1331,7 +1489,7 @@ private fun TimetableEventCard(
                         .alpha(if (isAppleGlass) 0.78f else style.subtitleAlpha / 100f)
                 )
             }
-            if (style.cardIconEnabled && !isBottomCascadeCard) {
+            if (style.cardIconEnabled) {
                 Box(
                     modifier = Modifier
                         .align(Alignment.TopCenter)
@@ -1341,31 +1499,29 @@ private fun TimetableEventCard(
                         .background(titleColor)
                 )
             }
-            if (!isBottomCascadeCard) {
-                val titleBottomPad = if (hasPlace) (14f * textScale).dp else 0.dp
-                val titleTopPad = if (style.cardIconEnabled) (10f * textScale).dp else 0.dp
-                Column(
+            val titleBottomPad = if (hasPlace) (14f * textScale).dp else 0.dp
+            val titleTopPad = if (style.cardIconEnabled) (10f * textScale).dp else 0.dp
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(bottom = titleBottomPad, top = titleTopPad),
+                verticalArrangement = Arrangement.Center,
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Text(
+                    text = event.name,
+                    color = titleColor,
+                    fontSize = titleFontSize,
+                    lineHeight = (titleFontSize.value * 1.2f).sp,
+                    fontWeight = if (style.isBoldText) FontWeight.Bold else FontWeight.Normal,
+                    fontFamily = HitaTheme.fonts.display,
+                    textAlign = textAlignFromGravity(style.titleGravity),
+                    maxLines = maxTitleLines,
+                    overflow = TextOverflow.Ellipsis,
                     modifier = Modifier
-                        .fillMaxSize()
-                        .padding(bottom = titleBottomPad, top = titleTopPad),
-                    verticalArrangement = Arrangement.Center,
-                    horizontalAlignment = Alignment.CenterHorizontally
-                ) {
-                    Text(
-                        text = event.name,
-                        color = titleColor,
-                        fontSize = titleFontSize,
-                        lineHeight = (titleFontSize.value * 1.2f).sp,
-                        fontWeight = if (style.isBoldText) FontWeight.Bold else FontWeight.Normal,
-                        fontFamily = HitaTheme.fonts.display,
-                        textAlign = textAlignFromGravity(style.titleGravity),
-                        maxLines = maxTitleLines,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .alpha(if (isAppleGlass) 1f else style.titleAlpha / 100f)
-                    )
-                }
+                        .fillMaxWidth()
+                        .alpha(if (isAppleGlass) 1f else style.titleAlpha / 100f)
+                )
             }
         }
     }
