@@ -48,6 +48,7 @@ import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.livedata.observeAsState
@@ -482,121 +483,194 @@ private fun TimetableWeekContent(
         (1f - (abs(displayOffset) / contentWidthPx).coerceIn(0f, 1f))
     } else 1f
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .graphicsLayer {
-                translationX = displayOffset
-                alpha = displayAlpha
-            }
-            .onSizeChanged { contentWidthPx = it.width.toFloat() }
-            .pointerInput(startDate) {
-                detectHorizontalDragGestures(
-                    onDragEnd = {
-                        if (isAnimating) return@detectHorizontalDragGestures
-                        coroutineScope.launch {
-                            val threshold = contentWidthPx * 0.15f
-                            val cur = dragAccum
-                            dragAccum = 0f
-                            when {
-                                cur > threshold -> {
-                                    isAnimating = true
-                                    animOffset.snapTo(cur)
-                                    animOffset.animateTo(contentWidthPx, tween(150))
-                                    onPrevWeek()
-                                    animOffset.snapTo(-contentWidthPx)
-                                    animOffset.animateTo(0f, tween(150))
-                                    isAnimating = false
-                                }
-                                cur < -threshold -> {
-                                    isAnimating = true
-                                    animOffset.snapTo(cur)
-                                    animOffset.animateTo(-contentWidthPx, tween(150))
-                                    onNextWeek()
-                                    animOffset.snapTo(contentWidthPx)
-                                    animOffset.animateTo(0f, tween(150))
-                                    isAnimating = false
-                                }
-                                cur != 0f -> {
-                                    isAnimating = true
-                                    animOffset.snapTo(cur)
-                                    animOffset.animateTo(0f, spring())
-                                    isAnimating = false
-                                }
-                            }
-                        }
-                    },
-                    onHorizontalDrag = { _, drag ->
-                        dragAccum = (dragAccum + drag).coerceIn(-contentWidthPx, contentWidthPx)
-                    }
-                )
-            }
-    ) {
-        TimetableDowHeader(startDate = startDate, monthColor = dateColor)
-        Row(
+    // 晚间课程提示：当前周有 ≥18:30 开始的课程，且晚间课程尚未滚入视野时显示；
+    // 滚到底部附近自动隐藏，避免遮挡正常课表内容
+    val eveningHintHideThresholdPx = with(density) { 64.dp.toPx() }
+    val showEveningHint by remember(events) {
+        derivedStateOf {
+            events.any { eventMinutes(it.from.time) >= EVENING_HINT_START_MINUTES } &&
+                scrollState.maxValue > 0 &&
+                scrollState.value < scrollState.maxValue - eveningHintHideThresholdPx
+        }
+    }
+
+    Box(modifier = Modifier.fillMaxSize()) {
+        Column(
             modifier = Modifier
                 .fillMaxSize()
-                .verticalScroll(scrollState)
-                .padding(top = 24.dp, bottom = 120.dp)
-        ) {
-            TimetableLeftLabels(
-                startHour = startHour,
-                endHour = endHour,
-                scheduleStructure = scheduleStructure,
-                labelColor = labelColor,
-                style = style,
-                dpPerMinute = dpPerMinute,
-                modifier = Modifier
-                    .width(48.dp)
-                    .height(tableHeight)
-            )
-            Box(
-                modifier = Modifier
-                    .weight(1f)
-                    .height(tableHeight)
-                    .onSizeChanged { tableWidthPx = it.width }
-                    .pointerInput(startDate, style, tableWidthPx, startHour, endHour, scheduleStructure) {
-                        detectTapGestures(
-                            onTap = { offset ->
-                                val width = tableWidthPx.takeIf { it > 0 } ?: return@detectTapGestures
-                                val dow = ((offset.x / (width / 7f)).toInt() + 1).coerceIn(1, 7)
-                                val period = pickPeriodFromOffsetDp(
-                                    y = offset.y,
-                                    startHour = startHour,
-                                    endHour = endHour,
-                                    style = style,
-                                    scheduleStructure = scheduleStructure,
-                                    density = density,
-                                    dpPerMinute = dpPerMinute,
-                                ) ?: return@detectTapGestures
-                                onAddClick(dow, period)
+                .graphicsLayer {
+                    translationX = displayOffset
+                    alpha = displayAlpha
+                }
+                .onSizeChanged { contentWidthPx = it.width.toFloat() }
+                .pointerInput(startDate) {
+                    detectHorizontalDragGestures(
+                        onDragEnd = {
+                            if (isAnimating) return@detectHorizontalDragGestures
+                            coroutineScope.launch {
+                                val threshold = contentWidthPx * 0.15f
+                                val cur = dragAccum
+                                dragAccum = 0f
+                                when {
+                                    cur > threshold -> {
+                                        isAnimating = true
+                                        animOffset.snapTo(cur)
+                                        animOffset.animateTo(contentWidthPx, tween(150))
+                                        onPrevWeek()
+                                        animOffset.snapTo(-contentWidthPx)
+                                        animOffset.animateTo(0f, tween(150))
+                                        isAnimating = false
+                                    }
+                                    cur < -threshold -> {
+                                        isAnimating = true
+                                        animOffset.snapTo(cur)
+                                        animOffset.animateTo(-contentWidthPx, tween(150))
+                                        onNextWeek()
+                                        animOffset.snapTo(contentWidthPx)
+                                        animOffset.animateTo(0f, tween(150))
+                                        isAnimating = false
+                                    }
+                                    cur != 0f -> {
+                                        isAnimating = true
+                                        animOffset.snapTo(cur)
+                                        animOffset.animateTo(0f, spring())
+                                        isAnimating = false
+                                    }
+                                }
                             }
-                        )
-                    }
-            ) {
-                Box(
-                    modifier = Modifier.fillMaxSize()
-                ) {
-                    TimetableGrid(
-                        startDate = startDate,
-                        startHour = startHour,
-                        endHour = endHour,
-                        style = style,
-                        dpPerMinute = dpPerMinute,
-                        showTodayHighlight = !isAppleGlass,
+                        },
+                        onHorizontalDrag = { _, drag ->
+                            dragAccum = (dragAccum + drag).coerceIn(-contentWidthPx, contentWidthPx)
+                        }
                     )
                 }
-                TimetableEventLayer(
-                    events = events,
-                    startDate = startDate,
+        ) {
+            TimetableDowHeader(startDate = startDate, monthColor = dateColor)
+            Row(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .verticalScroll(scrollState)
+                    .padding(top = 24.dp, bottom = 120.dp)
+            ) {
+                TimetableLeftLabels(
                     startHour = startHour,
+                    endHour = endHour,
+                    scheduleStructure = scheduleStructure,
+                    labelColor = labelColor,
                     style = style,
                     dpPerMinute = dpPerMinute,
-                    onEventClick = onEventClick,
-                    onEventLongClick = onEventLongClick,
+                    modifier = Modifier
+                        .width(48.dp)
+                        .height(tableHeight)
                 )
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(tableHeight)
+                        .onSizeChanged { tableWidthPx = it.width }
+                        .pointerInput(startDate, style, tableWidthPx, startHour, endHour, scheduleStructure) {
+                            detectTapGestures(
+                                onTap = { offset ->
+                                    val width = tableWidthPx.takeIf { it > 0 } ?: return@detectTapGestures
+                                    val dow = ((offset.x / (width / 7f)).toInt() + 1).coerceIn(1, 7)
+                                    val period = pickPeriodFromOffsetDp(
+                                        y = offset.y,
+                                        startHour = startHour,
+                                        endHour = endHour,
+                                        style = style,
+                                        scheduleStructure = scheduleStructure,
+                                        density = density,
+                                        dpPerMinute = dpPerMinute,
+                                    ) ?: return@detectTapGestures
+                                    onAddClick(dow, period)
+                                }
+                            )
+                        }
+                ) {
+                    Box(
+                        modifier = Modifier.fillMaxSize()
+                    ) {
+                        TimetableGrid(
+                            startDate = startDate,
+                            startHour = startHour,
+                            endHour = endHour,
+                            style = style,
+                            dpPerMinute = dpPerMinute,
+                            showTodayHighlight = !isAppleGlass,
+                        )
+                    }
+                    TimetableEventLayer(
+                        events = events,
+                        startDate = startDate,
+                        startHour = startHour,
+                        style = style,
+                        dpPerMinute = dpPerMinute,
+                        onEventClick = onEventClick,
+                        onEventLongClick = onEventLongClick,
+                    )
+                }
             }
         }
+
+        if (showEveningHint) {
+            TimetableEveningHintPill(
+                onClick = {
+                    coroutineScope.launch { scrollState.animateScrollTo(scrollState.maxValue) }
+                },
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .padding(
+                        bottom = dimensionResource(R.dimen.bottom_navigation_height) +
+                            HitaTheme.tokens.spacing.lg
+                    )
+            )
+        }
+    }
+}
+
+/** 晚间课程提示的开始阈值：18:30（含） */
+private const val EVENING_HINT_START_MINUTES = 18 * 60 + 30
+
+/**
+ * "还有更多课程"悬浮提示 pill：配色全部走 colorScheme 令牌，
+ * 七种风格 × 深浅色 × 壁纸模式下均保持可读；点击平滑滚动到课表最底部。
+ */
+@Composable
+private fun TimetableEveningHintPill(
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val surface = MaterialTheme.colorScheme.surface
+    // AppleGlass 等半透明 surface 主题下给一个透明度下限，保证压得住底层课程卡
+    val pillBackground = if (surface.alpha < 0.85f) surface.copy(alpha = 0.85f) else surface
+    Row(
+        modifier = modifier
+            .clip(CircleShape)
+            .background(pillBackground)
+            .border(
+                width = 0.5.dp,
+                color = MaterialTheme.colorScheme.outline.copy(alpha = 0.5f),
+                shape = CircleShape
+            )
+            .clickable(onClick = onClick)
+            .padding(horizontal = 14.dp, vertical = 7.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.Center,
+    ) {
+        Icon(
+            painter = painterResource(R.drawable.ic_moon),
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.size(13.dp)
+        )
+        Spacer(modifier = Modifier.width(5.dp))
+        Text(
+            text = stringResource(R.string.timetable_more_courses_hint),
+            style = MaterialTheme.typography.labelMedium,
+            fontWeight = FontWeight.Medium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            maxLines = 1,
+        )
     }
 }
 

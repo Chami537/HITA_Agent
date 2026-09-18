@@ -1148,6 +1148,7 @@
     <string name="timetable_conflict_card_title">课程冲突</string>
     <string name="timetable_conflict_card_subtitle">共%1$d门</string>
     <string name="timetable_conflict_sheet_title">%1$s - %2$s 课程冲突</string>
+    <string name="timetable_more_courses_hint">还有更多课程</string>
     <string name="event_duration_text">%1$s-%2$s</string>
     <string name="title_subjects">科目</string>
     <string name="title_teachers">教师</string>
