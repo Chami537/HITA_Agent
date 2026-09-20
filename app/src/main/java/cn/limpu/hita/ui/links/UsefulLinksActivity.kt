@@ -100,6 +100,7 @@ private val usefulLinkGroups = listOf(
         titleRes = R.string.useful_links_group_affairs,
         links = listOf(
             UsefulLink(R.string.useful_link_portal, "https://www.hitsz.edu.cn/", R.drawable.ic_menu_discover),
+            UsefulLink(R.string.useful_link_cist, "https://cist.hitsz.edu.cn/index.htm", R.drawable.ic_baseline_location_city_24),
             UsefulLink(R.string.useful_link_info, "https://info.hitsz.edu.cn/", R.drawable.ic_bc_news),
             UsefulLink(R.string.useful_link_xgb, "https://xgb.hit.edu.cn/", R.drawable.ic_bc_organization),
             UsefulLink(R.string.useful_link_xuefei, "https://xuefei.hitsz.edu.cn/", R.drawable.ic_bx_credit),
