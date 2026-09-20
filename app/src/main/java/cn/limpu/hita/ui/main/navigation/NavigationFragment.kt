@@ -184,6 +184,7 @@ class NavigationFragment : androidx.fragment.app.Fragment() {
     override fun onStart() {
         super.onStart()
         reminderEnabledState = CourseReminderStore(requireContext()).isEnabled()
+        usageAnalyticsEnabledState = UsageAnalyticsClient.isEnabled(requireContext())
         viewModel.startRefresh()
     }
 
