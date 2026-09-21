@@ -18,7 +18,8 @@ import java.util.UUID
 enum class TimetableSnapshotKind {
     BEFORE_REFRESH,
     IMPORTED,
-    BEFORE_RESTORE
+    BEFORE_RESTORE,
+    BEFORE_USER_ADOPT
 }
 
 data class TimetableVersionSnapshot(

@@ -11,8 +11,8 @@ plugins {
 def envVersionCode = System.getenv("VERSION_CODE")
 def appVersionCodeValue = (envVersionCode != null && envVersionCode.matches("\\d+"))
     ? Integer.parseInt(envVersionCode)
-    : 2026090301
-def appVersionNameValue = "2.7.1"
+    : 2026092101
+def appVersionNameValue = "2.8.0"
 
 def keystorePropertiesFile = rootProject.file("keystore.properties")
 def keystoreProperties = new Properties()
@@ -95,6 +95,8 @@ android {
     }
     buildTypes {
         debug {
+            // 诊断版使用独立 applicationId，与正式版共存不冲突
+            applicationIdSuffix ".diag"
             if (keystorePropertiesFile.exists() && keystoreProperties['storeFile']) {
                 signingConfig signingConfigs.release
             }

@@ -94,7 +94,8 @@ internal class CourseSelectionExecutionTokenStore(
 class EASRepository @Inject constructor(
     application: Application,
     private val easPreferenceSource: EasPreferenceSource,
-    private val timetablePreferenceSource: TimetablePreferenceSource
+    private val timetablePreferenceSource: TimetablePreferenceSource,
+    private val timetableChangeStore: TimetableChangeStore
 ) : ShenzhenCourseSelectionGateway {
     private val appContext = application.applicationContext
     private val tokenStateLock = Any()
@@ -758,7 +759,8 @@ class EASRepository @Inject constructor(
         term: TermItem,
         startDate: Calendar,
         schedule: List<TimePeriodInDay>,//课表结构
-        importTimetableLiveData: MediatorLiveData<DataState<Boolean>>
+        importTimetableLiveData: MediatorLiveData<DataState<Boolean>>,
+        importMode: TimetableImportMode = TimetableImportMode.REPLACE
     ) {
         startDate.set(Calendar.HOUR_OF_DAY, 0)
         startDate.set(Calendar.MINUTE, 0)
@@ -1015,29 +1017,44 @@ class EASRepository @Inject constructor(
                                 }
                                 LogUtils.d( "import: saving ${events.size} events for term=${term.getCode()}")
                                 val snapshotOwnerKey = FollowedTeachingSectionStore.ownerKey(easToken)
-                                timetableSnapshotStore.capture(
-                                    snapshotOwnerKey,
-                                    term,
-                                    timetable,
-                                    TimetableSnapshotKind.BEFORE_REFRESH
-                                )
-                                eventItemDao.deleteCourseFromTimetable(timetable.id)
-                                subjectDao.saveSubjectsSync(pendingSubjects.values.toList())
-                                eventItemDao.saveEvents(events)
+                                if (importMode == TimetableImportMode.MERGE) {
+                                    applyMergedTimetable(
+                                        term = term,
+                                        easToken = easToken,
+                                        timetable = timetable,
+                                        pendingSubjects = pendingSubjects,
+                                        events = events,
+                                        maxTs = maxTs,
+                                        timetableCode = timetableCode,
+                                        timetableName = buildTimetableName(term, easToken.campus),
+                                        startMillis = startDate.timeInMillis,
+                                        schedule = safeSchedule
+                                    )
+                                } else {
+                                    timetableSnapshotStore.capture(
+                                        snapshotOwnerKey,
+                                        term,
+                                        timetable,
+                                        TimetableSnapshotKind.BEFORE_REFRESH
+                                    )
+                                    eventItemDao.deleteCourseFromTimetable(timetable.id)
+                                    subjectDao.saveSubjectsSync(pendingSubjects.values.toList())
+                                    eventItemDao.saveEvents(events)
 
-                                //更新timetable对象
-                                timetable.name = buildTimetableName(term, easToken.campus)
-                                timetable.startTime = Timestamp(startDate.timeInMillis)
-                                timetable.endTime = Timestamp(maxTs)
-                                timetable.code = timetableCode
-                                timetable.scheduleStructure = safeSchedule
-                                timetableDao.saveTimetableSync(timetable)
-                                timetableSnapshotStore.capture(
-                                    snapshotOwnerKey,
-                                    term,
-                                    timetable,
-                                    TimetableSnapshotKind.IMPORTED
-                                )
+                                    //更新timetable对象
+                                    timetable.name = buildTimetableName(term, easToken.campus)
+                                    timetable.startTime = Timestamp(startDate.timeInMillis)
+                                    timetable.endTime = Timestamp(maxTs)
+                                    timetable.code = timetableCode
+                                    timetable.scheduleStructure = safeSchedule
+                                    timetableDao.saveTimetableSync(timetable)
+                                    timetableSnapshotStore.capture(
+                                        snapshotOwnerKey,
+                                        term,
+                                        timetable,
+                                        TimetableSnapshotKind.IMPORTED
+                                    )
+                                }
                                 cleanupDefaultDuplicateTimetablesAfterImport(timetable.id)
 
                                 if (finished.compareAndSet(false, true)) {
@@ -1071,6 +1088,147 @@ class EASRepository @Inject constructor(
             LogUtils.e("startImport: not logged in, cannot import")
             importTimetableLiveData.value = DataState(DataState.STATE.NOT_LOGGED_IN)
         }
+    }
+
+    /**
+     * 打开应用时的自动刷新：按 [TimetableRefreshMergePolicy] 逐门合并，而不是整表替换。
+     *
+     * 与手动导入（REPLACE）的差别：
+     * - 课表源漏课或课次减少的课保留本地，不被错误源覆盖；
+     * - 时间/地点/教师变更与新增课次照常采纳；
+     * - 持续缺失（3 次且 48 小时）升级为待用户确认；
+     * - 源端与本地匹配率过低时整批挂起，等用户决策。
+     *
+     * 必须在工作线程调用。
+     */
+    @WorkerThread
+    private fun applyMergedTimetable(
+        term: TermItem,
+        easToken: EASToken,
+        timetable: Timetable,
+        pendingSubjects: Map<String, TermSubject>,
+        events: List<EventItem>,
+        maxTs: Long,
+        timetableCode: String,
+        timetableName: String,
+        startMillis: Long,
+        schedule: List<TimePeriodInDay>
+    ) {
+        val snapshotOwnerKey = FollowedTeachingSectionStore.ownerKey(easToken)
+        val localEvents = eventItemDao.getImportedClassEventsOfTimetableSync(timetable.id)
+        val localSubjectsById = subjectDao.getSubjectsSync(timetable.id).associateBy { it.id }
+        val localCourses = localEvents.groupBy { it.subjectId }.mapNotNull { (subjectId, lessons) ->
+            val subject = localSubjectsById[subjectId] ?: return@mapNotNull null
+            MergeCourse(subjectId, subject.name, subject.code, lessons.map { it.toMergeLesson() })
+        }
+        val incomingCourses = events.groupBy { it.subjectId }.mapNotNull { (subjectId, lessons) ->
+            val subject = pendingSubjects[subjectId] ?: return@mapNotNull null
+            MergeCourse(subjectId, subject.name, subject.code, lessons.map { it.toMergeLesson() })
+        }
+
+        val plan = TimetableRefreshMergePolicy.plan(
+            local = localCourses,
+            incoming = incomingCourses,
+            vetoes = timetableChangeStore.getVetoes(term.id),
+            nowMillis = System.currentTimeMillis()
+        )
+        timetableChangeStore.putVetoes(term.id, plan.vetoes)
+
+        if (plan.holdBatch) {
+            LogUtils.w(
+                "merge: hold batch term=${term.id} " +
+                    "local=${plan.holdLocalCount} incoming=${plan.holdIncomingCount} " +
+                    "matched=${plan.holdMatchedCount}"
+            )
+            timetableChangeStore.recordHeldBatch(
+                TimetableHeldBatch(
+                    createdAtMillis = System.currentTimeMillis(),
+                    termId = term.id,
+                    timetableId = timetable.id,
+                    timetableName = timetableName,
+                    timetableCode = timetableCode,
+                    startMillis = startMillis,
+                    schedule = schedule,
+                    localCount = plan.holdLocalCount,
+                    incomingCount = plan.holdIncomingCount,
+                    matchedCount = plan.holdMatchedCount,
+                    courses = incomingCourses,
+                    unmatchedLocal = plan.holdUnmatchedLocal
+                )
+            )
+            return
+        }
+
+        // 本次刷新匹配正常：源端已恢复，丢弃此前挂起的过期异常批
+        timetableChangeStore.clearHeldBatch()
+
+        if (plan.hasChanges) {
+            timetableSnapshotStore.capture(
+                snapshotOwnerKey,
+                term,
+                timetable,
+                TimetableSnapshotKind.BEFORE_REFRESH
+            )
+        }
+
+        val replacedSubjectIds = plan.replacedLocal.mapTo(HashSet()) { it.subjectId }
+        if (replacedSubjectIds.isNotEmpty()) {
+            eventItemDao.deleteEventsFromSubjectsSync(replacedSubjectIds.toList())
+        }
+        if (plan.adopt.isNotEmpty()) {
+            val adoptSubjectIds = plan.adopt.mapTo(HashSet()) { it.subjectId }
+            subjectDao.saveSubjectsSync(plan.adopt.mapNotNull { pendingSubjects[it.subjectId] })
+            eventItemDao.saveEvents(events.filter { it.subjectId in adoptSubjectIds })
+
+            // 仅在有采纳时更新课表元数据：整批保留时不动开学日期/作息，
+            // 避免保留课的旧课次与新元数据错位。
+            timetable.name = timetableName
+            timetable.startTime = Timestamp(startMillis)
+            timetable.code = timetableCode
+            timetable.scheduleStructure = schedule
+            val keptMax = localEvents
+                .filterNot { it.subjectId in replacedSubjectIds }
+                .maxOfOrNull { it.to.time }
+                ?: 0L
+            timetable.endTime = Timestamp(maxOf(maxTs, keptMax))
+            timetableDao.saveTimetableSync(timetable)
+            timetableSnapshotStore.capture(
+                snapshotOwnerKey,
+                term,
+                timetable,
+                TimetableSnapshotKind.IMPORTED
+            )
+        }
+
+        if (plan.adopt.isNotEmpty() || plan.decisions.isNotEmpty()) {
+            timetableChangeStore.recordApplied(
+                TimetableChangeInfo(
+                    updatedAtMillis = System.currentTimeMillis(),
+                    updated = plan.updated,
+                    added = plan.added.map { it.name },
+                    kept = plan.kept.map { it.name }
+                ),
+                plan.decisions.map { decision ->
+                    TimetableDecisionItem(
+                        termId = term.id,
+                        timetableId = timetable.id,
+                        courseKey = decision.courseKey,
+                        subjectId = decision.subjectId,
+                        name = decision.name,
+                        reason = decision.reason,
+                        localLessonCount = decision.localLessonCount,
+                        firstSeenMillis = decision.firstSeenMillis,
+                        observationCount = decision.observationCount,
+                        incoming = decision.incoming
+                    )
+                }
+            )
+        }
+        LogUtils.d(
+            "merge: term=${term.id} adopt=${plan.adopt.size} " +
+                "updated=${plan.updated.size} added=${plan.added.size} " +
+                "kept=${plan.kept.size} decisions=${plan.decisions.size}"
+        )
     }
 
     /**
@@ -1298,7 +1456,13 @@ class EASRepository @Inject constructor(
                         return@post
                     }
                     importLive.observeForever(observer)
-                    startImportTimetableOfTerm(term, startDate, schedule, importLive)
+                    startImportTimetableOfTerm(
+                        term,
+                        startDate,
+                        schedule,
+                        importLive,
+                        TimetableImportMode.MERGE
+                    )
                 }
                 latch.await(25, TimeUnit.SECONDS)
                 mainHandler.post { importLive.removeObserver(observer) }

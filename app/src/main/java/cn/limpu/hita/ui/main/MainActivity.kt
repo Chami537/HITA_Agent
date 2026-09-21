@@ -199,7 +199,7 @@ class MainActivity : HiltBaseActivity<ComposeViewBinding>(),
 
     protected val viewModel: MainViewModel by viewModels()
 
-    private val autoReimportIntervalMs = 12 * 60 * 60 * 1000L
+    private val autoReimportIntervalMs = 10 * 60 * 1000L
     private var autoReimportAttempted = false
     private val easLoginTransitionTracker = EasLoginTransitionTracker()
     private var checkedUpdate = false
@@ -486,8 +486,9 @@ class MainActivity : HiltBaseActivity<ComposeViewBinding>(),
         if (now - last < autoReimportIntervalMs) return
         autoReimportAttempted = true
         val isUndergrad = token.stutype == cn.limpu.hita.data.model.eas.EASToken.TYPE.UNDERGRAD
-        easRepository.startAutoImportCurrentTimetable(isUndergrad) { success ->
-            if (success) settings.setLastAutoReimportTs(System.currentTimeMillis())
+        easRepository.startAutoImportCurrentTimetable(isUndergrad) {
+            // 每次尝试都记录：故障恢复后下次打开仍可再试
+            settings.setLastAutoReimportTs(System.currentTimeMillis())
         }
     }
 

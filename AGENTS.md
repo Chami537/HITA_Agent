@@ -1,6 +1,8 @@
-# CLAUDE.md
+# AGENTS.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+This file provides guidance to Codex (OpenAI Codex CLI) and other agents that follow the AGENTS.md convention when working with code in this repository.
+
+> 本文件是 [CLAUDE.md](CLAUDE.md) 的 Codex 适配副本，内容与 CLAUDE.md 一致，仅将助手称谓改为 Codex。修改项目说明时请同步更新两份文件。Codex 读本文件；Claude Code 以 CLAUDE.md 为准；OMP 同深度会发现二者之一，内容相同，读哪份均可。
 
 ## Project Overview
 
@@ -114,7 +116,7 @@ PDF resources come from the pinned PDFBox Android dependency. Initialize `PDFBox
 
 ## Development Workflow
 
-### 每次会话开始时 — Claude 必须执行
+### 每次会话开始时 — Codex 必须执行
 
 先拉取上游：
 
@@ -126,7 +128,8 @@ git log HEAD..upstream/$(git branch --show-current) --oneline
 有差异 → 报告用户，等用户决定 merge/rebase 后再继续。
 
 ### 每次会话开始时 — 用户提供
-告诉 Claude：
+
+告诉 Codex：
 1. 要做什么功能（一句话目标）
 2. 涉及哪些文件/模块（如果知道的话）
 3. 是先出方案再写代码，还是直接动手
@@ -139,11 +142,11 @@ git log HEAD..upstream/$(git branch --show-current) --oneline
 | 步骤 | 做什么 | 谁的职责 |
 |------|--------|----------|
 | 1. 明确需求 | 描述功能：数据来源、展示形式、边界情况 | 你 |
-| 2. 出方案 | 列出实现路径和取舍，等你确认 | Claude（可选，大功能建议走） |
-| 3. 写代码 | 按方案实现，修改最少文件 | Claude |
-| 4. Review | 让 Claude 检查自己写的代码有没有问题 | Claude |
-| 5. 构建验证 | `./gradlew assembleDebug` 确保能编译 | 你或 Claude |
-| 6. Commit | 一个功能一个 commit，conventional commits 格式 | 你确认后 Claude 执行 |
+| 2. 出方案 | 列出实现路径和取舍，等你确认 | Codex（可选，大功能建议走） |
+| 3. 写代码 | 按方案实现，修改最少文件 | Codex |
+| 4. Review | 让 Codex 检查自己写的代码有没有问题 | Codex |
+| 5. 构建验证 | `./gradlew assembleDebug` 确保能编译 | 你或 Codex |
+| 6. Commit | 一个功能一个 commit，conventional commits 格式 | 你确认后 Codex 执行 |
 
 ### 分支规范
 ```

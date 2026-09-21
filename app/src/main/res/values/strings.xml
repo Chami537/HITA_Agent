@@ -143,6 +143,31 @@
     <string name="navi_course_lookup_sub">查询三个校区的课程资料</string>
     <string name="navi_course_submit_pr">提交课程资料 PR</string>
     <string name="navi_course_submit_pr_sub">只追加新的课程内容，不直接改动原文</string>
+    <string name="navi_useful_links">实用网址</string>
+    <string name="navi_useful_links_sub">常用校内网站，点按或长按复制链接</string>
+    <string name="useful_links_copied">已复制链接</string>
+    <string name="useful_links_hint">点按或长按条目即可复制链接</string>
+    <string name="useful_links_group_study">教学学习</string>
+    <string name="useful_links_group_affairs">信息与事务</string>
+    <string name="useful_links_group_network">网络与系统</string>
+    <string name="useful_links_group_resources">资源</string>
+    <string name="useful_link_jxypt">课程回放</string>
+    <string name="useful_link_jw">本研平台</string>
+    <string name="useful_link_lab">实验选课</string>
+    <string name="useful_link_mycos">教评网</string>
+    <string name="useful_link_grader">Grader 评测</string>
+    <string name="useful_link_cslab">实验指导书仓库</string>
+    <string name="useful_link_portal">信息门户</string>
+    <string name="useful_link_cist">信息学部</string>
+    <string name="useful_link_info">校内通知</string>
+    <string name="useful_link_xgb">学生工作网</string>
+    <string name="useful_link_xuefei">交学费</string>
+    <string name="useful_link_net">校园网</string>
+    <string name="useful_link_hpc">HPC 服务</string>
+    <string name="useful_link_instrument">仪器共享系统</string>
+    <string name="useful_link_mail">邮箱</string>
+    <string name="useful_link_hoa">HOA 课程资源</string>
+    <string name="useful_link_textbook">线上买教材</string>
     <string name="course_resource_open">查看课程资源</string>
     <string name="course_detail_open">查看课程详情内容</string>
     <string name="course_change_color">换颜色</string>
@@ -556,7 +581,7 @@
     <string name="exam_memo_hint">暂无考试安排，下拉刷新试试</string>
     <string name="dialog_view_course_detail">查看课程详情内容</string>
     <string name="timetable_label_mode_period">左侧显示节次</string>
-    <string name="timetable_auto_reimport">登录后自动导入课表和考试</string>
+    <string name="timetable_auto_reimport">打开应用时自动刷新课表和考试</string>
     <string name="exam_location">地点</string>
     <string name="exam_term">学期</string>
     <string name="exam_campus">学校</string>
@@ -1002,15 +1027,16 @@
     <string name="privacy_policy" translatable="false">
 <![CDATA[
 <h3>隐私政策</h3>
-<p>更新日期：2026年5月11日</p>
+<p>更新日期：2026年9月21日</p>
 <p>本隐私政策适用于 HITA（以下简称"本应用"），由哈尔滨工业大学学生独立开发。我们重视您的隐私，以下说明我们如何处理您的信息。</p>
 
 <h4>一、我们收集哪些信息</h4>
 <p><b>1. 您主动提供的信息：</b><br/>
 • 教务系统登录凭证（仅用于课表与成绩查询，存储在您的设备本地）<br/>
-• 课表、课程、考试等数据（来自教务系统，缓存于本地）</p>
+• 课表、课程、考试等数据（来自教务系统，缓存于本地；打开应用时会自动刷新）</p>
 <p><b>2. 自动收集的信息：</b><br/>
-• 应用运行日志（用于问题排查，仅存储在您的设备本地）</p>
+• 应用运行日志（用于问题排查，仅存储在您的设备本地）<br/>
+• 匿名使用统计（功能使用情况与运行状态，不含账号、课表、成绩、对话等个人内容，可在应用侧边栏的"使用统计"中随时关闭）</p>
 <p><b>3. 我们不会收集：</b><br/>
 • 您的精确地理位置<br/>
 • 通讯录、短信、通话记录<br/>
@@ -1018,10 +1044,11 @@
 • 设备标识符（如 IMEI、Android ID）</p>
 
 <h4>二、信息如何存储</h4>
-<p>所有数据均存储在您的设备本地（SQLite 数据库 / SharedPreferences）。我们不会将您的个人信息上传至任何第三方服务器。</p>
+<p>课表、成绩、登录凭证等个人数据均存储在您的设备本地（SQLite 数据库 / SharedPreferences），我们不会将您的个人信息上传至任何第三方服务器。课表刷新时保留的版本快照与变更记录同样仅存储于本地。仅在您开启"使用统计"时，匿名统计数据会发送至我们的统计服务用于改进应用，其中不含任何个人内容。</p>
 
 <h4>三、信息如何使用</h4>
 <p>• 展示课表、成绩、考试安排等功能<br/>
+• 打开应用时自动刷新课表，并与本地缓存逐门合并；课表源出现课程缺失或课次减少时保留本地版本<br/>
 • 提供课程资料查阅服务（来源：HOA 校内开源组织，hoa.moe）<br/>
 • 在您明确操作时，将课表数据同步至小部件</p>
 
@@ -1046,7 +1073,8 @@
 <h4>九、联系我们</h4>
 <p>如有任何隐私相关问题，请通过以下方式联系：<br/>
 • 邮箱：2720649216@qq.com<br/>
-	• 邮箱：2916118707@qq.com<br/>
+• 邮箱：2916118707@qq.com<br/>
+• 邮箱：859635282@qq.com<br/>
 • 项目地址：github.com/HIT-A/HITA_Android</p>
 ]]>
     </string>
@@ -1054,12 +1082,12 @@
     <string name="user_agreement" translatable="false">
 <![CDATA[
 <h3>用户协议</h3>
-<p>更新日期：2026年5月11日</p>
+<p>更新日期：2026年9月21日</p>
 <p>欢迎使用 HITA（以下简称"本应用"）。在使用前，请仔细阅读以下协议条款。使用本应用即表示您同意遵守本协议。</p>
 
 <h4>一、服务说明</h4>
 <p>1. 本应用是由哈尔滨工业大学学生开发的非官方校园辅助工具，与学校官方无关联。<br/>
-2. 本应用提供课程表查询与管理、成绩查询、考试安排、空教室查询、课程资料查阅等功能。<br/>
+2. 本应用提供课程表查询与管理、成绩查询、考试安排、空教室查询、课程资料查阅、AI 助手问答、选课助手、实用网址等功能。<br/>
 3. 课程资料来源：HOA（校内民间开源组织），官网：hoa.moe。</p>
 
 <h4>二、用户账户</h4>
@@ -1077,7 +1105,8 @@
 <h4>四、免责声明</h4>
 <p>1. 本应用提供的数据来自教务系统，我们不对数据的准确性、完整性或时效性做出保证。<br/>
 2. 因教务系统维护、升级或其他不可抗力导致的服务中断，我们不承担责任。<br/>
-3. 您使用本应用所产生的任何直接或间接损失，我们不承担赔偿责任。</p>
+3. 您使用本应用所产生的任何直接或间接损失，我们不承担赔偿责任。<br/>
+4. 课表刷新时，应用会将课表源与本地缓存逐门合并；当课表源出现课程缺失或课次减少时，应用将保留本地版本并提示你确认，你可以在课表变更详情中选择采用课表源或继续保留。</p>
 
 <h4>五、知识产权</h4>
 <p>本应用的界面设计、代码实现、图标等素材受知识产权法保护。课程资料版权归原作者所有。</p>
@@ -1088,7 +1117,8 @@
 <h4>七、联系我们</h4>
 <p>如有任何问题，请通过以下方式联系：<br/>
 • 邮箱：2720649216@qq.com<br/>
-	• 邮箱：2916118707@qq.com<br/>
+• 邮箱：2916118707@qq.com<br/>
+• 邮箱：859635282@qq.com<br/>
 • 项目地址：github.com/HIT-A/HITA_Android</p>
 ]]>
     </string>
@@ -1207,6 +1237,36 @@
     <string name="week_title">第%d周</string>
     <string name="no_timetable">无课表</string>
     <string name="holiday">假期</string>
+    <string name="timetable_conflict_card_title">课程冲突</string>
+    <string name="timetable_conflict_card_subtitle">共%1$d门</string>
+    <string name="timetable_conflict_sheet_title">%1$s - %2$s 课程冲突</string>
+    <string name="timetable_more_courses_hint">还有更多课程</string>
+    <!-- 课表刷新变更提示 -->
+    <string name="timetable_change_pill_updated">课表已更新 · %1$d 处调整</string>
+    <string name="timetable_change_pill_pending">课表源待确认 · %1$d 项</string>
+    <string name="timetable_change_dialog_title">课表变更</string>
+    <string name="timetable_change_section_updated">已更新（%1$d）</string>
+    <string name="timetable_change_section_added">新增（%1$d）</string>
+    <string name="timetable_change_section_kept">已保留（%1$d）</string>
+    <string name="timetable_change_section_decisions">待确认（%1$d）</string>
+    <string name="timetable_change_time_adjusted">上课时间调整</string>
+    <string name="timetable_change_place_adjusted">上课地点调整</string>
+    <string name="timetable_change_teacher_adjusted">任课教师调整</string>
+    <string name="timetable_change_lessons_added">新增 %1$d 个课次</string>
+    <string name="timetable_change_kept_missing">课表源未返回，已保留</string>
+    <string name="timetable_change_kept_reduced">课表源课次减少，已保留</string>
+    <string name="timetable_change_decision_missing">已从课表源消失 %1$d 天，是否真实取消？</string>
+    <string name="timetable_change_decision_reduced">课表源课次减少（本地 %1$d → 源 %2$d），是否采纳？</string>
+    <string name="timetable_change_action_adopt">采用课表源</string>
+    <string name="timetable_change_action_keep">继续保留</string>
+    <string name="timetable_change_batch_title">课表源数据异常</string>
+    <string name="timetable_change_batch_message">本次课表源与当前课表差异过大（当前 %1$d 门 / 课表源 %2$d 门，仅匹配 %3$d 门），已保留当前课表。</string>
+    <string name="timetable_change_batch_adopt">采用课表源数据</string>
+    <string name="timetable_change_batch_keep">保留当前课表</string>
+    <string name="timetable_change_empty">暂无变更记录</string>
+    <string name="timetable_change_close">关闭</string>
+    <string name="timetable_import_force_replace_title">全量导入课表？</string>
+    <string name="timetable_import_force_replace_message">将按课表源全量替换当前课表，打开应用时自动刷新保留的课程也会被覆盖（之后可在“课表版本记录”中恢复）。</string>
     <string name="event_duration_text">%1$s-%2$s</string>
     <string name="title_subjects">科目</string>
     <string name="title_teachers">教师</string>

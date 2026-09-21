@@ -82,6 +82,7 @@ import cn.limpu.hita.ui.eas.exam.ExamActivity
 import cn.limpu.hita.ui.eas.grade.ShenzhenGradeAnalysisActivity
 import cn.limpu.hita.ui.eas.imp.ImportTimetableActivity
 import cn.limpu.hita.ui.notice.AppNoticesActivity
+import cn.limpu.hita.ui.links.UsefulLinksActivity
 import cn.limpu.hita.ui.eas.login.PopUpLoginEAS
 import cn.limpu.hita.ui.eas.score.ScoreInquiryActivity
 import cn.limpu.hita.utils.ActivityUtils
@@ -174,6 +175,9 @@ class NavigationFragment : androidx.fragment.app.Fragment() {
                         onCourseSubmit = {
                             ActivityUtils.startCourseResourceSearchActivity(requireContext(), mode = CourseResourceMode.SUBMIT)
                         },
+                        onUsefulLinks = {
+                            ActivityUtils.startActivity(requireContext(), UsefulLinksActivity::class.java)
+                        },
                     )
                 }
             }
@@ -184,6 +188,7 @@ class NavigationFragment : androidx.fragment.app.Fragment() {
     override fun onStart() {
         super.onStart()
         reminderEnabledState = CourseReminderStore(requireContext()).isEnabled()
+        usageAnalyticsEnabledState = UsageAnalyticsClient.isEnabled(requireContext())
         viewModel.startRefresh()
     }
 
@@ -367,6 +372,7 @@ private fun NavigationScreen(
     onCourseCatalog: () -> Unit,
     onCourseLookup: () -> Unit,
     onCourseSubmit: () -> Unit,
+    onUsefulLinks: () -> Unit,
     onToggleReminder: () -> Unit,
     onToggleUsageAnalytics: () -> Unit,
     onOpenNotices: () -> Unit,
@@ -461,6 +467,7 @@ private fun NavigationScreen(
         NavigationGroup(title = stringResource(R.string.navi_course_resource_title)) {
             NavigationRow(icon = R.drawable.ic_baseline_search_24, title = stringResource(R.string.navi_course_lookup), subtitle = stringResource(R.string.navi_course_lookup_sub), onClick = onCourseLookup)
             NavigationRow(icon = R.drawable.ic_baseline_edit_24, title = stringResource(R.string.navi_course_submit_pr), subtitle = stringResource(R.string.navi_course_submit_pr_sub), onClick = onCourseSubmit)
+            NavigationRow(icon = R.drawable.ic_baseline_link_24, title = stringResource(R.string.navi_useful_links), subtitle = stringResource(R.string.navi_useful_links_sub), onClick = onUsefulLinks)
         }
         NavigationGroup(title = "设置") {
             NavigationRow(

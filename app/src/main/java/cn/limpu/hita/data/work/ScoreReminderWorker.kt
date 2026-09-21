@@ -17,6 +17,7 @@ import cn.limpu.hita.R
 import cn.limpu.hita.data.model.eas.CourseScoreItem
 import cn.limpu.hita.data.model.eas.TermItem
 import cn.limpu.hita.data.repository.EASRepository
+import cn.limpu.hita.data.repository.TimetableChangeStore
 import cn.limpu.hita.data.source.preference.EasPreferenceSource
 import cn.limpu.hita.data.source.preference.ScoreReminderStore
 import cn.limpu.hita.data.source.preference.TimetablePreferenceSource
@@ -31,7 +32,12 @@ class ScoreReminderWorker(appContext: Context, params: WorkerParameters) : Worke
         val store = ScoreReminderStore(applicationContext)
         if (!store.isEnabled()) return Result.success()
         val app = applicationContext as? Application ?: return Result.failure()
-        val repository = EASRepository(app, EasPreferenceSource(applicationContext), TimetablePreferenceSource(applicationContext))
+        val repository = EASRepository(
+            app,
+            EasPreferenceSource(applicationContext),
+            TimetablePreferenceSource(applicationContext),
+            TimetableChangeStore(app)
+        )
         if (!repository.getEasToken().isLogin()) return Result.success()
 
         val termsState = awaitLiveData(repository.getAllTerms(useCache = false), 6)
