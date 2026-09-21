@@ -43,6 +43,7 @@ import cn.limpu.hita.R
 import cn.limpu.hita.data.model.timetable.EventItem
 import cn.limpu.hita.data.model.timetable.TimeInDay
 import cn.limpu.hita.data.repository.EASRepository
+import cn.limpu.hita.data.repository.TimetableChangeStore
 import cn.limpu.hita.data.source.preference.EasPreferenceSource
 import cn.limpu.hita.data.source.preference.TimetablePreferenceSource
 import cn.limpu.hita.ui.design.HitaComposeTheme
@@ -72,7 +73,8 @@ class EventItemFragment : Fragment() {
         EASRepository(
             requireActivity().application,
             EasPreferenceSource(requireActivity().application.applicationContext),
-            TimetablePreferenceSource(requireActivity().application.applicationContext)
+            TimetablePreferenceSource(requireActivity().application.applicationContext),
+            TimetableChangeStore(requireActivity().application)
         )
     }
     private val hoaCampus by lazy { easRepository.getHoaCampus() }

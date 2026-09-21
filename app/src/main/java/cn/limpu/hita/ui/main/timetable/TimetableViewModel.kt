@@ -5,29 +5,44 @@ import androidx.lifecycle.MediatorLiveData
 import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.switchMap
+import androidx.lifecycle.viewModelScope
 import com.limpu.component.data.MTransformations
 import com.limpu.component.data.Trigger
 import cn.limpu.hita.data.model.timetable.EventItem
 import cn.limpu.hita.data.model.timetable.Timetable
+import cn.limpu.hita.data.repository.TimetableChangeStore
+import cn.limpu.hita.data.repository.TimetableChangeState
 import cn.limpu.hita.data.repository.TimetableRepository
+import cn.limpu.hita.data.repository.TimetableSourceApplier
 import cn.limpu.hita.data.repository.TimetableStyleRepository
 import cn.limpu.hita.data.repository.KEY_WALLPAPER_PATH
+import cn.limpu.hita.utils.LogUtils
 import cn.limpu.hita.ui.main.timetable.TimetableFragment.Companion.WEEK_MILLS
 import cn.limpu.hita.ui.main.timetable.TimetableFragment.Companion.WINDOW_SIZE
+import com.limpu.component.data.DataState
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import java.util.Calendar
 import javax.inject.Inject
 
 @HiltViewModel
 class TimetableViewModel @Inject constructor(
     private val timetableRepository: TimetableRepository,
-    private val timetableStyleRepository: TimetableStyleRepository
+    private val timetableStyleRepository: TimetableStyleRepository,
+    private val changeStore: TimetableChangeStore,
+    private val sourceApplier: TimetableSourceApplier
 ) : ViewModel() {
 
     private val timetableController = MutableLiveData<Trigger>()
     val timetableLiveData: LiveData<List<Timetable>> = timetableController.switchMap{
             return@switchMap timetableRepository.getTimetables()
         }
+    /** 课表变更状态：刷新摘要、待确认决策、整批挂起。 */
+    val changeStateLiveData: LiveData<TimetableChangeState> = changeStore.observeState()
+    /** 用户决策（采用/保留）的执行结果，供界面提示失败原因。 */
+    private val decisionResultLiveData = MutableLiveData<DataState<Boolean>>()
+    val decisionResult: LiveData<DataState<Boolean>> = decisionResultLiveData
     val startTimeLiveData: LiveData<Int>
         get() = timetableStyleRepository.startTimeLiveData
     val periodLabelLiveData: LiveData<Boolean>
@@ -79,6 +94,43 @@ class TimetableViewModel @Inject constructor(
     fun startRefresh() {
         timetableRepository.actionPrepareTimetableList()
         timetableController.value = Trigger.actioning
+    }
+
+    /** 用户点开变更详情：信息类摘要查看后清除，待确认项保留。 */
+    fun markChangeInfoViewed() {
+        changeStore.markInfoViewed()
+    }
+
+    fun adoptIncomingCourse(termId: String, courseKey: String) {
+        runDecision { sourceApplier.adoptCourse(termId, courseKey) }
+    }
+
+    fun dismissIncomingCourse(termId: String, courseKey: String) {
+        runDecision { sourceApplier.dismissCourse(termId, courseKey) }
+    }
+
+    fun adoptHeldBatch() {
+        runDecision { sourceApplier.adoptHeldBatch() }
+    }
+
+    fun dismissHeldBatch() {
+        runDecision { sourceApplier.dismissHeldBatch() }
+    }
+
+    private fun runDecision(block: () -> Unit) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val result = runCatching { block() }
+            result.exceptionOrNull()?.let { error ->
+                LogUtils.e("timetable decision failed", error)
+            }
+            decisionResultLiveData.postValue(
+                if (result.isSuccess) {
+                    DataState(true, DataState.STATE.SUCCESS)
+                } else {
+                    DataState(DataState.STATE.FETCH_FAILED, result.exceptionOrNull()?.message)
+                }
+            )
+        }
     }
 
     fun clearWallpaperPath() {

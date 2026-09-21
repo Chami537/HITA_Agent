@@ -95,6 +95,8 @@ android {
     }
     buildTypes {
         debug {
+            // 诊断版使用独立 applicationId，与正式版共存不冲突
+            applicationIdSuffix ".diag"
             if (keystorePropertiesFile.exists() && keystoreProperties['storeFile']) {
                 signingConfig signingConfigs.release
             }

@@ -39,6 +39,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
@@ -46,6 +47,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
@@ -91,11 +93,14 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.unit.times
 import androidx.fragment.app.viewModels
+import com.limpu.component.data.DataState
 import cn.limpu.hita.R
 import cn.limpu.hita.data.model.timetable.EventItem
 import cn.limpu.hita.data.model.timetable.TimeInDay
 import cn.limpu.hita.data.model.timetable.TimePeriodInDay
 import cn.limpu.hita.data.model.timetable.Timetable
+import cn.limpu.hita.data.repository.TimetableDecisionItem
+import cn.limpu.hita.data.repository.TimetableHeldBatch
 import cn.limpu.hita.data.repository.TimetableRepository
 import cn.limpu.hita.ui.base.ComposeViewBinding
 import cn.limpu.hita.ui.base.HiltBaseFragment
@@ -179,7 +184,25 @@ class TimetableFragment : HiltBaseFragment<ComposeViewBinding>() {
                     onEventClick = { EventsUtils.showEventItem(requireActivity(), it) },
                     onEventLongClick = { event, position -> showEventMenu(event, position) },
                     onAddClick = { dow, period -> showAddEvent(dow, period) },
+                    onChangeInfoViewed = { viewModel.markChangeInfoViewed() },
+                    onAdoptCourse = { item ->
+                        viewModel.adoptIncomingCourse(item.termId, item.courseKey)
+                    },
+                    onDismissCourse = { item ->
+                        viewModel.dismissIncomingCourse(item.termId, item.courseKey)
+                    },
+                    onAdoptBatch = { viewModel.adoptHeldBatch() },
+                    onDismissBatch = { viewModel.dismissHeldBatch() },
                 )
+            }
+        }
+        viewModel.decisionResult.observe(this) { state ->
+            if (state.state == DataState.STATE.FETCH_FAILED) {
+                Toast.makeText(
+                    requireContext(),
+                    state.message ?: getString(R.string.fail),
+                    Toast.LENGTH_SHORT
+                ).show()
             }
         }
     }
@@ -327,6 +350,11 @@ private fun TimetableScreen(
     onEventClick: (EventItem) -> Unit,
     onEventLongClick: (EventItem, IntOffset) -> Unit,
     onAddClick: (Int, TimePeriodInDay) -> Unit,
+    onChangeInfoViewed: () -> Unit,
+    onAdoptCourse: (TimetableDecisionItem) -> Unit,
+    onDismissCourse: (TimetableDecisionItem) -> Unit,
+    onAdoptBatch: (TimetableHeldBatch) -> Unit,
+    onDismissBatch: (TimetableHeldBatch) -> Unit,
 ) {
     val context = LocalContext.current
     val currentPageStart by viewModel.currentPageStartDate.observeAsState(
@@ -414,6 +442,43 @@ private fun TimetableScreen(
                     contentDescription = null
                 )
             }
+        }
+
+        val changeState by viewModel.changeStateLiveData.observeAsState()
+        var showChangeDialog by remember { mutableStateOf(false) }
+        val changeInfo = changeState?.info
+        val changePendingCount = changeState?.pendingCount ?: 0
+        val changeAdjustCount =
+            (changeInfo?.updated?.size ?: 0) + (changeInfo?.added?.size ?: 0)
+        if (showChangeDialog) {
+            changeState?.let { state ->
+                TimetableChangeDialog(
+                    state = state,
+                    onDismiss = {
+                        showChangeDialog = false
+                        onChangeInfoViewed()
+                    },
+                    onAdoptCourse = onAdoptCourse,
+                    onDismissCourse = onDismissCourse,
+                    onAdoptBatch = onAdoptBatch,
+                    onDismissBatch = onDismissBatch,
+                )
+            }
+        }
+        if (changePendingCount > 0 || changeAdjustCount > 0) {
+            TimetableChangePill(
+                pending = changePendingCount > 0,
+                count = if (changePendingCount > 0) changePendingCount else changeAdjustCount,
+                onClick = { showChangeDialog = true },
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .padding(
+                        bottom = dimensionResource(R.dimen.bottom_navigation_height) +
+                            HitaTheme.tokens.spacing.lg + 44.dp,
+                        start = HitaTheme.tokens.spacing.lg,
+                        end = HitaTheme.tokens.spacing.lg,
+                    )
+            )
         }
     }
 }

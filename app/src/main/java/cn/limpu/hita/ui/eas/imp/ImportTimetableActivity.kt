@@ -145,11 +145,7 @@ class ImportTimetableActivity :
                                 showBenbuCalibrationPrompt(force = true)
                                 return@ensureLoggedInForImport
                             }
-                            if (startImportFlow()) {
-                                (binding.root as ComposeView).performHapticFeedback(
-                                    HapticFeedbackConstants.CONTEXT_CLICK
-                                )
-                            }
+                            confirmForceReplaceImport()
                         }
                     },
                     onPickDate = { pickStartDate() },
@@ -428,6 +424,26 @@ class ImportTimetableActivity :
         return TermNameFormatter.fullTermName(term)
     }
 
+    /**
+     * 手动导入 = 课表源全量替换（[cn.limpu.hita.data.repository.TimetableImportMode.REPLACE]）。
+     * 打开应用时自动刷新保留的课程也会被覆盖，替换前必须让用户确认；
+     * 刷新前快照仍可在“课表版本记录”中恢复。
+     */
+    private fun confirmForceReplaceImport() {
+        AlertDialog.Builder(this)
+            .setTitle(R.string.timetable_import_force_replace_title)
+            .setMessage(R.string.timetable_import_force_replace_message)
+            .setNegativeButton(R.string.cancel, null)
+            .setPositiveButton(R.string.button_confirm) { _, _ ->
+                if (startImportFlow()) {
+                    (binding.root as ComposeView).performHapticFeedback(
+                        HapticFeedbackConstants.CONTEXT_CLICK
+                    )
+                }
+            }
+            .show()
+    }
+
     private fun showSnapshotHistory() {
         if (snapshots.isEmpty()) {
             Toast.makeText(this, "当前学期还没有可恢复的课表版本", Toast.LENGTH_SHORT).show()
@@ -439,6 +455,7 @@ class ImportTimetableActivity :
                 TimetableSnapshotKind.BEFORE_REFRESH -> "刷新前"
                 TimetableSnapshotKind.IMPORTED -> "教务导入"
                 TimetableSnapshotKind.BEFORE_RESTORE -> "恢复前"
+                TimetableSnapshotKind.BEFORE_USER_ADOPT -> "用户采纳前"
             }
             "$kind · ${dateFormat.format(Date(snapshot.createdAtMillis))}\n" +
                 "${snapshot.courseCount} 门课程 · ${snapshot.lessonCount} 个课次"
