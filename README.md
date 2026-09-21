@@ -84,4 +84,4 @@ flowchart LR
 
 ## License
 
-[MIT](LICENSE) © Stupid Tree, Jiao Ziang, Chami, Chami537
+[MIT](LICENSE) © Stupid Tree, Jiao Ziang, Chami, SpeechlessPanda
