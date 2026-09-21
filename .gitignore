@@ -23,6 +23,7 @@ keystore.properties
 app/hita-release.jks
 .claude/
 CLAUDE.md
+.omp/RULES.md
 /docs/AI_LEARNING_BRANCH_PLAN.md
 /docs/EAS_DAO_REVIEW_ARCHIVE.md
 
