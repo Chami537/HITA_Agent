@@ -70,7 +70,7 @@ HITA_Agent/
 ## 联系方式
 
 - 问题反馈：[Issues](https://github.com/HIT-A/HITA_Android/issues)
-- 邮箱：2720649216@qq.com、859635282@qq.com
+- 邮箱：2720649216@qq.com、859635282@qq.com、2916118707@qq.com
 
 ## 常见陷阱
 
