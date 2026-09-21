@@ -1,7 +1,6 @@
 package cn.limpu.hita.di
 
 import android.content.Context
-import cn.limpu.hita.agent.document.FileParserDispatcher
 import cn.limpu.hita.data.source.preference.*
 import cn.limpu.hita.data.source.web.GitHubWebSource
 import cn.limpu.hita.data.source.web.StaticWebSource
@@ -47,8 +46,4 @@ object RepositoryModule {
     @Provides
     @Singleton
     fun provideGitHubWebSource(@ApplicationContext context: Context): GitHubWebSource = GitHubWebSource(context)
-
-    @Provides
-    @Singleton
-    fun provideFileParserDispatcher(): FileParserDispatcher = FileParserDispatcher()
 }

@@ -364,6 +364,7 @@ private fun TimetableScreen(
     val startTime by viewModel.startTimeLiveData.observeAsState(830)
     val periodLabel by viewModel.periodLabelLiveData.observeAsState(false)
     val wallpaperPath by viewModel.wallpaperPathLiveData.observeAsState("")
+    val eveningHintEnabled by viewModel.eveningHintLiveData.observeAsState(true)
     val dateColorInt by viewModel.wallpaperDateColorLiveData.observeAsState(AndroidColor.WHITE)
     val labelColorInt by viewModel.wallpaperLabelColorLiveData.observeAsState(AndroidColor.WHITE)
     val windowEvents by viewModel.windowEventsData[viewModel.startIndex].observeAsState()
@@ -421,6 +422,7 @@ private fun TimetableScreen(
             onEventClick = onEventClick,
             onEventLongClick = onEventLongClick,
             onAddClick = onAddClick,
+            eveningHintEnabled = eveningHintEnabled,
         )
 
         if (showTodayFab) {
@@ -526,6 +528,7 @@ private fun TimetableWeekContent(
     onEventClick: (EventItem) -> Unit,
     onEventLongClick: (EventItem, IntOffset) -> Unit,
     onAddClick: (Int, TimePeriodInDay) -> Unit,
+    eveningHintEnabled: Boolean = true,
 ) {
     val density = LocalDensity.current
     val scrollState = rememberScrollState()
@@ -549,11 +552,12 @@ private fun TimetableWeekContent(
     } else 1f
 
     // 晚间课程提示：当前周有 ≥18:30 开始的课程，且晚间课程尚未滚入视野时显示；
-    // 滚到底部附近自动隐藏，避免遮挡正常课表内容
+    // 滚到底部附近自动隐藏，避免遮挡正常课表内容；可在课表显示设置中关闭
     val eveningHintHideThresholdPx = with(density) { 64.dp.toPx() }
-    val showEveningHint by remember(events) {
+    val showEveningHint by remember(events, eveningHintEnabled) {
         derivedStateOf {
-            events.any { eventMinutes(it.from.time) >= EVENING_HINT_START_MINUTES } &&
+            eveningHintEnabled &&
+                events.any { eventMinutes(it.from.time) >= EVENING_HINT_START_MINUTES } &&
                 scrollState.maxValue > 0 &&
                 scrollState.value < scrollState.maxValue - eveningHintHideThresholdPx
         }
@@ -708,6 +712,11 @@ private fun TimetableEveningHintPill(
     val surface = MaterialTheme.colorScheme.surface
     // AppleGlass 等半透明 surface 主题下给一个透明度下限，保证压得住底层课程卡
     val pillBackground = if (surface.alpha < 0.85f) surface.copy(alpha = 0.85f) else surface
+    // 玻璃风格的 surface 是白色半透明：透明度下限把背景提到近白，
+    // 暗色下的浅色文本会糊在背景里，统一改用黑色保证可读。
+    val contentColor =
+        if (hitaIsAppleGlassSurface() && HitaTheme.isDark) Color.Black
+        else MaterialTheme.colorScheme.onSurfaceVariant
     Row(
         modifier = modifier
             .clip(CircleShape)
@@ -725,7 +734,7 @@ private fun TimetableEveningHintPill(
         Icon(
             painter = painterResource(R.drawable.ic_moon),
             contentDescription = null,
-            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            tint = contentColor,
             modifier = Modifier.size(13.dp)
         )
         Spacer(modifier = Modifier.width(5.dp))
@@ -733,7 +742,7 @@ private fun TimetableEveningHintPill(
             text = stringResource(R.string.timetable_more_courses_hint),
             style = MaterialTheme.typography.labelMedium,
             fontWeight = FontWeight.Medium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            color = contentColor,
             maxLines = 1,
         )
     }

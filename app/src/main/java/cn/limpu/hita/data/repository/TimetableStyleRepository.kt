@@ -24,6 +24,7 @@ const val KEY_WALLPAPER_PATH = "wallpaper_path"
 const val KEY_WALLPAPER_SCRIM = "wallpaper_scrim"
 const val KEY_CARD_OPACITY = "card_opacity"
 const val KEY_COURSE_BUBBLE_STYLE = "course_bubble_style"
+const val KEY_EVENING_HINT = "evening_hint"
 
 @Singleton
 class TimetableStyleRepository @Inject constructor(application: Application) {
@@ -40,6 +41,8 @@ class TimetableStyleRepository @Inject constructor(application: Application) {
         KEY_COURSE_BUBBLE_STYLE,
         CourseBubbleStyle.SOLID.storageValue
     )
+    /** “还有更多课程”悬浮提示开关，默认开启。 */
+    val eveningHintLiveData = timetableStyleSP.booleanLiveData(KEY_EVENING_HINT, true)
     val wallpaperDateColorLiveData = MutableLiveData(Color.WHITE)
     val wallpaperLabelColorLiveData = MutableLiveData(Color.WHITE)
 

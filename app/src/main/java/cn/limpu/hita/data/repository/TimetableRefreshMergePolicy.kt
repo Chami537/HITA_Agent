@@ -2,6 +2,11 @@ package cn.limpu.hita.data.repository
 
 import cn.limpu.hita.data.model.timetable.EventItem
 import cn.limpu.hita.utils.CourseNameUtils
+import java.util.Calendar
+import java.util.SortedSet
+
+/** 一周毫秒数（课次周次推算用）。 */
+private const val WEEK_MILLIS = 7L * 24 * 60 * 60 * 1000
 
 /**
  * 参与课表刷新比对的一门课。
@@ -26,7 +31,9 @@ data class MergeLesson(
     val fromMillis: Long,
     val toMillis: Long,
     val fromNumber: Int,
-    val lastNumber: Int
+    val lastNumber: Int,
+    /** 第几周（1 起）；无法推断（无开学日期）时为 0。 */
+    val weekOfTerm: Int = 0
 )
 
 /** 保留本地课的原因。 */
@@ -37,6 +44,40 @@ enum class CourseVetoReason {
     /** 课表源返回的课次数比本地少。 */
     LESSON_COUNT_REDUCED
 }
+
+/** 一门被本地缓存保住的课的展示信息。 */
+data class KeptCourse(
+    val name: String,
+    val reason: CourseVetoReason,
+    val localLessonCount: Int,
+    val incomingLessonCount: Int
+)
+
+/** 槽位变化类型：调整 / 源端新增 / 源端减少。 */
+enum class SlotChangeKind { ADJUSTED, ADDED, REMOVED }
+
+/**
+ * 一个课次槽位（周几 + 节次）上的变化。
+ *
+ * [clock]/[weeks]/[place]/[teacher] 为变化后（或新增/减少一侧）的值；
+ * 带 Before 后缀的字段仅在确实发生变化时非空，供界面渲染 "原值 → 新值"。
+ * [weeks] 是紧凑周次区间标签（如 "1-16"、"1-8、11-16"），无法推断时为空串。
+ */
+data class LessonSlotChange(
+    val kind: SlotChangeKind,
+    /** 1=周一 … 7=周日。 */
+    val dow: Int,
+    val fromNumber: Int,
+    val lastNumber: Int,
+    val clock: String,
+    val weeks: String,
+    val place: String,
+    val teacher: String,
+    val clockBefore: String? = null,
+    val weeksBefore: String? = null,
+    val placeBefore: String? = null,
+    val teacherBefore: String? = null
+)
 
 /**
  * 某门课持续被课表源遗漏/削减的记录。
@@ -56,10 +97,14 @@ data class CourseVetoRecord(
 /** 一门被采纳的课的变更描述，供变更摘要展示。 */
 data class CourseChange(
     val name: String,
+    /** 课程改名时的旧名称；未改名为 null。 */
+    val previousName: String?,
     val timeAdjusted: Boolean,
     val placeAdjusted: Boolean,
     val teacherAdjusted: Boolean,
-    val lessonCountDelta: Int
+    val lessonCountDelta: Int,
+    /** 逐槽位的完整变化明细。 */
+    val slotChanges: List<LessonSlotChange> = emptyList()
 )
 
 /** 升级为待用户确认的一门课；[incoming] 为源端数据（整门缺失时为 null，即采纳=删除本地课）。 */
@@ -82,8 +127,8 @@ data class TimetableMergePlan(
     val updated: List<CourseChange> = emptyList(),
     /** 源端新增的课。 */
     val added: List<MergeCourse> = emptyList(),
-    /** 静默保留本地的课（未达到待确认阈值）。 */
-    val kept: List<MergeCourse> = emptyList(),
+    /** 静默保留本地的课（未达到待确认阈值），含保留原因与课次对比。 */
+    val kept: List<KeptCourse> = emptyList(),
     /** 达到待确认阈值、等待用户决策的课。 */
     val decisions: List<CourseDecision> = emptyList(),
     /** 匹配上的本地课中将被源端版本替换的那些（需要先删本地课次）。 */
@@ -98,9 +143,12 @@ data class TimetableMergePlan(
     /** 更新后的 veto 记忆（含新增、累加与清除）。 */
     val vetoes: Map<String, CourseVetoRecord> = emptyMap()
 ) {
-    /** 是否会发生实际写入（决定要不要捕获刷新前快照）。 */
+    /**
+     * 是否发生了用户可见的真实变化（决定要不要捕获刷新前快照、写入变更摘要）。
+     * 匹配后无任何变化的课照常落库，但不产生快照与"已更新"提示。
+     */
     val hasChanges: Boolean
-        get() = adopt.isNotEmpty() || decisions.isNotEmpty()
+        get() = updated.isNotEmpty() || added.isNotEmpty() || decisions.isNotEmpty()
 }
 
 /**
@@ -204,14 +252,14 @@ object TimetableRefreshMergePolicy {
         val nextVetoes = vetoes.toMutableMap()
         val adopt = mutableListOf<MergeCourse>()
         val updated = mutableListOf<CourseChange>()
-        val kept = mutableListOf<MergeCourse>()
+        val kept = mutableListOf<KeptCourse>()
         val decisions = mutableListOf<CourseDecision>()
         val replacedLocal = mutableListOf<MergeCourse>()
 
         for ((localCourse, incomingCourse) in replacedPairs) {
             if (incomingCourse.lessonCount >= localCourse.lessonCount) {
                 adopt += incomingCourse
-                updated += describeChange(localCourse, incomingCourse)
+                describeChange(localCourse, incomingCourse)?.let { updated += it }
                 replacedLocal += localCourse
                 nextVetoes.remove(courseKey(localCourse.name, localCourse.code))
             } else {
@@ -229,7 +277,12 @@ object TimetableRefreshMergePolicy {
                         incoming = incomingCourse
                     )
                 } else {
-                    kept += localCourse
+                    kept += KeptCourse(
+                        name = localCourse.name,
+                        reason = CourseVetoReason.LESSON_COUNT_REDUCED,
+                        localLessonCount = localCourse.lessonCount,
+                        incomingLessonCount = incomingCourse.lessonCount
+                    )
                 }
             }
         }
@@ -249,7 +302,12 @@ object TimetableRefreshMergePolicy {
                     incoming = null
                 )
             } else {
-                kept += localCourse
+                kept += KeptCourse(
+                    name = localCourse.name,
+                    reason = CourseVetoReason.MISSING_FROM_SOURCE,
+                    localLessonCount = localCourse.lessonCount,
+                    incomingLessonCount = 0
+                )
             }
         }
 
@@ -298,31 +356,187 @@ object TimetableRefreshMergePolicy {
         return record
     }
 
-    private fun describeChange(local: MergeCourse, incoming: MergeCourse): CourseChange {
-        val localTimes = local.lessons.map { it.fromMillis to it.toMillis }.toSet()
-        val incomingTimes = incoming.lessons.map { it.fromMillis to it.toMillis }.toSet()
+    /**
+     * 描述一门被采纳课的完整变化；无任何真实变化时返回 null（不产生"已更新"提示）。
+     *
+     * 按「周几 + 节次」槽位对齐本地与源端：槽位对不齐 = 时间变动（增减槽位），
+     * 槽位内比较时钟、上课周次、地点、教师，逐字段给出 原值 → 新值。
+     */
+    private fun describeChange(local: MergeCourse, incoming: MergeCourse): CourseChange? {
+        val localBySlot = local.lessons.groupBy { slotKey(it) }
+        val incomingBySlot = incoming.lessons.groupBy { slotKey(it) }
+        val slotChanges = mutableListOf<LessonSlotChange>()
+        for ((key, localLessons) in localBySlot) {
+            val incomingLessons = incomingBySlot[key]
+            if (incomingLessons.isNullOrEmpty()) {
+                slotChanges += slotChange(localLessons, SlotChangeKind.REMOVED)
+            } else {
+                adjustedSlotChange(localLessons, incomingLessons)?.let { slotChanges += it }
+            }
+        }
+        for ((key, incomingLessons) in incomingBySlot) {
+            if (localBySlot[key].isNullOrEmpty()) {
+                slotChanges += slotChange(incomingLessons, SlotChangeKind.ADDED)
+            }
+        }
+        val renamed = incoming.name != local.name
+        val lessonCountDelta = incoming.lessonCount - local.lessonCount
+        if (slotChanges.isEmpty() && !renamed && lessonCountDelta == 0) return null
+        slotChanges.sortWith(compareBy({ it.dow }, { it.fromNumber }, { it.kind.ordinal }))
         return CourseChange(
             name = incoming.name,
-            timeAdjusted = localTimes != incomingTimes,
-            placeAdjusted = local.lessons.map { it.place }.toSet() !=
-                incoming.lessons.map { it.place }.toSet(),
-            teacherAdjusted = local.lessons.map { it.teacher }.toSet() !=
-                incoming.lessons.map { it.teacher }.toSet(),
-            lessonCountDelta = incoming.lessonCount - local.lessonCount
+            previousName = local.name.takeIf { renamed },
+            timeAdjusted = slotChanges.any {
+                it.kind != SlotChangeKind.ADJUSTED || it.clockBefore != null || it.weeksBefore != null
+            },
+            placeAdjusted = slotChanges.any { it.placeBefore != null },
+            teacherAdjusted = slotChanges.any { it.teacherBefore != null },
+            lessonCountDelta = lessonCountDelta,
+            slotChanges = slotChanges
         )
     }
+
+    private fun slotKey(lesson: MergeLesson): String =
+        "${dowOf(lesson.fromMillis)}|${lesson.fromNumber}|${lesson.lastNumber}"
+
+    /** 槽位内字段比对；无变化返回 null。 */
+    private fun adjustedSlotChange(
+        localLessons: List<MergeLesson>,
+        incomingLessons: List<MergeLesson>
+    ): LessonSlotChange? {
+        val localSummary = SlotSummary.of(localLessons)
+        val incomingSummary = SlotSummary.of(incomingLessons)
+        if (localSummary == incomingSummary) return null
+        return LessonSlotChange(
+            kind = SlotChangeKind.ADJUSTED,
+            dow = incomingSummary.dow,
+            fromNumber = incomingSummary.fromNumber,
+            lastNumber = incomingSummary.lastNumber,
+            clock = incomingSummary.clock,
+            weeks = incomingSummary.weeks,
+            place = incomingSummary.place,
+            teacher = incomingSummary.teacher,
+            clockBefore = localSummary.clock.takeIf { it != incomingSummary.clock },
+            weeksBefore = localSummary.weeks.takeIf {
+                it.isNotEmpty() && it != incomingSummary.weeks
+            },
+            placeBefore = localSummary.place.takeIf {
+                it.isNotEmpty() && it != incomingSummary.place
+            },
+            teacherBefore = localSummary.teacher.takeIf {
+                it.isNotEmpty() && it != incomingSummary.teacher
+            }
+        )
+    }
+
+    private fun slotChange(lessons: List<MergeLesson>, kind: SlotChangeKind): LessonSlotChange {
+        val summary = SlotSummary.of(lessons)
+        return LessonSlotChange(
+            kind = kind,
+            dow = summary.dow,
+            fromNumber = summary.fromNumber,
+            lastNumber = summary.lastNumber,
+            clock = summary.clock,
+            weeks = summary.weeks,
+            place = summary.place,
+            teacher = summary.teacher
+        )
+    }
+
+    /** 一个槽位下多周课次的聚合摘要（按 distinct 值归并，保证比对稳定）。 */
+    private data class SlotSummary(
+        val dow: Int,
+        val fromNumber: Int,
+        val lastNumber: Int,
+        val clock: String,
+        val weeks: String,
+        val place: String,
+        val teacher: String
+    ) {
+        companion object {
+            fun of(lessons: List<MergeLesson>): SlotSummary {
+                val sorted = lessons.sortedBy { it.fromMillis }
+                val first = sorted.first()
+                return SlotSummary(
+                    dow = dowOf(first.fromMillis),
+                    fromNumber = first.fromNumber,
+                    lastNumber = first.lastNumber,
+                    clock = sorted.map { clockLabel(it.fromMillis, it.toMillis) }
+                        .distinct().joinToString("、"),
+                    weeks = formatWeeks(sorted.map { it.weekOfTerm }.toSortedSet()),
+                    place = sorted.map { it.place }.filter { it.isNotEmpty() }
+                        .distinct().joinToString("、"),
+                    teacher = sorted.map { it.teacher }.filter { it.isNotEmpty() }
+                        .distinct().joinToString("、")
+                )
+            }
+        }
+    }
+
+    /** 周一=1 … 周日=7。 */
+    private fun dowOf(millis: Long): Int {
+        val calendar = Calendar.getInstance()
+        calendar.timeInMillis = millis
+        calendar.firstDayOfWeek = Calendar.MONDAY
+        return if (calendar.get(Calendar.DAY_OF_WEEK) == Calendar.SUNDAY) {
+            7
+        } else {
+            calendar.get(Calendar.DAY_OF_WEEK) - 1
+        }
+    }
+
+    private fun clockLabel(fromMillis: Long, toMillis: Long): String =
+        "${timeLabel(fromMillis)}-${timeLabel(toMillis)}"
+
+    private fun timeLabel(millis: Long): String {
+        val calendar = Calendar.getInstance()
+        calendar.timeInMillis = millis
+        return "%02d:%02d".format(
+            calendar.get(Calendar.HOUR_OF_DAY),
+            calendar.get(Calendar.MINUTE)
+        )
+    }
+
+    /** 周次集合 → 紧凑区间标签（如 "1-16"、"1-8、11-16"）；无法推断时返回空串。 */
+    private fun formatWeeks(weeks: SortedSet<Int>): String {
+        val known = weeks.filter { it > 0 }
+        if (known.isEmpty()) return ""
+        val ranges = mutableListOf<String>()
+        var start = known.first()
+        var previous = start
+        known.drop(1).forEach { week ->
+            if (week != previous + 1) {
+                ranges += rangeLabel(start, previous)
+                start = week
+            }
+            previous = week
+        }
+        ranges += rangeLabel(start, previous)
+        return ranges.joinToString("、")
+    }
+
+    private fun rangeLabel(start: Int, end: Int): String =
+        if (start == end) "$start" else "$start-$end"
 }
 
 /** Room 事件 → 比对用课次。 */
-internal fun EventItem.toMergeLesson(): MergeLesson = MergeLesson(
-    name = name,
-    place = place.orEmpty().trim(),
-    teacher = teacher.orEmpty().trim(),
-    fromMillis = from.time,
-    toMillis = to.time,
-    fromNumber = fromNumber,
-    lastNumber = lastNumber
-)
+internal fun EventItem.toMergeLesson(termStartMillis: Long): MergeLesson {
+    val weekOfTerm = if (termStartMillis > 0) {
+        (((from.time - termStartMillis) / WEEK_MILLIS).toInt() + 1).coerceAtLeast(1)
+    } else {
+        0
+    }
+    return MergeLesson(
+        name = name,
+        place = place.orEmpty().trim(),
+        teacher = teacher.orEmpty().trim(),
+        fromMillis = from.time,
+        toMillis = to.time,
+        fromNumber = fromNumber,
+        lastNumber = lastNumber,
+        weekOfTerm = weekOfTerm
+    )
+}
 
 /**
  * 课表导入模式。

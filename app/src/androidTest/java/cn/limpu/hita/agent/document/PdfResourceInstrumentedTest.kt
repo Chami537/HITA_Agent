@@ -1,19 +1,25 @@
 package cn.limpu.hita.agent.document
 
-import android.net.Uri
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
-import kotlinx.coroutines.runBlocking
+import com.tom_roush.pdfbox.pdmodel.PDDocument
+import com.tom_roush.pdfbox.text.PDFTextStripper
+import java.io.ByteArrayOutputStream
+import java.io.File
+import java.util.Locale
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
-import java.io.ByteArrayOutputStream
-import java.io.File
-import java.util.Locale
 
-/** Exercise real PDF parsing with predefined CMaps, without a ToUnicode shortcut. */
+/**
+ * 用真实 PDFBox API 验证中文 PDF 解析（预定义 CMap、不嵌字体、无 ToUnicode 捷径）。
+ *
+ * 调用路径与 AgentChatViewModel.parsePdfFile 一致：PDDocument.load + PDFTextStripper
+ * （startPage/endPage/setSortByPosition），依赖应用真实初始化，不偷偷补初始化。
+ * 旧版调用 PdfFileParser，该解析器已随 agent/document 死代码删除，此处直接驱动库 API。
+ */
 @RunWith(AndroidJUnit4::class)
 class PdfResourceInstrumentedTest {
     @Test fun onlyDependencyCmapsArePackaged() {
@@ -35,21 +41,27 @@ class PdfResourceInstrumentedTest {
         "課程表 高等數學 線性代數 2026", "UniCNS-UCS2-H", "CNS1", "MSung-Light"
     )
 
-    private fun checkText(text: String, cmap: String, ordering: String, font: String) = runBlocking {
+    private fun checkText(text: String, cmap: String, ordering: String, font: String) {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         val source = File.createTempFile("pdf-cmap-source-", ".pdf", context.cacheDir)
-        val targetName = "parsed-${source.name}"
         try {
             source.writeBytes(makePdf(text, cmap, ordering, font))
-            val result = PdfFileParser().parse(context, Uri.fromFile(source), targetName)
-            assertTrue("Expected readable Chinese text, got $result", result is ParseResult.Success)
-            result as ParseResult.Success
-            assertTrue("Expected '$text', got '${result.text}'", result.text.contains(text))
-            assertEquals(1, result.metadata.pageCount)
-            assertTrue("Parser temporary file must be removed", !File(context.cacheDir, targetName).exists())
+            var document: PDDocument? = null
+            try {
+                document = PDDocument.load(source)
+                assertEquals(1, document.numberOfPages)
+                val stripper = PDFTextStripper().apply {
+                    startPage = 1
+                    endPage = 1
+                    setSortByPosition(true)
+                }
+                val extracted = stripper.getText(document)
+                assertTrue("Expected '$text' in extracted PDF text", extracted.contains(text))
+            } finally {
+                document?.close()
+            }
         } finally {
             source.delete()
-            File(context.cacheDir, targetName).delete()
         }
     }
 

@@ -14,7 +14,7 @@ data class TimetableChangeInfo(
     val updatedAtMillis: Long,
     val updated: List<CourseChange>,
     val added: List<String>,
-    val kept: List<String>
+    val keptCourses: List<KeptCourse>
 )
 
 /** 一条待用户确认的课程决策。 */
@@ -74,14 +74,24 @@ data class TimetableChangeState(
 class TimetableChangeStore @Inject constructor(application: Application) {
 
     private data class PersistedState(
+        val schemaVersion: Int = CURRENT_SCHEMA_VERSION,
         val info: TimetableChangeInfo? = null,
         val decisions: List<TimetableDecisionItem> = emptyList(),
         val heldBatch: TimetableHeldBatch? = null,
         val vetoes: Map<String, Map<String, CourseVetoRecord>> = emptyMap()
     ) {
         fun toChangeState(): TimetableChangeState = TimetableChangeState(
-            info = info,
-            decisions = decisions,
+            info = info?.let {
+                TimetableChangeInfo(
+                    updatedAtMillis = it.updatedAtMillis,
+                    updated = it.updated.orEmpty().map { change ->
+                        change.copy(slotChanges = change.slotChanges.orEmpty())
+                    },
+                    added = it.added.orEmpty(),
+                    keptCourses = it.keptCourses.orEmpty()
+                )
+            },
+            decisions = decisions.orEmpty(),
             heldBatch = heldBatch
         )
     }
@@ -231,9 +241,20 @@ class TimetableChangeStore @Inject constructor(application: Application) {
 
     private fun load(): PersistedState {
         if (!stateFile.isFile) return PersistedState()
-        return runCatching {
+        val parsed = runCatching {
             gson.fromJson(stateFile.readText(), PersistedState::class.java)
-        }.getOrNull() ?: PersistedState()
+        }.getOrNull() ?: return PersistedState()
+        // 旧版落盘的 info/decisions/heldBatch 字段结构与新版不兼容（Gson 会填出 null 列表），
+        // 直接丢弃这些瞬时数据；vetoes 结构未变，保留防骚扰记忆。
+        if (parsed.schemaVersion != CURRENT_SCHEMA_VERSION) {
+            return parsed.copy(
+                schemaVersion = CURRENT_SCHEMA_VERSION,
+                info = null,
+                decisions = emptyList(),
+                heldBatch = null
+            )
+        }
+        return parsed
     }
 
     private fun persist(state: PersistedState) {
@@ -244,5 +265,10 @@ class TimetableChangeStore @Inject constructor(application: Application) {
             stateFile.writeText(temporary.readText())
             temporary.delete()
         }
+    }
+
+    companion object {
+        /** 落盘结构版本：info/decisions/heldBatch 的形状变更后 +1，旧数据整体作废。 */
+        private const val CURRENT_SCHEMA_VERSION = 2
     }
 }

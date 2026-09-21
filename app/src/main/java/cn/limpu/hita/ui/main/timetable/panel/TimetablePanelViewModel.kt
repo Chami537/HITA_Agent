@@ -16,6 +16,7 @@ import cn.limpu.hita.data.repository.KEY_START_DATE
 import cn.limpu.hita.data.repository.KEY_CARD_OPACITY
 import cn.limpu.hita.data.repository.KEY_WALLPAPER_SCRIM
 import cn.limpu.hita.data.repository.KEY_COURSE_BUBBLE_STYLE
+import cn.limpu.hita.data.repository.KEY_EVENING_HINT
 import cn.limpu.hita.ui.main.timetable.CourseBubbleStyle
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
@@ -40,6 +41,8 @@ class TimetablePanelViewModel @Inject constructor(
         get() = timetableStyleRepository.fadeEnableLiveData
     val periodLabelLiveData: SharedPreferenceBooleanLiveData
         get() = timetableStyleRepository.periodLabelLiveData
+    val eveningHintLiveData: SharedPreferenceBooleanLiveData
+        get() = timetableStyleRepository.eveningHintLiveData
     val autoReimportLiveData: SharedPreferenceBooleanLiveData
         get() = easSettingsRepository.autoReimportLiveData
     val scrimOpacityLiveData: SharedPreferenceIntLiveData
@@ -65,6 +68,9 @@ class TimetablePanelViewModel @Inject constructor(
     }
     fun setPeriodLabelEnabled(enabled: Boolean) {
         timetableStyleRepository.putData(KEY_LABEL_PERIOD, enabled)
+    }
+    fun setEveningHintEnabled(enabled: Boolean) {
+        timetableStyleRepository.putData(KEY_EVENING_HINT, enabled)
     }
     fun setAutoReimportEnabled(enabled: Boolean) {
         easSettingsRepository.setAutoReimport(enabled)

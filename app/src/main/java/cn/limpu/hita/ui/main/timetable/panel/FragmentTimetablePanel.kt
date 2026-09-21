@@ -128,6 +128,7 @@ private fun TimetablePanelScreen(
     val colorEnable by viewModel.colorEnableLiveData.observeAsState(true)
     val fadeEnable by viewModel.fadeEnableLiveData.observeAsState(true)
     val periodLabel by viewModel.periodLabelLiveData.observeAsState(false)
+    val eveningHint by viewModel.eveningHintLiveData.observeAsState(true)
     val autoReimport by viewModel.autoReimportLiveData.observeAsState(false)
     val scrimOpacity by viewModel.scrimOpacityLiveData.observeAsState(30)
     val cardOpacity by viewModel.cardOpacityLiveData.observeAsState(85)
@@ -176,6 +177,11 @@ private fun TimetablePanelScreen(
             title = stringResource(R.string.draw_bg_dashed_lines),
             checked = drawBgLines,
             onCheckedChange = viewModel::setDrawBGLines
+        )
+        SwitchSettingRow(
+            title = stringResource(R.string.timetable_evening_hint_title),
+            checked = eveningHint,
+            onCheckedChange = viewModel::setEveningHintEnabled
         )
 
         if (isClassic) {

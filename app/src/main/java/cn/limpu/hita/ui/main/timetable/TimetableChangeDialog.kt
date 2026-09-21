@@ -4,6 +4,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
@@ -13,11 +14,15 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringArrayResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import cn.limpu.hita.R
 import cn.limpu.hita.data.repository.CourseChange
 import cn.limpu.hita.data.repository.CourseVetoReason
+import cn.limpu.hita.data.repository.KeptCourse
+import cn.limpu.hita.data.repository.LessonSlotChange
+import cn.limpu.hita.data.repository.SlotChangeKind
 import cn.limpu.hita.data.repository.TimetableChangeState
 import cn.limpu.hita.data.repository.TimetableDecisionItem
 import cn.limpu.hita.data.repository.TimetableHeldBatch
@@ -27,9 +32,9 @@ import cn.limpu.hita.ui.design.HitaTheme
  * 课表变更详情弹窗。
  *
  * 分区展示一次刷新带来的全部变化，并承载需要用户决策的事项：
- * - 已更新：时间/地点/教师调整、课次增加的课；
+ * - 已更新：时间/地点/教师调整、课次增加的课，逐「周几 + 节次」槽位给出 原值 → 新值；
  * - 新增：课表源里新出现的课；
- * - 已保留：源端未返回或课次减少、被本地缓存保住的课；
+ * - 已保留：源端未返回或课次减少、被本地缓存保住的课（附保留原因与课次对比）；
  * - 待确认：持续缺失（3 次且 48 小时）的课，逐门"采用课表源 / 继续保留"；
  * - 课表源数据异常：源端与本地匹配率过低时整批挂起，"采用课表源数据 / 保留当前课表"。
  *
@@ -67,9 +72,9 @@ internal fun TimetableChangeDialog(
                     SectionHeader(stringResource(R.string.timetable_change_section_added, info.added.size))
                     info.added.forEach { name -> CourseNameText(name) }
                 }
-                if (info != null && info.kept.isNotEmpty()) {
-                    SectionHeader(stringResource(R.string.timetable_change_section_kept, info.kept.size))
-                    info.kept.forEach { name -> CourseNameText(name) }
+                if (info != null && info.keptCourses.isNotEmpty()) {
+                    SectionHeader(stringResource(R.string.timetable_change_section_kept, info.keptCourses.size))
+                    info.keptCourses.forEach { kept -> KeptCourseRow(kept) }
                 }
                 if (state.decisions.isNotEmpty()) {
                     SectionHeader(
@@ -128,26 +133,109 @@ private fun CourseNameText(name: String) {
 }
 
 @Composable
-private fun UpdatedCourseRow(change: CourseChange) {
-    val tags = listOfNotNull(
-        if (change.timeAdjusted) stringResource(R.string.timetable_change_time_adjusted) else null,
-        if (change.placeAdjusted) stringResource(R.string.timetable_change_place_adjusted) else null,
-        if (change.teacherAdjusted) stringResource(R.string.timetable_change_teacher_adjusted) else null,
-        if (change.lessonCountDelta > 0) {
-            stringResource(R.string.timetable_change_lessons_added, change.lessonCountDelta)
-        } else {
-            null
-        }
+private fun DetailText(text: String) {
+    Text(
+        text = text,
+        style = MaterialTheme.typography.labelMedium,
+        color = MaterialTheme.colorScheme.onSurfaceVariant
     )
+}
+
+@Composable
+private fun UpdatedCourseRow(change: CourseChange) {
     Column {
         CourseNameText(change.name)
-        if (tags.isNotEmpty()) {
-            Text(
-                text = tags.joinToString(" · "),
-                style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
+        if (change.previousName != null) {
+            DetailText(stringResource(R.string.timetable_change_renamed_from, change.previousName))
+        }
+        change.slotChanges.forEach { slot -> SlotChangeRow(slot) }
+        if (change.lessonCountDelta != 0) {
+            DetailText(stringResource(R.string.timetable_change_lessons_delta, change.lessonCountDelta))
+        }
+    }
+}
+
+/** 单个「周几 + 节次」槽位的完整变化：字段级 原值 → 新值，或整条课次的新增/减少。 */
+@Composable
+private fun SlotChangeRow(slot: LessonSlotChange) {
+    val weekdayNames = stringArrayResource(R.array.dow2)
+    val slotLabel = remember(slot, weekdayNames) {
+        val weekday = weekdayNames.getOrNull(slot.dow - 1) ?: ""
+        val period = when {
+            slot.fromNumber <= 0 -> ""
+            slot.fromNumber == slot.lastNumber -> "第${slot.fromNumber}节"
+            else -> "第${slot.fromNumber}-${slot.lastNumber}节"
+        }
+        listOf(weekday, period).filter { it.isNotEmpty() }.joinToString(" ")
+    }
+    when (slot.kind) {
+        SlotChangeKind.ADDED -> {
+            val suffix = listOf(slot.place, slot.teacher).filter { it.isNotEmpty() }
+            DetailText(
+                stringResource(R.string.timetable_change_slot_added) + " · " +
+                    listOf(slotLabel, slot.clock, slot.weeksLabel(), *suffix.toTypedArray())
+                        .filter { it.isNotEmpty() }
+                        .joinToString(" ")
             )
         }
+        SlotChangeKind.REMOVED -> {
+            DetailText(
+                stringResource(R.string.timetable_change_slot_removed) + " · " +
+                    listOf(slotLabel, slot.clock, slot.weeksLabel())
+                        .filter { it.isNotEmpty() }
+                        .joinToString(" ")
+            )
+        }
+        SlotChangeKind.ADJUSTED -> {
+            val fieldTime = stringResource(R.string.timetable_change_field_time)
+            val fieldWeeks = stringResource(R.string.timetable_change_field_weeks)
+            val fieldPlace = stringResource(R.string.timetable_change_field_place)
+            val fieldTeacher = stringResource(R.string.timetable_change_field_teacher)
+            val changes = listOfNotNull(
+                slot.clockBefore?.let {
+                    stringResource(R.string.timetable_change_field_change, fieldTime, it, slot.clock)
+                },
+                slot.weeksBefore?.let {
+                    stringResource(
+                        R.string.timetable_change_field_change,
+                        fieldWeeks,
+                        weeksLabel(it),
+                        weeksLabel(slot.weeks)
+                    )
+                },
+                slot.placeBefore?.let {
+                    stringResource(R.string.timetable_change_field_change, fieldPlace, it, slot.place)
+                },
+                slot.teacherBefore?.let {
+                    stringResource(R.string.timetable_change_field_change, fieldTeacher, it, slot.teacher)
+                }
+            )
+            changes.forEach { change -> DetailText("$slotLabel $change") }
+        }
+    }
+}
+
+private fun LessonSlotChange.weeksLabel(): String =
+    if (weeks.isEmpty()) "" else "（第${weeks}周）"
+
+private fun weeksLabel(weeks: String): String =
+    if (weeks.isEmpty()) "" else "第${weeks}周"
+
+@Composable
+private fun KeptCourseRow(kept: KeptCourse) {
+    Column {
+        CourseNameText(kept.name)
+        val detail = when (kept.reason) {
+            CourseVetoReason.MISSING_FROM_SOURCE ->
+                stringResource(R.string.timetable_change_kept_missing)
+            CourseVetoReason.LESSON_COUNT_REDUCED ->
+                stringResource(
+                    R.string.timetable_change_kept_reduced_counts,
+                    kept.localLessonCount,
+                    kept.incomingLessonCount
+                )
+        }
+        DetailText(detail)
     }
 }
 
@@ -172,11 +260,7 @@ private fun DecisionCourseRow(
     }
     Column {
         CourseNameText(item.name)
-        Text(
-            text = detail,
-            style = MaterialTheme.typography.labelMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
+        DetailText(detail)
         DecisionButtons(onAdopt = onAdopt, onKeep = onKeep)
     }
 }
@@ -189,15 +273,13 @@ private fun HeldBatchRow(
 ) {
     Column {
         SectionHeader(stringResource(R.string.timetable_change_batch_title))
-        Text(
-            text = stringResource(
+        DetailText(
+            stringResource(
                 R.string.timetable_change_batch_message,
                 batch.localCount,
                 batch.incomingCount,
                 batch.matchedCount
-            ),
-            style = MaterialTheme.typography.labelMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
         )
         DecisionButtons(
             onAdopt = onAdopt,

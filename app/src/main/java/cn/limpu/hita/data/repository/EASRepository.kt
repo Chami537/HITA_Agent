@@ -1025,12 +1025,16 @@ class EASRepository @Inject constructor(
         val localSubjectsById = subjectDao.getSubjectsSync(timetable.id).associateBy { it.id }
         val localCourses = localEvents.groupBy { it.subjectId }.mapNotNull { (subjectId, lessons) ->
             val subject = localSubjectsById[subjectId] ?: return@mapNotNull null
-            MergeCourse(subjectId, subject.name, subject.code, lessons.map { it.toMergeLesson() })
+            MergeCourse(subjectId, subject.name, subject.code, lessons.map { it.toMergeLesson(startMillis) })
         }
         val incomingCourses = events.groupBy { it.subjectId }.mapNotNull { (subjectId, lessons) ->
             val subject = pendingSubjects[subjectId] ?: return@mapNotNull null
-            MergeCourse(subjectId, subject.name, subject.code, lessons.map { it.toMergeLesson() })
+            MergeCourse(subjectId, subject.name, subject.code, lessons.map { it.toMergeLesson(startMillis) })
         }
+
+        // 本地没有任何已导入课程 = 首次导入（新设备/新装/刚导入课表）：
+        // 此时"全部课程"只是初始数据，不是变更，不产生变更提示。
+        val firstImport = localCourses.isEmpty()
 
         val plan = TimetableRefreshMergePolicy.plan(
             local = localCourses,
@@ -1106,13 +1110,13 @@ class EASRepository @Inject constructor(
             )
         }
 
-        if (plan.adopt.isNotEmpty() || plan.decisions.isNotEmpty()) {
+        if (plan.hasChanges && !firstImport) {
             timetableChangeStore.recordApplied(
                 TimetableChangeInfo(
                     updatedAtMillis = System.currentTimeMillis(),
                     updated = plan.updated,
                     added = plan.added.map { it.name },
-                    kept = plan.kept.map { it.name }
+                    keptCourses = plan.kept
                 ),
                 plan.decisions.map { decision ->
                     TimetableDecisionItem(

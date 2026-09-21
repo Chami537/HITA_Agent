@@ -5,16 +5,17 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.util.Calendar
 
 class TimetableRefreshMergePolicyTest {
 
     @Test
     fun plan_adoptsTimeAndPlaceChangesWhenLessonCountUnchanged() {
         val local = listOf(
-            course("高等数学（A）", lessons = 2, place = "正心楼 101", from = 1000)
+            course("高等数学（A）", lessons = 2, from = mondayAt(8, 0), place = "正心楼 101")
         )
         val incoming = listOf(
-            course("高等数学（A）", lessons = 2, place = "诚意楼 202", from = 5000)
+            course("高等数学（A）", lessons = 2, from = mondayAt(10, 5), place = "诚意楼 202")
         )
 
         val plan = TimetableRefreshMergePolicy.plan(local, incoming, emptyMap(), NOW)
@@ -27,6 +28,108 @@ class TimetableRefreshMergePolicyTest {
         assertTrue(plan.kept.isEmpty())
         assertTrue(plan.decisions.isEmpty())
         assertTrue(plan.vetoes.isEmpty())
+    }
+
+    @Test
+    fun plan_reportsNothingWhenSourceMatchesLocal() {
+        val local = listOf(
+            course("高等数学（A）", lessons = 2, from = mondayAt(8, 0)),
+            course("计算机导论", lessons = 2, from = mondayAt(14, 0))
+        )
+
+        val plan = TimetableRefreshMergePolicy.plan(local, local, emptyMap(), NOW)
+
+        assertTrue(plan.updated.isEmpty())
+        assertTrue(plan.added.isEmpty())
+        assertTrue(plan.kept.isEmpty())
+        assertTrue(plan.decisions.isEmpty())
+        assertFalse(plan.hasChanges)
+    }
+
+    @Test
+    fun plan_describesSlotLevelFieldChanges() {
+        val local = listOf(
+            MergeCourse(
+                subjectId = "s1",
+                name = "高等数学（A）",
+                code = null,
+                lessons = listOf(
+                    lesson(dow = 1, fromNumber = 1, lastNumber = 2, clock = 8 * 60, week = 1, place = "正心楼 101"),
+                    lesson(dow = 1, fromNumber = 1, lastNumber = 2, clock = 8 * 60, week = 2, place = "正心楼 101"),
+                    lesson(dow = 3, fromNumber = 6, lastNumber = 7, clock = 14 * 60, week = 1)
+                )
+            )
+        )
+        val incoming = listOf(
+            MergeCourse(
+                subjectId = "s1",
+                name = "高等数学（A）",
+                code = null,
+                lessons = listOf(
+                    // 同一槽位：上课时间与地点都变了
+                    lesson(dow = 1, fromNumber = 1, lastNumber = 2, clock = 10 * 60 + 5, week = 1, place = "诚意楼 202", teacher = "李四"),
+                    lesson(dow = 1, fromNumber = 1, lastNumber = 2, clock = 10 * 60 + 5, week = 2, place = "诚意楼 202", teacher = "李四"),
+                    // 原周三的课调到周五：减少一个槽位、新增一个槽位
+                    lesson(dow = 5, fromNumber = 6, lastNumber = 7, clock = 14 * 60, week = 1)
+                )
+            )
+        )
+
+        val plan = TimetableRefreshMergePolicy.plan(local, incoming, emptyMap(), NOW)
+
+        val change = plan.updated.single()
+        val monday = change.slotChanges.single { it.dow == 1 && it.kind == SlotChangeKind.ADJUSTED }
+        assertEquals("10:05-10:50", monday.clock)
+        assertEquals("08:00-08:45", monday.clockBefore)
+        assertEquals("诚意楼 202", monday.place)
+        assertEquals("正心楼 101", monday.placeBefore)
+        assertEquals("李四", monday.teacher)
+        assertEquals("张三", monday.teacherBefore)
+        assertTrue(change.timeAdjusted)
+        assertTrue(change.placeAdjusted)
+        assertTrue(change.teacherAdjusted)
+
+        val removed = change.slotChanges.single { it.kind == SlotChangeKind.REMOVED }
+        assertEquals(3, removed.dow)
+        assertEquals(6, removed.fromNumber)
+        val added = change.slotChanges.single { it.kind == SlotChangeKind.ADDED }
+        assertEquals(5, added.dow)
+        assertEquals("14:00-14:45", added.clock)
+    }
+
+    @Test
+    fun plan_reportsRenameAsChange() {
+        val local = listOf(course("高等数学", code = "MATH1001", lessons = 2, from = mondayAt(8, 0)))
+        val incoming = listOf(course("高等数学（A）", code = "MATH1001", lessons = 2, from = mondayAt(8, 0)))
+
+        val plan = TimetableRefreshMergePolicy.plan(local, incoming, emptyMap(), NOW)
+
+        val change = plan.updated.single()
+        assertEquals("高等数学（A）", change.name)
+        assertEquals("高等数学", change.previousName)
+        assertTrue(change.slotChanges.isEmpty())
+    }
+
+    @Test
+    fun plan_keptCoursesCarryReasonAndCounts() {
+        val local = listOf(
+            course("计算机导论", lessons = 2, from = mondayAt(8, 0)),
+            course("信号与系统", lessons = 4, from = mondayAt(14, 0))
+        )
+        val incoming = listOf(
+            course("信号与系统", lessons = 2, from = mondayAt(14, 0))
+        )
+
+        val plan = TimetableRefreshMergePolicy.plan(local, incoming, emptyMap(), NOW)
+
+        val missing = plan.kept.single { it.name == "计算机导论" }
+        assertEquals(CourseVetoReason.MISSING_FROM_SOURCE, missing.reason)
+        assertEquals(2, missing.localLessonCount)
+        assertEquals(0, missing.incomingLessonCount)
+        val reduced = plan.kept.single { it.name == "信号与系统" }
+        assertEquals(CourseVetoReason.LESSON_COUNT_REDUCED, reduced.reason)
+        assertEquals(4, reduced.localLessonCount)
+        assertEquals(2, reduced.incomingLessonCount)
     }
 
     @Test
@@ -227,17 +330,53 @@ class TimetableRefreshMergePolicyTest {
                 name = name,
                 place = place,
                 teacher = "张三",
-                fromMillis = from + index * 1000,
-                toMillis = from + index * 1000 + 500,
+                fromMillis = from + index * WEEK_MILLIS,
+                toMillis = from + index * WEEK_MILLIS + 45 * 60 * 1000,
                 fromNumber = index + 1,
-                lastNumber = 2
+                lastNumber = 2,
+                weekOfTerm = index + 1
             )
         }
+    )
+
+    /** 2026-09-07（周一）当天时刻。 */
+    private fun mondayAt(hour: Int, minute: Int): Long {
+        val calendar = Calendar.getInstance().apply {
+            clear()
+            set(2026, Calendar.SEPTEMBER, 7, hour, minute, 0)
+        }
+        check(calendar.get(Calendar.DAY_OF_WEEK) == Calendar.MONDAY) {
+            "fixture date must be a Monday"
+        }
+        return calendar.timeInMillis
+    }
+
+    private fun lesson(
+        dow: Int,
+        fromNumber: Int,
+        lastNumber: Int,
+        clock: Int,
+        week: Int,
+        place: String = "正心楼 101",
+        teacher: String = "张三"
+    ) = MergeLesson(
+        name = "高等数学（A）",
+        place = place,
+        teacher = teacher,
+        fromMillis = mondayAt(clock / 60, clock % 60) +
+            (dow - 1) * DAY_MILLIS + (week - 1) * WEEK_MILLIS,
+        toMillis = mondayAt(clock / 60, clock % 60) + 45 * 60 * 1000 +
+            (dow - 1) * DAY_MILLIS + (week - 1) * WEEK_MILLIS,
+        fromNumber = fromNumber,
+        lastNumber = lastNumber,
+        weekOfTerm = week
     )
 
     private companion object {
         const val NOW = 1_000_000_000_000L
         const val HOUR = 60 * 60 * 1000L
         const val TWO_DAYS = 48 * 60 * 60 * 1000L
+        const val DAY_MILLIS = 24L * 60 * 60 * 1000
+        const val WEEK_MILLIS = 7 * DAY_MILLIS
     }
 }

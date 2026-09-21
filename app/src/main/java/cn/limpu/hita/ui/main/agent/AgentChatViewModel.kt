@@ -538,7 +538,7 @@ class AgentChatViewModel @Inject constructor(
                         setLoading(false)
                         addMessage(AgentChatMessage(
                             role = AgentChatMessage.Role.ASSISTANT,
-                            text = "不支持的文件类型：${fileName}\n\n支持的格式：\n- 文档：Word、Excel、PowerPoint（本地解析）\n- 文档：PDF（云端AI解析）\n- 图片：JPG、PNG、GIF、WebP\n- 视频：MP4、MOV"
+                            text = "不支持的文件类型：${fileName}\n\n支持的格式：\n- 文档：PDF、Word、Excel、PowerPoint（本地解析）\n- 图片：JPG、PNG、GIF、WebP、BMP\n- 视频：MP4、MOV、AVI、MKV、WebM"
                         ))
                     }
                     return@launch

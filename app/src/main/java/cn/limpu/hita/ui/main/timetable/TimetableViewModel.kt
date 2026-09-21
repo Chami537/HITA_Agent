@@ -47,6 +47,8 @@ class TimetableViewModel @Inject constructor(
         get() = timetableStyleRepository.startTimeLiveData
     val periodLabelLiveData: LiveData<Boolean>
         get() = timetableStyleRepository.periodLabelLiveData
+    val eveningHintLiveData: LiveData<Boolean>
+        get() = timetableStyleRepository.eveningHintLiveData
     val wallpaperPathLiveData: LiveData<String>
         get() = timetableStyleRepository.wallpaperPathLiveData
     val wallpaperDateColorLiveData: LiveData<Int>

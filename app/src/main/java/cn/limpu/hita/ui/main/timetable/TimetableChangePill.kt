@@ -17,12 +17,14 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import cn.limpu.hita.R
 import cn.limpu.hita.ui.design.HitaTheme
+import cn.limpu.hita.ui.design.hitaIsAppleGlassSurface
 
 /**
  * 课表变更提示 pill。
@@ -44,11 +46,14 @@ internal fun TimetableChangePill(
     val container =
         if (pending) MaterialTheme.colorScheme.errorContainer
         else MaterialTheme.colorScheme.surface
-    val content =
-        if (pending) MaterialTheme.colorScheme.onErrorContainer
-        else MaterialTheme.colorScheme.onSurfaceVariant
     // AppleGlass 等半透明 surface 主题下给一个透明度下限，保证压得住底层课程卡
     val pillBackground = if (container.alpha < 0.85f) container.copy(alpha = 0.85f) else container
+    // 玻璃风格的 surface 是白色半透明：透明度下限把背景提到近白，
+    // 暗色下的浅色文本会糊在背景里，统一改用黑色保证可读（errorContainer 不受影响）。
+    val content =
+        if (!pending && hitaIsAppleGlassSurface() && HitaTheme.isDark) Color.Black
+        else if (pending) MaterialTheme.colorScheme.onErrorContainer
+        else MaterialTheme.colorScheme.onSurfaceVariant
     Row(
         modifier = modifier
             .clip(CircleShape)
