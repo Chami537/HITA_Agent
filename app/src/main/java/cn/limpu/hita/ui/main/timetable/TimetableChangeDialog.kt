@@ -159,14 +159,11 @@ private fun UpdatedCourseRow(change: CourseChange) {
 @Composable
 private fun SlotChangeRow(slot: LessonSlotChange) {
     val weekdayNames = stringArrayResource(R.array.dow2)
-    val slotLabel = remember(slot, weekdayNames) {
+    val noneValue = stringResource(R.string.timetable_change_value_none)
+    val periodLabel = slot.periodLabel()
+    val slotLabel = remember(slot, weekdayNames, periodLabel) {
         val weekday = weekdayNames.getOrNull(slot.dow - 1) ?: ""
-        val period = when {
-            slot.fromNumber <= 0 -> ""
-            slot.fromNumber == slot.lastNumber -> "第${slot.fromNumber}节"
-            else -> "第${slot.fromNumber}-${slot.lastNumber}节"
-        }
-        listOf(weekday, period).filter { it.isNotEmpty() }.joinToString(" ")
+        listOf(weekday, periodLabel).filter { it.isNotEmpty() }.joinToString(" ")
     }
     when (slot.kind) {
         SlotChangeKind.ADDED -> {
@@ -191,6 +188,7 @@ private fun SlotChangeRow(slot: LessonSlotChange) {
             val fieldWeeks = stringResource(R.string.timetable_change_field_weeks)
             val fieldPlace = stringResource(R.string.timetable_change_field_place)
             val fieldTeacher = stringResource(R.string.timetable_change_field_teacher)
+            val fieldLessons = stringResource(R.string.timetable_change_field_lessons)
             val changes = listOfNotNull(
                 slot.clockBefore?.let {
                     stringResource(R.string.timetable_change_field_change, fieldTime, it, slot.clock)
@@ -199,15 +197,33 @@ private fun SlotChangeRow(slot: LessonSlotChange) {
                     stringResource(
                         R.string.timetable_change_field_change,
                         fieldWeeks,
-                        weeksLabel(it),
-                        weeksLabel(slot.weeks)
+                        weeksLabel(it).ifEmpty { noneValue },
+                        weeksLabel(slot.weeks).ifEmpty { noneValue }
                     )
                 },
                 slot.placeBefore?.let {
-                    stringResource(R.string.timetable_change_field_change, fieldPlace, it, slot.place)
+                    stringResource(
+                        R.string.timetable_change_field_change,
+                        fieldPlace,
+                        it.ifEmpty { noneValue },
+                        slot.place.ifEmpty { noneValue }
+                    )
                 },
                 slot.teacherBefore?.let {
-                    stringResource(R.string.timetable_change_field_change, fieldTeacher, it, slot.teacher)
+                    stringResource(
+                        R.string.timetable_change_field_change,
+                        fieldTeacher,
+                        it.ifEmpty { noneValue },
+                        slot.teacher.ifEmpty { noneValue }
+                    )
+                },
+                slot.lessonCountBefore?.let {
+                    stringResource(
+                        R.string.timetable_change_field_change,
+                        fieldLessons,
+                        it.toString(),
+                        slot.lessonCount.toString()
+                    )
                 }
             )
             changes.forEach { change -> DetailText("$slotLabel $change") }
@@ -215,11 +231,20 @@ private fun SlotChangeRow(slot: LessonSlotChange) {
     }
 }
 
-private fun LessonSlotChange.weeksLabel(): String =
-    if (weeks.isEmpty()) "" else "（第${weeks}周）"
+@Composable
+private fun LessonSlotChange.periodLabel(): String = when {
+    fromNumber <= 0 -> ""
+    fromNumber == lastNumber -> stringResource(R.string.timetable_change_period_single, fromNumber)
+    else -> stringResource(R.string.timetable_change_period_range, fromNumber, lastNumber)
+}
 
+@Composable
+private fun LessonSlotChange.weeksLabel(): String =
+    if (weeks.isEmpty()) "" else stringResource(R.string.timetable_change_weeks_bracket, weeks)
+
+@Composable
 private fun weeksLabel(weeks: String): String =
-    if (weeks.isEmpty()) "" else "第${weeks}周"
+    if (weeks.isEmpty()) "" else stringResource(R.string.timetable_change_weeks_plain, weeks)
 
 @Composable
 private fun KeptCourseRow(kept: KeptCourse) {

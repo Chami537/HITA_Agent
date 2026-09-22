@@ -49,6 +49,8 @@ class TimetableViewModel @Inject constructor(
         get() = timetableStyleRepository.periodLabelLiveData
     val eveningHintLiveData: LiveData<Boolean>
         get() = timetableStyleRepository.eveningHintLiveData
+    val zoomCompressedLiveData: LiveData<Boolean>
+        get() = timetableStyleRepository.zoomCompressedLiveData
     val wallpaperPathLiveData: LiveData<String>
         get() = timetableStyleRepository.wallpaperPathLiveData
     val wallpaperDateColorLiveData: LiveData<Int>

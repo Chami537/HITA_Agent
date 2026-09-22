@@ -26,6 +26,32 @@ import cn.limpu.hita.R
 import cn.limpu.hita.ui.design.HitaTheme
 import cn.limpu.hita.ui.design.hitaIsAppleGlassSurface
 
+/** 课表浮动 pill 的配色结果。 */
+internal data class TimetablePillColors(
+    val background: Color,
+    val content: Color
+)
+
+/**
+ * 课表浮动 pill 的统一配色：
+ * - AppleGlass 等半透明 surface 主题下给背景一个透明度下限，保证压得住底层课程卡；
+ * - 玻璃风格的 surface 是白色半透明：透明度下限把背景提到近白，暗色下的浅色文本会糊在背景里，
+ *   统一改用黑色保证可读（alert 态用 errorContainer，不受影响）。
+ */
+@Composable
+internal fun resolveTimetablePillColors(alert: Boolean): TimetablePillColors {
+    val container =
+        if (alert) MaterialTheme.colorScheme.errorContainer
+        else MaterialTheme.colorScheme.surface
+    val background = if (container.alpha < 0.85f) container.copy(alpha = 0.85f) else container
+    val content = when {
+        !alert && hitaIsAppleGlassSurface() && HitaTheme.isDark -> Color.Black
+        alert -> MaterialTheme.colorScheme.onErrorContainer
+        else -> MaterialTheme.colorScheme.onSurfaceVariant
+    }
+    return TimetablePillColors(background, content)
+}
+
 /**
  * 课表变更提示 pill。
  *
@@ -43,17 +69,9 @@ internal fun TimetableChangePill(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val container =
-        if (pending) MaterialTheme.colorScheme.errorContainer
-        else MaterialTheme.colorScheme.surface
-    // AppleGlass 等半透明 surface 主题下给一个透明度下限，保证压得住底层课程卡
-    val pillBackground = if (container.alpha < 0.85f) container.copy(alpha = 0.85f) else container
-    // 玻璃风格的 surface 是白色半透明：透明度下限把背景提到近白，
-    // 暗色下的浅色文本会糊在背景里，统一改用黑色保证可读（errorContainer 不受影响）。
-    val content =
-        if (!pending && hitaIsAppleGlassSurface() && HitaTheme.isDark) Color.Black
-        else if (pending) MaterialTheme.colorScheme.onErrorContainer
-        else MaterialTheme.colorScheme.onSurfaceVariant
+    val colors = resolveTimetablePillColors(alert = pending)
+    val pillBackground = colors.background
+    val content = colors.content
     Row(
         modifier = modifier
             .clip(CircleShape)

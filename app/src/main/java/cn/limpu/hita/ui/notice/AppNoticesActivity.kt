@@ -25,7 +25,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.sp
+import cn.limpu.hita.R
 import cn.limpu.hita.data.analytics.UsageAnalyticsClient
 import cn.limpu.hita.data.analytics.UsageAnalyticsDimensions
 import cn.limpu.hita.data.analytics.UsageAnalyticsEvent
@@ -40,9 +42,14 @@ class AppNoticesActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        notices = AppNoticeCenter.activeNotices(AppNoticeCenter.cachedNotices(this))
+        // 打开公告列表即视为已读：红点消失且后续不再亮起（新公告 id 才会重新亮）
+        AppNoticeCenter.markNoticesSeen(this, AppNoticeCenter.mergedActiveNotices(this).map { it.id })
+        notices = AppNoticeCenter.mergedActiveNotices(this)
         AppNoticeCenter.fetch(this) { fetched ->
-            notices = AppNoticeCenter.activeNotices(fetched)
+            // fetch 回调已是「本地+远程」合并后的生效公告，直接展示；
+            // 列表正在展示它们，一并标记已读，避免返回主界面后红点误亮
+            notices = fetched
+            AppNoticeCenter.markNoticesSeen(this, fetched.map { it.id })
             fetched.forEach { notice ->
                 UsageAnalyticsClient.record(
                     UsageAnalyticsEvent.NOTICE_SHOWN,
@@ -69,7 +76,7 @@ private fun NoticesScreen(notices: List<AppNotice>) {
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("公告") },
+                title = { Text(stringResource(R.string.notices_title)) },
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = MaterialTheme.colorScheme.surface
                 ),
@@ -85,7 +92,7 @@ private fun NoticesScreen(notices: List<AppNotice>) {
             if (notices.isEmpty()) {
                 item {
                     Text(
-                        text = "暂无公告",
+                        text = stringResource(R.string.notices_empty),
                         fontSize = 14.sp,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.padding(vertical = 32.dp),

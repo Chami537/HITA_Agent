@@ -25,6 +25,7 @@ const val KEY_WALLPAPER_SCRIM = "wallpaper_scrim"
 const val KEY_CARD_OPACITY = "card_opacity"
 const val KEY_COURSE_BUBBLE_STYLE = "course_bubble_style"
 const val KEY_EVENING_HINT = "evening_hint"
+const val KEY_ZOOM_COMPRESSED = "zoom_compressed"
 
 @Singleton
 class TimetableStyleRepository @Inject constructor(application: Application) {
@@ -43,6 +44,8 @@ class TimetableStyleRepository @Inject constructor(application: Application) {
     )
     /** “还有更多课程”悬浮提示开关，默认开启。 */
     val eveningHintLiveData = timetableStyleSP.booleanLiveData(KEY_EVENING_HINT, true)
+    /** 课表缩放：false=放大（默认，现状）/ true=缩小（整天压缩一屏）。 */
+    val zoomCompressedLiveData = timetableStyleSP.booleanLiveData(KEY_ZOOM_COMPRESSED, false)
     val wallpaperDateColorLiveData = MutableLiveData(Color.WHITE)
     val wallpaperLabelColorLiveData = MutableLiveData(Color.WHITE)
 

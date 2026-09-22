@@ -129,6 +129,7 @@ private fun TimetablePanelScreen(
     val fadeEnable by viewModel.fadeEnableLiveData.observeAsState(true)
     val periodLabel by viewModel.periodLabelLiveData.observeAsState(false)
     val eveningHint by viewModel.eveningHintLiveData.observeAsState(true)
+    val zoomCompressed by viewModel.zoomCompressedLiveData.observeAsState(false)
     val autoReimport by viewModel.autoReimportLiveData.observeAsState(false)
     val scrimOpacity by viewModel.scrimOpacityLiveData.observeAsState(30)
     val cardOpacity by viewModel.cardOpacityLiveData.observeAsState(85)
@@ -182,6 +183,10 @@ private fun TimetablePanelScreen(
             title = stringResource(R.string.timetable_evening_hint_title),
             checked = eveningHint,
             onCheckedChange = viewModel::setEveningHintEnabled
+        )
+        ZoomModeSelector(
+            compressed = zoomCompressed,
+            onSelect = viewModel::setZoomCompressed
         )
 
         if (isClassic) {
@@ -408,6 +413,76 @@ private fun CourseBubbleStyleSelector(
                         color = MaterialTheme.colorScheme.onSurface,
                         fontSize = 12.sp,
                         fontWeight = FontWeight.Bold
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ZoomModeSelector(
+    compressed: Boolean,
+    onSelect: (Boolean) -> Unit,
+) {
+    val options = listOf(
+        false to stringResource(R.string.timetable_zoom_expanded),
+        true to stringResource(R.string.timetable_zoom_compressed),
+    )
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .horizontalScroll(rememberScrollState())
+            .padding(horizontal = HitaTheme.tokens.spacing.xl),
+        horizontalArrangement = Arrangement.spacedBy(HitaTheme.tokens.spacing.sm)
+    ) {
+        options.forEach { (value, label) ->
+            val isSelected = compressed == value
+            val tint = MaterialTheme.colorScheme.primary
+            Card(
+                modifier = Modifier
+                    .width(92.dp)
+                    .clickable { onSelect(value) },
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(
+                    containerColor = if (isSelected) {
+                        MaterialTheme.colorScheme.primaryContainer
+                    } else {
+                        MaterialTheme.colorScheme.surfaceVariant
+                    }
+                ),
+                border = BorderStroke(
+                    if (isSelected) 2.dp else 1.dp,
+                    if (isSelected) tint else MaterialTheme.colorScheme.outlineVariant
+                ),
+                elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
+            ) {
+                Column(
+                    modifier = Modifier.padding(10.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Text(
+                        text = label,
+                        color = if (isSelected) {
+                            MaterialTheme.colorScheme.onPrimaryContainer
+                        } else {
+                            MaterialTheme.colorScheme.onSurface
+                        },
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Text(
+                        text = stringResource(
+                            if (value) R.string.timetable_zoom_compressed_desc
+                            else R.string.timetable_zoom_expanded_desc
+                        ),
+                        color = if (isSelected) {
+                            MaterialTheme.colorScheme.onPrimaryContainer
+                        } else {
+                            MaterialTheme.colorScheme.onSurfaceVariant
+                        },
+                        fontSize = 10.sp,
+                        modifier = Modifier.padding(top = 2.dp)
                     )
                 }
             }

@@ -50,7 +50,9 @@ data class KeptCourse(
     val name: String,
     val reason: CourseVetoReason,
     val localLessonCount: Int,
-    val incomingLessonCount: Int
+    val incomingLessonCount: Int,
+    /** 本次刷新首次观察到缺失/削减；持续保留不重复提醒，避免每次打开应用都亮提示。 */
+    val newlyObserved: Boolean = false
 )
 
 /** 槽位变化类型：调整 / 源端新增 / 源端减少。 */
@@ -76,7 +78,11 @@ data class LessonSlotChange(
     val clockBefore: String? = null,
     val weeksBefore: String? = null,
     val placeBefore: String? = null,
-    val teacherBefore: String? = null
+    val teacherBefore: String? = null,
+    /** 槽位内课次数（按周展开的上课次数）。 */
+    val lessonCount: Int = 0,
+    /** 课次数变化前的值；仅在周次无法推断、只能用课次数表达变化时非空。 */
+    val lessonCountBefore: Int? = null
 )
 
 /**
@@ -107,6 +113,19 @@ data class CourseChange(
     val slotChanges: List<LessonSlotChange> = emptyList()
 )
 
+/**
+ * 课次减少课程的部分合并指令。
+ *
+ * 课表源削减课次时整门不替换：重叠槽位仍采纳源端（时间/地点/教师/周次落地），
+ * 源端不再覆盖的槽位保留本地课次（仓库层据此把被删的本地课次重新挂回）。
+ */
+data class ReducedCourseMerge(
+    val subjectId: String,
+    val name: String,
+    /** 源端该课覆盖的「周几|起始节|结束节」槽位；本地其余槽位的课次保留。 */
+    val incomingSlotKeys: Set<String>
+)
+
 /** 升级为待用户确认的一门课；[incoming] 为源端数据（整门缺失时为 null，即采纳=删除本地课）。 */
 data class CourseDecision(
     val courseKey: String,
@@ -121,7 +140,7 @@ data class CourseDecision(
 
 /** 一次刷新的合并计划。 */
 data class TimetableMergePlan(
-    /** 采纳源端的课（含匹配更新的课与源端新增的课）。 */
+    /** 采纳源端的课（含匹配更新的课、课次减少课的部分合并与源端新增的课）。 */
     val adopt: List<MergeCourse> = emptyList(),
     /** 匹配后被更新的课的变更描述（不含新增）。 */
     val updated: List<CourseChange> = emptyList(),
@@ -131,8 +150,12 @@ data class TimetableMergePlan(
     val kept: List<KeptCourse> = emptyList(),
     /** 达到待确认阈值、等待用户决策的课。 */
     val decisions: List<CourseDecision> = emptyList(),
-    /** 匹配上的本地课中将被源端版本替换的那些（需要先删本地课次）。 */
+    /** 匹配后被源端版本替换（或部分合并）的本地课（需要先删本地课次）。 */
     val replacedLocal: List<MergeCourse> = emptyList(),
+    /** 课次减少课的部分合并指令：保留本地哪些槽位。 */
+    val partialMerges: List<ReducedCourseMerge> = emptyList(),
+    /** 本次与源端匹配上的本地课 key，用于清理已回归课程的过期待确认项。 */
+    val matchedCourseKeys: Set<String> = emptySet(),
     /** 源端与本地重叠过低：整批挂起，不写库。 */
     val holdBatch: Boolean = false,
     val holdLocalCount: Int = 0,
@@ -144,11 +167,12 @@ data class TimetableMergePlan(
     val vetoes: Map<String, CourseVetoRecord> = emptyMap()
 ) {
     /**
-     * 是否发生了用户可见的真实变化（决定要不要捕获刷新前快照、写入变更摘要）。
-     * 匹配后无任何变化的课照常落库，但不产生快照与"已更新"提示。
+     * 是否发生了用户可见的真实变化（决定要不要写入变更摘要、点亮变更提示）。
+     * 已保留课只在首次观察到缺失/削减时计入，持续保留不重复提醒。
      */
     val hasChanges: Boolean
-        get() = updated.isNotEmpty() || added.isNotEmpty() || decisions.isNotEmpty()
+        get() = updated.isNotEmpty() || added.isNotEmpty() || decisions.isNotEmpty() ||
+            kept.any { it.newlyObserved }
 }
 
 /**
@@ -157,7 +181,10 @@ data class TimetableMergePlan(
  * 背景：课表源会临时调课（地点/时间变动，必须及时采纳），也会整门漏课或削减课次
  *（课程并未取消，必须保留本地，不被错误源覆盖）。策略按课程粒度逐门裁决：
  * - 源端课次数 ≥ 本地 → 采纳源端（覆盖时间/地点/教师变更，或新增课次）；
- * - 源端整门缺失或课次数减少 → 保留本地，并记 veto 记忆；
+ *   无真实变化的匹配课不重写，避免课次 id 抖动与无效快照；
+ * - 源端课次数减少 → 缩掉的槽位保留本地，重叠槽位的时间/地点/教师/周次与改名仍采纳，
+ *   并记 veto 记忆；
+ * - 源端整门缺失 → 保留本地，并记 veto 记忆；
  * - 同一门课持续缺失/削减达到 [DECISION_OBSERVATIONS] 次且跨度 ≥ [DECISION_WINDOW_MILLIS]
  *   → 升级为待用户确认，由用户决定采纳源端还是继续保留；
  * - 源端与本地匹配率过低 → 判定源端整批异常，挂起等用户决策；
@@ -255,15 +282,34 @@ object TimetableRefreshMergePolicy {
         val kept = mutableListOf<KeptCourse>()
         val decisions = mutableListOf<CourseDecision>()
         val replacedLocal = mutableListOf<MergeCourse>()
+        val partialMerges = mutableListOf<ReducedCourseMerge>()
 
         for ((localCourse, incomingCourse) in replacedPairs) {
+            val key = courseKey(localCourse.name, localCourse.code)
             if (incomingCourse.lessonCount >= localCourse.lessonCount) {
-                adopt += incomingCourse
-                describeChange(localCourse, incomingCourse)?.let { updated += it }
-                replacedLocal += localCourse
-                nextVetoes.remove(courseKey(localCourse.name, localCourse.code))
+                // 仅真实变化的课重写：无变化的匹配课保持本地行与课次 id 不变，
+                // 避免每次打开应用都删插课次、打快照。
+                describeChange(localCourse, incomingCourse)?.let { change ->
+                    adopt += incomingCourse
+                    updated += change
+                    replacedLocal += localCourse
+                }
+                nextVetoes.remove(key)
             } else {
-                val key = courseKey(localCourse.name, localCourse.code)
+                // 课次减少：缩掉的槽位保留本地，重叠槽位的时间/地点/教师/周次与改名仍采纳；
+                // 与当前本地状态一致时（上次已合并过）不重复写库。
+                val merged = mergeReducedCourse(localCourse, incomingCourse)
+                describeChange(localCourse, merged)?.let { change ->
+                    adopt += incomingCourse
+                    updated += change
+                    replacedLocal += localCourse
+                    partialMerges += ReducedCourseMerge(
+                        subjectId = localCourse.subjectId,
+                        name = localCourse.name,
+                        incomingSlotKeys = incomingCourse.lessons.mapTo(HashSet()) { slotKey(it) }
+                    )
+                }
+                val isNewVeto = nextVetoes[key] == null
                 val record = upsertVeto(nextVetoes, key, localCourse.name, nowMillis)
                 if (record.isDueForDecision(nowMillis)) {
                     decisions += CourseDecision(
@@ -281,7 +327,8 @@ object TimetableRefreshMergePolicy {
                         name = localCourse.name,
                         reason = CourseVetoReason.LESSON_COUNT_REDUCED,
                         localLessonCount = localCourse.lessonCount,
-                        incomingLessonCount = incomingCourse.lessonCount
+                        incomingLessonCount = incomingCourse.lessonCount,
+                        newlyObserved = isNewVeto
                     )
                 }
             }
@@ -289,6 +336,7 @@ object TimetableRefreshMergePolicy {
 
         for (localCourse in unmatchedLocal) {
             val key = courseKey(localCourse.name, localCourse.code)
+            val isNewVeto = nextVetoes[key] == null
             val record = upsertVeto(nextVetoes, key, localCourse.name, nowMillis)
             if (record.isDueForDecision(nowMillis)) {
                 decisions += CourseDecision(
@@ -306,7 +354,8 @@ object TimetableRefreshMergePolicy {
                     name = localCourse.name,
                     reason = CourseVetoReason.MISSING_FROM_SOURCE,
                     localLessonCount = localCourse.lessonCount,
-                    incomingLessonCount = 0
+                    incomingLessonCount = 0,
+                    newlyObserved = isNewVeto
                 )
             }
         }
@@ -321,6 +370,8 @@ object TimetableRefreshMergePolicy {
             kept = kept,
             decisions = decisions,
             replacedLocal = replacedLocal,
+            partialMerges = partialMerges,
+            matchedCourseKeys = replacedPairs.mapTo(HashSet()) { courseKey(it.first.name, it.first.code) },
             holdBatch = false,
             vetoes = nextVetoes
         )
@@ -387,7 +438,8 @@ object TimetableRefreshMergePolicy {
             name = incoming.name,
             previousName = local.name.takeIf { renamed },
             timeAdjusted = slotChanges.any {
-                it.kind != SlotChangeKind.ADJUSTED || it.clockBefore != null || it.weeksBefore != null
+                it.kind != SlotChangeKind.ADJUSTED || it.clockBefore != null ||
+                    it.weeksBefore != null || it.lessonCountBefore != null
             },
             placeAdjusted = slotChanges.any { it.placeBefore != null },
             teacherAdjusted = slotChanges.any { it.teacherBefore != null },
@@ -398,6 +450,26 @@ object TimetableRefreshMergePolicy {
 
     private fun slotKey(lesson: MergeLesson): String =
         "${dowOf(lesson.fromMillis)}|${lesson.fromNumber}|${lesson.lastNumber}"
+
+    /** 事件的「周几|起始节|结束节」槽位键，与策略内部的课次槽位键一致（仓库层部分合并用）。 */
+    internal fun slotKeyOf(event: EventItem): String =
+        "${dowOf(event.from.time)}|${event.fromNumber}|${event.lastNumber}"
+
+    /**
+     * 课次减少时的部分合并视图：重叠槽位与源端新增槽位采纳源端（字段更新落地），
+     * 源端缩掉的槽位保留本地课次；改名随源端落地。
+     * 仅用于变更描述与相等性判断，真正落库由仓库层按 [ReducedCourseMerge] 执行。
+     */
+    private fun mergeReducedCourse(local: MergeCourse, incoming: MergeCourse): MergeCourse {
+        val incomingSlotKeys = incoming.lessons.mapTo(HashSet()) { slotKey(it) }
+        val keptLessons = local.lessons.filter { slotKey(it) !in incomingSlotKeys }
+        return MergeCourse(
+            subjectId = local.subjectId,
+            name = incoming.name,
+            code = incoming.code ?: local.code,
+            lessons = incoming.lessons + keptLessons
+        )
+    }
 
     /** 槽位内字段比对；无变化返回 null。 */
     private fun adjustedSlotChange(
@@ -416,15 +488,17 @@ object TimetableRefreshMergePolicy {
             weeks = incomingSummary.weeks,
             place = incomingSummary.place,
             teacher = incomingSummary.teacher,
+            lessonCount = incomingSummary.count,
             clockBefore = localSummary.clock.takeIf { it != incomingSummary.clock },
-            weeksBefore = localSummary.weeks.takeIf {
-                it.isNotEmpty() && it != incomingSummary.weeks
-            },
-            placeBefore = localSummary.place.takeIf {
-                it.isNotEmpty() && it != incomingSummary.place
-            },
-            teacherBefore = localSummary.teacher.takeIf {
-                it.isNotEmpty() && it != incomingSummary.teacher
+            // 空 → 有值也是变化（补录地点/教师/周次）：不再要求旧值非空，
+            // 空侧由界面用占位符渲染。
+            weeksBefore = localSummary.weeks.takeIf { it != incomingSummary.weeks },
+            placeBefore = localSummary.place.takeIf { it != incomingSummary.place },
+            teacherBefore = localSummary.teacher.takeIf { it != incomingSummary.teacher },
+            // 周次无法推断（无开学日期）时，同槽位加周只能表达为课次数变化
+            lessonCountBefore = localSummary.count.takeIf {
+                it != incomingSummary.count &&
+                    localSummary.weeks.isEmpty() && incomingSummary.weeks.isEmpty()
             }
         )
     }
@@ -439,7 +513,8 @@ object TimetableRefreshMergePolicy {
             clock = summary.clock,
             weeks = summary.weeks,
             place = summary.place,
-            teacher = summary.teacher
+            teacher = summary.teacher,
+            lessonCount = summary.count
         )
     }
 
@@ -451,7 +526,9 @@ object TimetableRefreshMergePolicy {
         val clock: String,
         val weeks: String,
         val place: String,
-        val teacher: String
+        val teacher: String,
+        /** 槽位内课次数；周次无法推断时用于兜底表达同槽位的加周/减周。 */
+        val count: Int
     ) {
         companion object {
             fun of(lessons: List<MergeLesson>): SlotSummary {
@@ -467,7 +544,8 @@ object TimetableRefreshMergePolicy {
                     place = sorted.map { it.place }.filter { it.isNotEmpty() }
                         .distinct().joinToString("、"),
                     teacher = sorted.map { it.teacher }.filter { it.isNotEmpty() }
-                        .distinct().joinToString("、")
+                        .distinct().joinToString("、"),
+                    count = lessons.size
                 )
             }
         }

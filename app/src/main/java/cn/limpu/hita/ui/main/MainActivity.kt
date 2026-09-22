@@ -383,6 +383,8 @@ class MainActivity : HiltBaseActivity<ComposeViewBinding>(),
         refreshDrawerState()
         easRepository.observeEasToken().observe(this, easTokenObserver)
         maybeAutoReimportTimetable()
+        // 公告红点兜底刷新（fetch 完成/标记已读也会推送，这里覆盖冷启动与页面返回）
+        AppNoticeCenter.refreshUnseenState(this)
         try {
             val code = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
                 packageManager.getPackageInfo(packageName, 0).longVersionCode
@@ -411,19 +413,21 @@ class MainActivity : HiltBaseActivity<ComposeViewBinding>(),
 
     private fun checkNotices() {
         AppNoticeCenter.fetch(this) { fetched ->
-            val active = AppNoticeCenter.activeNotices(fetched)
-            val critical = active.firstOrNull { it.isCritical }
+            // fetch 回调已是「本地+远程」合并后的生效公告
+            val critical = fetched.firstOrNull { it.isCritical }
             if (critical != null && !criticalNoticeHandled) {
                 criticalNoticeHandled = true
                 showCriticalNotice(critical)
             } else {
-                val version = active.firstOrNull { it.isVersionKind }
+                val version = fetched.firstOrNull { it.isVersionKind }
                 version?.let { maybeShowVersionNotice(it) }
             }
         }
     }
 
     private fun showCriticalNotice(notice: AppNotice) {
+        // 全屏强制展示 = 用户已读，不再点亮红点
+        AppNoticeCenter.markNoticesSeen(this, listOf(notice.id))
         UsageAnalyticsClient.record(
             UsageAnalyticsEvent.NOTICE_SHOWN,
             mapOf(
@@ -450,6 +454,8 @@ class MainActivity : HiltBaseActivity<ComposeViewBinding>(),
     private fun maybeShowVersionNotice(notice: AppNotice) {
         val minVersion = notice.minAppVersion ?: return
         if (minVersion <= BuildConfig.VERSION_CODE.toLong()) return
+        // 版本弹窗已展示 = 用户已读，不再点亮红点（公告列表仍可回看）
+        AppNoticeCenter.markNoticesSeen(this, listOf(notice.id))
         UsageAnalyticsClient.record(
             UsageAnalyticsEvent.NOTICE_SHOWN,
             mapOf(
@@ -965,9 +971,13 @@ private fun MainScreen(
             }
         }
 
+
+        // 公告未读 → 功能中心 tab 右上角红点（打开公告列表后标记已读，红点熄灭）
+        val noticeDotVisible by AppNoticeCenter.unseenLiveData.observeAsState(false)
         if (!imeVisible) {
             MainPillTabBar(
                 selectedTab = selectedTab,
+                showNoticeDot = noticeDotVisible,
                 alpha = if (showTimetableWallpaper) 0.72f else 1f,
                 themeStyle = themeStyle,
                 hazeState = if (useGlobalHaze) hazeState else null,
@@ -1504,6 +1514,7 @@ private fun Modifier.liquidGlassSurface(
 @Composable
 private fun MainPillTabBar(
     selectedTab: Int,
+    showNoticeDot: Boolean,
     alpha: Float,
     themeStyle: ThemeTools.STYLE,
     hazeState: HazeState?,
@@ -1672,12 +1683,25 @@ private fun MainPillTabBar(
                             .padding(horizontal = 8.dp, vertical = 4.dp),
                         horizontalAlignment = Alignment.CenterHorizontally
                     ) {
-                        Icon(
-                            painter = painterResource(tab.iconRes),
-                            contentDescription = null,
-                            tint = tint,
-                            modifier = Modifier.size(CapsuleTabIconSize)
-                        )
+                        Box {
+                            Icon(
+                                painter = painterResource(tab.iconRes),
+                                contentDescription = null,
+                                tint = tint,
+                                modifier = Modifier.size(CapsuleTabIconSize)
+                            )
+                            // 公告未读红点：只挂在「功能中心」tab 上，全主题用 error 色保证可见
+                            if (showNoticeDot && tab.titleRes == R.string.title_navigation) {
+                                Box(
+                                    modifier = Modifier
+                                        .align(Alignment.TopEnd)
+                                        .offset(x = 4.dp, y = (-2).dp)
+                                        .size(6.dp)
+                                        .clip(CircleShape)
+                                        .background(MaterialTheme.colorScheme.error)
+                                )
+                            }
+                        }
                         Text(
                             text = stringResource(tab.titleRes),
                             color = tint,

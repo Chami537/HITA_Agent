@@ -151,6 +151,26 @@ class TimetableChangeStore @Inject constructor(application: Application) {
 
     // ---------- 待确认决策 ----------
 
+    /**
+     * 清理已回归源端的课程的旧待确认项：课重新出现后，针对它的"采用课表源"
+     * 会误删已经回来的课，故每次刷新合并后调用。仅清理，不动其他学期的决策。
+     */
+    fun pruneResolvedDecisions(termId: String, resolvedCourseKeys: Set<String>) =
+        synchronized(lock) {
+            if (resolvedCourseKeys.isEmpty()) return@synchronized
+            val hasStale = cached.decisions.any {
+                it.termId == termId && it.courseKey in resolvedCourseKeys
+            }
+            if (!hasStale) return@synchronized
+            mutate { state ->
+                state.copy(
+                    decisions = state.decisions.filterNot {
+                        it.termId == termId && it.courseKey in resolvedCourseKeys
+                    }
+                )
+            }
+        }
+
     fun consumeDecision(termId: String, courseKey: String): TimetableDecisionItem? =
         synchronized(lock) {
             val item = cached.decisions.firstOrNull {
@@ -221,8 +241,8 @@ class TimetableChangeStore @Inject constructor(application: Application) {
     // ---------- 内部 ----------
 
     /**
-     * 新一批决策与旧决策合并：同一门课以新记录为准（观察次数递增），
-     * 不再缺失的课自动移出待确认列表。
+     * 新一批决策与旧决策合并：同一门课以新记录为准（观察次数递增）。
+     * 已回归源端的课的过期决策由 [pruneResolvedDecisions] 在每次刷新后清除。
      */
     private fun mergeDecisions(
         existing: List<TimetableDecisionItem>,

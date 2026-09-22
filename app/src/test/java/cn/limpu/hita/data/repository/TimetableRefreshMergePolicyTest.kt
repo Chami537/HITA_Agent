@@ -39,6 +39,9 @@ class TimetableRefreshMergePolicyTest {
 
         val plan = TimetableRefreshMergePolicy.plan(local, local, emptyMap(), NOW)
 
+        // 无变化的匹配课不重写（避免课次 id 抖动与无效快照）
+        assertTrue(plan.adopt.isEmpty())
+        assertTrue(plan.replacedLocal.isEmpty())
         assertTrue(plan.updated.isEmpty())
         assertTrue(plan.added.isEmpty())
         assertTrue(plan.kept.isEmpty())
@@ -158,23 +161,143 @@ class TimetableRefreshMergePolicyTest {
 
         val plan = TimetableRefreshMergePolicy.plan(local, incoming, emptyMap(), NOW)
 
-        assertEquals(1, plan.adopt.size)
+        // 高数与源端完全一致：不重写（无变化不采纳）
+        assertTrue(plan.adopt.isEmpty())
         assertEquals(listOf("计算机导论"), plan.kept.map { it.name })
+        // 首次观察到缺失 → 计入变更（点亮提示）；后续持续缺失不重复提醒
+        assertTrue(plan.kept.single().newlyObserved)
+        assertTrue(plan.hasChanges)
         assertTrue(plan.decisions.isEmpty())
         assertEquals(1, plan.vetoes.size)
         assertEquals(1, plan.vetoes.values.single().observationCount)
     }
+    @Test
+    fun plan_partiallyMergesWhenLessonCountReduced() {
+        // 课次减少：缩掉的槽位（周三 6-7 节）保留本地，重叠槽位（周一 1-2 节）的地点更新仍采纳
+        val local = listOf(
+            MergeCourse(
+                subjectId = "s1",
+                name = "信号与系统",
+                code = null,
+                lessons = listOf(
+                    lesson(dow = 1, fromNumber = 1, lastNumber = 2, clock = 8 * 60, week = 1),
+                    lesson(dow = 1, fromNumber = 1, lastNumber = 2, clock = 8 * 60, week = 2),
+                    lesson(dow = 3, fromNumber = 6, lastNumber = 7, clock = 14 * 60, week = 1),
+                    lesson(dow = 3, fromNumber = 6, lastNumber = 7, clock = 14 * 60, week = 2)
+                )
+            )
+        )
+        val incoming = listOf(
+            MergeCourse(
+                subjectId = "s1",
+                name = "信号与系统",
+                code = null,
+                lessons = listOf(
+                    lesson(dow = 1, fromNumber = 1, lastNumber = 2, clock = 8 * 60, week = 1, place = "诚意楼 202"),
+                    lesson(dow = 1, fromNumber = 1, lastNumber = 2, clock = 8 * 60, week = 2, place = "诚意楼 202")
+                )
+            )
+        )
+
+        val plan = TimetableRefreshMergePolicy.plan(local, incoming, emptyMap(), NOW)
+
+        assertEquals(1, plan.adopt.size)
+        assertEquals(1, plan.replacedLocal.size)
+        val partial = plan.partialMerges.single()
+        assertEquals("s1", partial.subjectId)
+        assertEquals(1, partial.incomingSlotKeys.size)
+        val change = plan.updated.single()
+        val adjusted = change.slotChanges.single { it.kind == SlotChangeKind.ADJUSTED }
+        assertEquals("诚意楼 202", adjusted.place)
+        assertEquals("正心楼 101", adjusted.placeBefore)
+        val kept = plan.kept.single()
+        assertEquals(CourseVetoReason.LESSON_COUNT_REDUCED, kept.reason)
+        assertEquals(4, kept.localLessonCount)
+        assertEquals(2, kept.incomingLessonCount)
+        assertEquals(1, plan.vetoes.size)
+    }
 
     @Test
-    fun plan_keepsWholeCourseWhenLessonCountReduced() {
+    fun plan_reducedCourseWithoutFieldChangesIsNotRewritten() {
+        // 课次减少但槽位字段无变化：保留本地即可，不重复删插（第二次及以后的持续削减）
         val local = listOf(course("信号与系统", lessons = 4, from = 1000))
         val incoming = listOf(course("信号与系统", lessons = 2, from = 1000))
 
         val plan = TimetableRefreshMergePolicy.plan(local, incoming, emptyMap(), NOW)
 
         assertTrue(plan.adopt.isEmpty())
+        assertTrue(plan.partialMerges.isEmpty())
         assertEquals(listOf("信号与系统"), plan.kept.map { it.name })
         assertEquals(1, plan.vetoes.size)
+    }
+
+    @Test
+    fun plan_reportsPlaceFilledFromEmpty() {
+        // 本地地点为空、源端补上：也要产生可见的字段变化（空侧非 null，由界面渲染占位符）
+        val local = listOf(
+            MergeCourse(
+                subjectId = "s1",
+                name = "高等数学（A）",
+                code = null,
+                lessons = listOf(
+                    lesson(dow = 1, fromNumber = 1, lastNumber = 2, clock = 8 * 60, week = 1, place = "")
+                )
+            )
+        )
+        val incoming = listOf(
+            MergeCourse(
+                subjectId = "s1",
+                name = "高等数学（A）",
+                code = null,
+                lessons = listOf(
+                    lesson(dow = 1, fromNumber = 1, lastNumber = 2, clock = 8 * 60, week = 1)
+                )
+            )
+        )
+
+        val plan = TimetableRefreshMergePolicy.plan(local, incoming, emptyMap(), NOW)
+
+        val adjusted = plan.updated.single().slotChanges.single { it.kind == SlotChangeKind.ADJUSTED }
+        assertEquals("", adjusted.placeBefore)
+        assertEquals("正心楼 101", adjusted.place)
+        assertTrue(plan.updated.single().placeAdjusted)
+    }
+
+    @Test
+    fun plan_reportsLessonCountChangeWhenWeeksUnknown() {
+        // 无开学日期（weekOfTerm=0）时，同槽位加周无法表达为周次变化，用课次数兜底
+        val local = listOf(
+            MergeCourse(
+                subjectId = "s1",
+                name = "高等数学（A）",
+                code = null,
+                lessons = listOf(
+                    lesson(dow = 1, fromNumber = 1, lastNumber = 2, clock = 8 * 60, week = 1)
+                        .copy(weekOfTerm = 0)
+                )
+            )
+        )
+        val incoming = listOf(
+            MergeCourse(
+                subjectId = "s1",
+                name = "高等数学（A）",
+                code = null,
+                lessons = listOf(
+                    lesson(dow = 1, fromNumber = 1, lastNumber = 2, clock = 8 * 60, week = 1)
+                        .copy(weekOfTerm = 0),
+                    lesson(dow = 1, fromNumber = 1, lastNumber = 2, clock = 8 * 60, week = 2)
+                        .copy(weekOfTerm = 0)
+                )
+            )
+        )
+
+        val plan = TimetableRefreshMergePolicy.plan(local, incoming, emptyMap(), NOW)
+
+        val adjusted = plan.updated.single().slotChanges.single { it.kind == SlotChangeKind.ADJUSTED }
+        assertEquals(1, adjusted.lessonCountBefore)
+        assertEquals(2, adjusted.lessonCount)
+        assertNull(adjusted.weeksBefore)
+        assertTrue(plan.updated.single().timeAdjusted)
     }
 
     @Test
@@ -281,7 +404,10 @@ class TimetableRefreshMergePolicyTest {
 
         assertTrue(plan.vetoes.isEmpty())
         assertTrue(plan.kept.isEmpty())
-        assertEquals(2, plan.adopt.size)
+        // 回归的课程与本地一致：无需重写即恢复（veto 清除即可）
+        assertTrue(plan.adopt.isEmpty())
+        // 回归课程的 key 进入匹配集合，供仓库层清理过期待确认项
+        assertEquals(2, plan.matchedCourseKeys.size)
     }
 
     @Test

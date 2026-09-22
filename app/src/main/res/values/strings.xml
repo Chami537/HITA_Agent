@@ -521,6 +521,10 @@
     <string name="timetable_label_mode_period">左侧显示节次</string>
     <string name="timetable_auto_reimport">打开应用时自动刷新课表和考试</string>
     <string name="timetable_evening_hint_title">显示“还有更多课程”提示</string>
+    <string name="timetable_zoom_expanded">放大</string>
+    <string name="timetable_zoom_expanded_desc">按小时滚动</string>
+    <string name="timetable_zoom_compressed">缩小</string>
+    <string name="timetable_zoom_compressed_desc">全天一屏</string>
     <string name="exam_location">地点</string>
     <string name="exam_term">学期</string>
     <string name="exam_campus">学校</string>
@@ -1221,6 +1225,17 @@
     <string name="timetable_change_batch_keep">保留当前课表</string>
     <string name="timetable_change_empty">暂无变更记录</string>
     <string name="timetable_change_close">关闭</string>
+    <string name="timetable_change_period_single">第%1$d节</string>
+    <string name="timetable_change_period_range">第%1$d-%2$d节</string>
+    <string name="timetable_change_weeks_bracket">（第%1$s周）</string>
+    <string name="timetable_change_weeks_plain">第%1$s周</string>
+    <string name="timetable_change_value_none">（无）</string>
+    <string name="timetable_change_field_lessons">课次</string>
+    <!-- 公告中心 -->
+    <string name="notice_local_group_title">用户群</string>
+    <string name="notice_local_group_body">用户群号：1093659013\n\n新版本与测试版会首先在用户群发布，欢迎加入，反馈问题与建议。</string>
+    <string name="notices_title">公告</string>
+    <string name="notices_empty">暂无公告</string>
     <string name="timetable_import_force_replace_title">全量导入课表？</string>
     <string name="timetable_import_force_replace_message">将按课表源全量替换当前课表，打开应用时自动刷新保留的课程也会被覆盖（之后可在“课表版本记录”中恢复）。</string>
     <string name="event_duration_text">%1$s-%2$s</string>

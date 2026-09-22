@@ -365,6 +365,7 @@ private fun TimetableScreen(
     val periodLabel by viewModel.periodLabelLiveData.observeAsState(false)
     val wallpaperPath by viewModel.wallpaperPathLiveData.observeAsState("")
     val eveningHintEnabled by viewModel.eveningHintLiveData.observeAsState(true)
+    val zoomCompressed by viewModel.zoomCompressedLiveData.observeAsState(false)
     val dateColorInt by viewModel.wallpaperDateColorLiveData.observeAsState(AndroidColor.WHITE)
     val labelColorInt by viewModel.wallpaperLabelColorLiveData.observeAsState(AndroidColor.WHITE)
     val windowEvents by viewModel.windowEventsData[viewModel.startIndex].observeAsState()
@@ -423,6 +424,7 @@ private fun TimetableScreen(
             onEventLongClick = onEventLongClick,
             onAddClick = onAddClick,
             eveningHintEnabled = eveningHintEnabled,
+            compressed = zoomCompressed,
         )
 
         if (showTodayFab) {
@@ -451,7 +453,8 @@ private fun TimetableScreen(
         val changeInfo = changeState?.info
         val changePendingCount = changeState?.pendingCount ?: 0
         val changeAdjustCount =
-            (changeInfo?.updated?.size ?: 0) + (changeInfo?.added?.size ?: 0)
+            (changeInfo?.updated?.size ?: 0) + (changeInfo?.added?.size ?: 0) +
+                (changeInfo?.keptCourses?.size ?: 0)
         if (showChangeDialog) {
             changeState?.let { state ->
                 TimetableChangeDialog(
@@ -529,15 +532,38 @@ private fun TimetableWeekContent(
     onEventLongClick: (EventItem, IntOffset) -> Unit,
     onAddClick: (Int, TimePeriodInDay) -> Unit,
     eveningHintEnabled: Boolean = true,
+    compressed: Boolean = false,
 ) {
     val density = LocalDensity.current
     val scrollState = rememberScrollState()
     val startHour = style.startHour
     val endHour = style.endHour
     val cardHeightDp = with(density) { style.cardHeight.toDp() }
-    val dpPerMinute = cardHeightDp / 60f
+    val expandedDpPerMinute = cardHeightDp / 60f
     val totalMinutes = (endHour - startHour) * 60
+    // 缩小模式：把 startHour..endHour 的全部分钟压缩进一屏，纵向不滚动；
+    // 可用高度 = 根容器高度 - 星期表头 - 顶部留白 - 底部导航栏（悬浮于内容之上）高度
+    val bottomInset = dimensionResource(R.dimen.bottom_navigation_height) + HitaTheme.tokens.spacing.lg
+    val topInset = 24.dp
+    var availableHeightPx by remember { mutableStateOf(0) }
+    var headerHeightPx by remember { mutableStateOf(0) }
+    val compressedDpPerMinute = if (compressed && availableHeightPx > 0 && totalMinutes > 0) {
+        with(density) {
+            val usable = availableHeightPx.toDp() - headerHeightPx.toDp() - bottomInset - topInset
+            (usable.value / totalMinutes.toFloat()).coerceAtLeast(0.12f).dp
+        }
+    } else {
+        null
+    }
+    val dpPerMinute = compressedDpPerMinute ?: expandedDpPerMinute
     val tableHeight = totalMinutes.toFloat() * dpPerMinute
+    // 时间标签抽稀：压缩模式下相邻标签至少间隔 40dp，太密就隔小时显示
+    val labelStepHours = if (compressed) {
+        val perHour = 60f * dpPerMinute.value
+        (40f / perHour).toInt().coerceAtLeast(1)
+    } else {
+        1
+    }
     var tableWidthPx by remember { mutableStateOf(0) }
     var contentWidthPx by remember { mutableStateOf(0f) }
     val coroutineScope = rememberCoroutineScope()
@@ -563,7 +589,11 @@ private fun TimetableWeekContent(
         }
     }
 
-    Box(modifier = Modifier.fillMaxSize()) {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .onSizeChanged { availableHeightPx = it.height }
+    ) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -614,12 +644,29 @@ private fun TimetableWeekContent(
                     )
                 }
         ) {
-            TimetableDowHeader(startDate = startDate, monthColor = dateColor)
+            Box(
+                modifier = Modifier.onSizeChanged { headerHeightPx = it.height }
+            ) {
+                TimetableDowHeader(startDate = startDate, monthColor = dateColor)
+            }
+            // 压缩模式等根容器测得高度后再渲染表格：否则首帧会按放大尺度闪一下再压缩
+            val tableReady = !compressed || availableHeightPx > 0
+            if (tableReady) {
             Row(
                 modifier = Modifier
                     .fillMaxSize()
-                    .verticalScroll(scrollState)
-                    .padding(top = 24.dp, bottom = 120.dp)
+                    .then(
+                        if (compressed) {
+                            // 缩小模式：整天一屏，纵向禁滚；横向滑周保留
+                            Modifier
+                        } else {
+                            Modifier.verticalScroll(scrollState)
+                        }
+                    )
+                    .padding(
+                        top = topInset,
+                        bottom = if (compressed) bottomInset else 120.dp
+                    )
             ) {
                 TimetableLeftLabels(
                     startHour = startHour,
@@ -628,6 +675,8 @@ private fun TimetableWeekContent(
                     labelColor = labelColor,
                     style = style,
                     dpPerMinute = dpPerMinute,
+                    compressed = compressed,
+                    labelStepHours = labelStepHours,
                     modifier = Modifier
                         .width(48.dp)
                         .height(tableHeight)
@@ -637,7 +686,7 @@ private fun TimetableWeekContent(
                         .weight(1f)
                         .height(tableHeight)
                         .onSizeChanged { tableWidthPx = it.width }
-                        .pointerInput(startDate, style, tableWidthPx, startHour, endHour, scheduleStructure) {
+                        .pointerInput(startDate, style, tableWidthPx, startHour, endHour, scheduleStructure, dpPerMinute) {
                             detectTapGestures(
                                 onTap = { offset ->
                                     val width = tableWidthPx.takeIf { it > 0 } ?: return@detectTapGestures
@@ -676,8 +725,10 @@ private fun TimetableWeekContent(
                         dpPerMinute = dpPerMinute,
                         onEventClick = onEventClick,
                         onEventLongClick = onEventLongClick,
+                        compressed = compressed,
                     )
                 }
+            }
             }
         }
 
@@ -709,14 +760,10 @@ private fun TimetableEveningHintPill(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val surface = MaterialTheme.colorScheme.surface
-    // AppleGlass 等半透明 surface 主题下给一个透明度下限，保证压得住底层课程卡
-    val pillBackground = if (surface.alpha < 0.85f) surface.copy(alpha = 0.85f) else surface
-    // 玻璃风格的 surface 是白色半透明：透明度下限把背景提到近白，
-    // 暗色下的浅色文本会糊在背景里，统一改用黑色保证可读。
-    val contentColor =
-        if (hitaIsAppleGlassSurface() && HitaTheme.isDark) Color.Black
-        else MaterialTheme.colorScheme.onSurfaceVariant
+    // 与 TimetableChangePill 共用配色（含 AppleGlass 暗色黑字修正）
+    val pillColors = resolveTimetablePillColors(alert = false)
+    val pillBackground = pillColors.background
+    val contentColor = pillColors.content
     Row(
         modifier = modifier
             .clip(CircleShape)
@@ -917,9 +964,12 @@ private fun TimetableLeftLabels(
     style: TimetableStyleSheet,
     dpPerMinute: Dp,
     modifier: Modifier = Modifier,
+    compressed: Boolean = false,
+    labelStepHours: Int = 1,
 ) {
     val textColor = labelColor.copy(alpha = 0.91f)
     val baseMinutes = startHour * 60
+    val labelFontSize = if (compressed) 9.sp else 10.sp
 
     Box(modifier = modifier) {
         if (style.usePeriodLabel) {
@@ -939,8 +989,8 @@ private fun TimetableLeftLabels(
                     Text(
                         text = "第${index + 1}节",
                         color = textColor,
-                        fontSize = 12.sp,
-                        lineHeight = 12.sp,
+                        fontSize = if (compressed) 8.sp else 12.sp,
+                        lineHeight = if (compressed) 9.sp else 12.sp,
                         textAlign = TextAlign.Center,
                         maxLines = 1,
                         softWrap = false,
@@ -948,18 +998,18 @@ private fun TimetableLeftLabels(
                 }
             }
         } else {
-            val labelTimes = uniformLabelTimes(startHour, endHour)
+            val labelTimes = uniformLabelTimes(startHour, endHour, labelStepHours)
             labelTimes.forEach { labelTime ->
                 val labelMinutesFromBase = (labelTime.hour * 60 + labelTime.minute) - baseMinutes
                 Text(
                     text = labelTime.toString(),
                     color = textColor,
-                    fontSize = 10.sp,
+                    fontSize = labelFontSize,
                     maxLines = 1,
                     softWrap = false,
                     textAlign = TextAlign.Center,
                     modifier = Modifier
-                        .offset(y = labelMinutesFromBase.toFloat() * dpPerMinute - 10.dp)
+                        .offset(y = labelMinutesFromBase.toFloat() * dpPerMinute - (labelFontSize.value / 2).dp)
                         .fillMaxWidth()
                 )
             }
@@ -1042,6 +1092,7 @@ private fun TimetableEventLayer(
     dpPerMinute: Dp,
     onEventClick: (EventItem) -> Unit,
     onEventLongClick: (EventItem, IntOffset) -> Unit,
+    compressed: Boolean = false,
 ) {
     val distinctEvents = remember(events) { events.distinctBy { it.id } }
     val arranged = remember(distinctEvents) { TimetableOverlapLayout.arrange(distinctEvents) }
@@ -1123,6 +1174,7 @@ private fun TimetableEventLayer(
                             .height(placement.height),
                         cardHeight = placement.height,
                         onShowConflicts = { conflictCluster = clusterEvents },
+                        compressed = compressed,
                     )
                 }
             } else {
@@ -1136,7 +1188,9 @@ private fun TimetableEventLayer(
                             .height(placement.height),
                         cardHeight = placement.height,
                         onClick = { onEventClick(event) },
-                        onLongClick = { position -> onEventLongClick(event, position) }
+                        onLongClick = { position -> onEventLongClick(event, position) },
+                        compressed = compressed,
+                        cardWidth = placement.width,
                     )
                 }
             }
@@ -1242,6 +1296,7 @@ private fun TimetableConflictCard(
     modifier: Modifier = Modifier,
     cardHeight: Dp,
     onShowConflicts: () -> Unit,
+    compressed: Boolean = false,
 ) {
     val view = LocalView.current
     val isAppleGlass = hitaIsAppleGlassSurface()
@@ -1384,20 +1439,20 @@ private fun TimetableConflictCard(
             Text(
                 text = stringResource(R.string.timetable_conflict_card_title),
                 color = titleColor,
-                fontSize = 12.sp,
-                lineHeight = 15.sp,
+                fontSize = if (compressed) 8.sp else 12.sp,
+                lineHeight = if (compressed) 10.sp else 15.sp,
                 fontWeight = if (style.isBoldText) FontWeight.Bold else FontWeight.Normal,
                 fontFamily = HitaTheme.fonts.display,
                 textAlign = TextAlign.Center,
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
             )
-            if (cardHeight >= 36.dp) {
+            if (if (compressed) cardHeight >= 22.dp else cardHeight >= 36.dp) {
                 Text(
                     text = stringResource(R.string.timetable_conflict_card_subtitle, count),
                     color = subtitleColor,
-                    fontSize = 9.sp,
-                    lineHeight = 12.sp,
+                    fontSize = if (compressed) 6.5.sp else 9.sp,
+                    lineHeight = if (compressed) 8.sp else 12.sp,
                     fontWeight = if (style.isBoldText) FontWeight.Bold else FontWeight.Normal,
                     textAlign = TextAlign.Center,
                     maxLines = 1,
@@ -1432,6 +1487,8 @@ private fun TimetableEventCard(
     cardHeight: Dp,
     onClick: () -> Unit,
     onLongClick: (IntOffset) -> Unit,
+    compressed: Boolean = false,
+    cardWidth: Dp = 0.dp,
 ) {
     val view = LocalView.current
     var cardPositionInWindow by remember { mutableStateOf(IntOffset.Zero) }
@@ -1519,27 +1576,52 @@ private fun TimetableEventCard(
     }
     val textScale = TimetableCardTextScale.forColumnCount(1)
     val marginScale = TimetableCardTextScale.marginScaleForColumnCount(1)
-    val horizontalPadding = (5 * marginScale).dp
-    val verticalPadding = (3 * marginScale).dp
-    val minTitleSize = 6f
+    // 压缩模式收紧内边距与字号：卡片更小，留白必须让位给文字
+    val horizontalPadding = ((if (compressed) 3f else 5f) * marginScale).dp
+    val verticalPadding = ((if (compressed) 1f else 3f) * marginScale).dp
+    val minTitleSize = if (compressed) 4.5f else 6f
     val hasPlace = !event.place.isNullOrBlank()
+    // 压缩模式下过矮的卡片（<20dp）不渲染地点行，避免文字被裁切
+    val showPlace = hasPlace && (!compressed || cardHeight >= 20.dp)
     val nameLength = event.name.length
+    val placeLength = event.place?.length ?: 0
     val lengthScale = when {
         nameLength <= 4 -> 1.15f
         nameLength <= 6 -> 0.92f
         nameLength <= 8 -> 0.75f
         else -> 0.62f
     }
+    // 压缩模式按列宽反推字号（中文约 1em/字）：先保不省略号，再保层级
+    val titleWidthCap = if (compressed && cardWidth.value > 0f) {
+        (cardWidth.value / nameLength.coerceAtLeast(3)).coerceIn(minTitleSize, 10f)
+    } else {
+        null
+    }
+    val titleTarget = if (titleWidthCap != null) {
+        minOf(13f * textScale * lengthScale, titleWidthCap)
+    } else {
+        13f * textScale * lengthScale
+    }
+    val placeReserveDp = if (showPlace) {
+        if (compressed) 6.5f else 14f * textScale
+    } else {
+        0f
+    }
     val titleAvailableDp = cardHeight.value
         .minus(verticalPadding.value * 2f)
-        .minus(if (hasPlace) 14f * textScale else 0f)
+        .minus(placeReserveDp)
         .minus(if (style.cardIconEnabled) 10f * textScale else 0f)
     val maxTitleFromSpace = (titleAvailableDp / 1.2f).coerceAtMost(16f)
-    val titleFontSize = (13f * textScale * lengthScale)
+    val titleFontSize = titleTarget
         .coerceIn(minTitleSize, maxTitleFromSpace.coerceAtLeast(minTitleSize))
         .sp
-    val subtitleFontSize = (10f * textScale).sp
+    val subtitleFontSize = if (compressed && cardWidth.value > 0f && placeLength > 0) {
+        minOf(10f * textScale, (cardWidth.value / placeLength.coerceAtLeast(4)).coerceIn(4.5f, 8f)).sp
+    } else {
+        (10f * textScale).sp
+    }
     val maxTitleLines = when {
+        compressed -> if (cardHeight < 26.dp) 1 else 2
         cardHeight < 40.dp -> 1
         cardHeight < 60.dp -> 2
         else -> 3
@@ -1620,7 +1702,7 @@ private fun TimetableEventCard(
                 .zIndex(1f)
                 .padding(horizontal = horizontalPadding, vertical = verticalPadding)
         ) {
-            if (hasPlace) {
+            if (showPlace) {
                 Text(
                     text = event.place ?: "",
                     color = subtitleColor,
@@ -1647,7 +1729,11 @@ private fun TimetableEventCard(
                         .background(titleColor)
                 )
             }
-            val titleBottomPad = if (hasPlace) (14f * textScale).dp else 0.dp
+            val titleBottomPad = if (showPlace) {
+                (subtitleFontSize.value * 1.2f).dp
+            } else {
+                0.dp
+            }
             val titleTopPad = if (style.cardIconEnabled) (10f * textScale).dp else 0.dp
             Column(
                 modifier = Modifier
@@ -1700,10 +1786,15 @@ private fun textAlignFromGravity(gravity: Int): TextAlign {
     }
 }
 
-/** 均匀每小时时间标签（仅整点） */
-private fun uniformLabelTimes(startHour: Int, endHour: Int): List<TimeInDay> {
+/** 均匀每小时时间标签（仅整点）；[stepHours] > 1 时隔小时显示（压缩模式抽稀）。 */
+private fun uniformLabelTimes(startHour: Int, endHour: Int, stepHours: Int = 1): List<TimeInDay> {
     val times = mutableListOf<TimeInDay>()
-    for (h in startHour..endHour) times.add(TimeInDay(h, 0))
+    val step = stepHours.coerceAtLeast(1)
+    var h = startHour
+    while (h <= endHour) {
+        times.add(TimeInDay(h, 0))
+        h += step
+    }
     return times
 }
 

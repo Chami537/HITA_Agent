@@ -1071,8 +1071,11 @@ class EASRepository @Inject constructor(
 
         // 本次刷新匹配正常：源端已恢复，丢弃此前挂起的过期异常批
         timetableChangeStore.clearHeldBatch()
+        // 课重新在源端出现后，清理它的过期待确认项（否则"采用课表源"会误删已回归的课）
+        timetableChangeStore.pruneResolvedDecisions(term.id, plan.matchedCourseKeys)
 
-        if (plan.hasChanges) {
+        // 只有真实落库（有采纳的课）才捕获刷新前快照；纯保留/无变化不改数据，不打快照
+        if (plan.adopt.isNotEmpty()) {
             timetableSnapshotStore.capture(
                 snapshotOwnerKey,
                 term,
@@ -1088,7 +1091,18 @@ class EASRepository @Inject constructor(
         if (plan.adopt.isNotEmpty()) {
             val adoptSubjectIds = plan.adopt.mapTo(HashSet()) { it.subjectId }
             subjectDao.saveSubjectsSync(plan.adopt.mapNotNull { pendingSubjects[it.subjectId] })
-            eventItemDao.saveEvents(events.filter { it.subjectId in adoptSubjectIds })
+            val adoptEvents = events.filter { it.subjectId in adoptSubjectIds }
+            // 课次减少的课：源端缩掉的槽位保留本地课次（上面按整门删除后在此挂回，
+            // 课次 id 不变）。考试事件 subjectId 为空，不受整门删除影响。
+            val keptEvents = mutableListOf<EventItem>()
+            plan.partialMerges.forEach { partial ->
+                localEvents
+                    .filter { it.subjectId == partial.subjectId }
+                    .filterTo(keptEvents) {
+                        TimetableRefreshMergePolicy.slotKeyOf(it) !in partial.incomingSlotKeys
+                    }
+            }
+            eventItemDao.saveEvents(adoptEvents + keptEvents)
 
             // 仅在有采纳时更新课表元数据：整批保留时不动开学日期/作息，
             // 避免保留课的旧课次与新元数据错位。
