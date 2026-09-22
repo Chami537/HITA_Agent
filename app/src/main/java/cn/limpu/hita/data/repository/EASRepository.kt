@@ -1434,7 +1434,8 @@ class EASRepository @Inject constructor(
                     service.getScheduleStructure(term, isUndergraduate, token),
                     6
                 )
-                val schedule = scheduleState.data ?: timetablePreferenceSource.getSchedule()
+                val schedule = scheduleState.data
+                    ?: timetablePreferenceSource.getSchedule(isUndergraduate)
                 LogUtils.d("autoImport: schedule state=${scheduleState.state} size=${schedule.size}")
                 if (startDate == null || !isCurrentAuthOperation(expectedEpoch)) return@Thread
 

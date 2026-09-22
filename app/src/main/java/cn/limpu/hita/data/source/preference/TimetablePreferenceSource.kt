@@ -25,6 +25,20 @@ private val undergraduate_default = mutableListOf(
         TimePeriodInDay(TimeInDay(20, 45), TimeInDay(21, 35)),
         TimePeriodInDay(TimeInDay(21, 40), TimeInDay(22, 30)))
 
+private val graduate_default = mutableListOf(
+        TimePeriodInDay(TimeInDay(8, 0), TimeInDay(8, 50)),
+        TimePeriodInDay(TimeInDay(8, 55), TimeInDay(9, 45)),
+        TimePeriodInDay(TimeInDay(10, 0), TimeInDay(10, 50)),
+        TimePeriodInDay(TimeInDay(10, 55), TimeInDay(11, 45)),
+        TimePeriodInDay(TimeInDay(14, 0), TimeInDay(14, 50)),
+        TimePeriodInDay(TimeInDay(14, 55), TimeInDay(15, 45)),
+        TimePeriodInDay(TimeInDay(16, 0), TimeInDay(16, 50)),
+        TimePeriodInDay(TimeInDay(16, 55), TimeInDay(17, 45)),
+        TimePeriodInDay(TimeInDay(18, 45), TimeInDay(19, 35)),
+        TimePeriodInDay(TimeInDay(19, 40), TimeInDay(20, 30)),
+        TimePeriodInDay(TimeInDay(20, 45), TimeInDay(21, 35)),
+        TimePeriodInDay(TimeInDay(21, 40), TimeInDay(22, 30)))
+
 private fun isLegacyUndergraduateSchedule(schedule: List<TimePeriodInDay>): Boolean {
     if (schedule.size < 12) return false
     val first = schedule[0]
@@ -47,7 +61,8 @@ class TimetablePreferenceSource(private val context: Context) {
             return sharedPreferences!!
         }
 
-    fun getSchedule(): MutableList<TimePeriodInDay> {
+    fun getSchedule(isUndergraduate: Boolean? = null): MutableList<TimePeriodInDay> {
+        if (isUndergraduate == false) return graduate_default.toMutableList()
         var result: MutableList<TimePeriodInDay> = mutableListOf()
         val total = preference.getInt("class_num", -1)
         if (total < 0) {

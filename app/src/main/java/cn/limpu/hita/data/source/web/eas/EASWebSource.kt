@@ -3544,7 +3544,9 @@ class EASWebSource internal constructor(
                             if (jsjc > maxPeriod) maxPeriod = jsjc
                         }
                         if (maxPeriod <= 0) continue
-                        val defaults = defaultScheduleStructure()
+                        val defaults = defaultScheduleStructure(
+                            isUndergraduate ?: (token.stutype == EASToken.TYPE.UNDERGRAD)
+                        )
                         if (maxPeriod <= defaults.size) {
                             res.postValue(DataState(defaults.take(maxPeriod).toMutableList()))
                             return@Thread
@@ -3587,7 +3589,9 @@ class EASWebSource internal constructor(
                 val result = if (slots.isNotEmpty() && slots.all { it != null }) {
                     slots.map { it!! }.toMutableList()
                 } else {
-                    val defaults = defaultScheduleStructure()
+                    val defaults = defaultScheduleStructure(
+                        isUndergraduate ?: (token.stutype == EASToken.TYPE.UNDERGRAD)
+                    )
                     val size = maxOf(slots.size, defaults.size)
                     val filled = MutableList(size) { idx ->
                         slots.getOrNull(idx) ?: defaults.getOrNull(idx) ?: defaults.last()
@@ -3597,7 +3601,9 @@ class EASWebSource internal constructor(
                 res.postValue(DataState(result))
             } catch (e: Exception) {
                 LogUtils.e("getScheduleStructure: failed, error=${e.message}", e)
-                res.postValue(DataState(defaultScheduleStructure()))
+                res.postValue(DataState(defaultScheduleStructure(
+                    isUndergraduate ?: (token.stutype == EASToken.TYPE.UNDERGRAD)
+                )))
             }
         }.start()
         return res
@@ -3637,10 +3643,17 @@ class EASWebSource internal constructor(
     }
 
     @SuppressLint("SimpleDateFormat")
-    private fun defaultScheduleStructure(): MutableList<TimePeriodInDay> {
-        val slots = listOf(
+    private fun defaultScheduleStructure(isUndergraduate: Boolean): MutableList<TimePeriodInDay> {
+        val slots = if (isUndergraduate) listOf(
             "08:30" to "09:20", "09:25" to "10:15",
             "10:30" to "11:20", "11:25" to "12:15",
+            "14:00" to "14:50", "14:55" to "15:45",
+            "16:00" to "16:50", "16:55" to "17:45",
+            "18:45" to "19:35", "19:40" to "20:30",
+            "20:45" to "21:35", "21:40" to "22:30"
+        ) else listOf(
+            "08:00" to "08:50", "08:55" to "09:45",
+            "10:00" to "10:50", "10:55" to "11:45",
             "14:00" to "14:50", "14:55" to "15:45",
             "16:00" to "16:50", "16:55" to "17:45",
             "18:45" to "19:35", "19:40" to "20:30",
