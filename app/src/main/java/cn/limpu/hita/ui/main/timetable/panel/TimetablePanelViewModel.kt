@@ -82,6 +82,9 @@ class TimetablePanelViewModel @Inject constructor(
         easSettingsRepository.setAutoReimport(enabled)
     }
 
+    /** 同步读取当前值，供 observeAsState 首帧使用，避免开关在 LiveData 发射前闪成「关」。 */
+    fun isAutoReimportEnabled(): Boolean = easSettingsRepository.isAutoReimportEnabled()
+
     fun setScrimOpacity(opacity: Int) {
         timetableStyleRepository.putData(KEY_WALLPAPER_SCRIM, opacity)
     }

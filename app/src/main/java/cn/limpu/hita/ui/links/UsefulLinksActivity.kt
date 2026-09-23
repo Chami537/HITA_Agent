@@ -3,6 +3,8 @@ package cn.limpu.hita.ui.links
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
+import android.content.Intent
+import android.net.Uri
 import android.os.Bundle
 import android.widget.Toast
 import androidx.annotation.DrawableRes
@@ -35,6 +37,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.rotate
@@ -49,6 +52,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.sp
 import cn.limpu.hita.R
+import cn.limpu.hita.data.model.eas.EASToken
+import cn.limpu.hita.data.source.preference.EasPreferenceSource
 import cn.limpu.hita.ui.design.HitaComposeTheme
 import cn.limpu.hita.ui.design.HitaTheme
 import cn.limpu.hita.ui.design.HitaThemeStyle
@@ -58,7 +63,7 @@ import cn.limpu.hita.ui.design.hitaGlassCardModifier
 import cn.limpu.hita.ui.design.hitaStyleCardShape
 import cn.limpu.hita.ui.design.hitaSumiBrushUnderline
 
-/** 实用网址页：常用校内网站列表，点按或长按复制链接。 */
+/** 实用网址页：常用校内网站列表，点按打开链接、长按复制。按校区展示（深圳/本部），威海校区暂无链接。 */
 class UsefulLinksActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -124,6 +129,44 @@ private val usefulLinkGroups = listOf(
     ),
 )
 
+/** 本部校区链接（来源：本科生院信息获取途径说明）。 */
+private val benbuLinkGroups = listOf(
+    UsefulLinkGroup(
+        titleRes = R.string.useful_links_group_study,
+        links = listOf(
+            UsefulLink(R.string.useful_link_benbu_jwts, "http://jwts.hit.edu.cn", R.drawable.ic_home),
+            UsefulLink(R.string.useful_link_benbu_jwes, "http://jwes.hit.edu.cn", R.drawable.ic_baseline_format_list_bulleted_24),
+            UsefulLink(R.string.useful_link_benbu_hituc, "https://hituc.hit.edu.cn", R.drawable.ic_baseline_location_city_24),
+            UsefulLink(R.string.useful_link_benbu_lib, "http://www.lib.hit.edu.cn", R.drawable.ic_baseline_search_24),
+        )
+    ),
+    UsefulLinkGroup(
+        titleRes = R.string.useful_links_group_affairs,
+        links = listOf(
+            UsefulLink(R.string.useful_link_benbu_official, "https://www.hit.edu.cn", R.drawable.ic_menu_discover),
+            UsefulLink(R.string.useful_link_benbu_today, "http://today.hit.edu.cn", R.drawable.ic_bc_news),
+            UsefulLink(R.string.useful_link_benbu_news, "http://news.hit.edu.cn", R.drawable.ic_bc_news),
+            UsefulLink(R.string.useful_link_benbu_future, "https://future.hit.edu.cn", R.drawable.ic_baseline_location_city_24),
+            UsefulLink(R.string.useful_link_benbu_xg, "https://xg.hit.edu.cn", R.drawable.ic_bc_organization),
+            UsefulLink(R.string.useful_link_benbu_hqfw, "http://hqfw.hit.edu.cn", R.drawable.ic_baseline_widgets_24),
+            UsefulLink(R.string.useful_link_benbu_map, "http://map.hit.edu.cn", R.drawable.ic_baseline_location_city_24),
+        )
+    ),
+    UsefulLinkGroup(
+        titleRes = R.string.useful_links_group_network,
+        links = listOf(
+            UsefulLink(R.string.useful_link_benbu_portal, "http://i.hit.edu.cn", R.drawable.ic_home),
+            UsefulLink(R.string.useful_link_benbu_ivpn, "https://ivpn.hit.edu.cn", R.drawable.ic_baseline_link_24),
+        )
+    ),
+    UsefulLinkGroup(
+        titleRes = R.string.useful_links_group_resources,
+        links = listOf(
+            UsefulLink(R.string.useful_link_benbu_homepage, "https://homepage.hit.edu.cn", R.drawable.ic_baseline_email_24),
+        )
+    ),
+)
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun UsefulLinksScreen(onBack: () -> Unit) {
@@ -148,13 +191,38 @@ private fun UsefulLinksScreen(onBack: () -> Unit) {
         }
     ) { padding ->
         val tokens = HitaTheme.tokens
+        val context = LocalContext.current
+        // 按校区选择链接组：深圳/本部已有链接；威海与未登录用户显示占位说明
+        val linkGroups = remember {
+            val token = EasPreferenceSource(context).getEasToken()
+            if (!token.isLogin()) {
+                null
+            } else when (token.campus) {
+                EASToken.Campus.SHENZHEN -> usefulLinkGroups
+                EASToken.Campus.BENBU -> benbuLinkGroups
+                EASToken.Campus.WEIHAI -> null
+            }
+        }
         LazyColumn(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding),
             contentPadding = PaddingValues(bottom = tokens.spacing.xl),
         ) {
-            usefulLinkGroups.forEach { group ->
+            if (linkGroups == null) {
+                item(key = "empty_campus") {
+                    Text(
+                        text = stringResource(R.string.useful_links_empty_campus),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        fontSize = 14.sp,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = tokens.spacing.xl),
+                        textAlign = TextAlign.Center
+                    )
+                }
+            } else {
+            linkGroups.forEach { group ->
                 item(key = "header_${group.titleRes}") {
                     Text(
                         text = stringResource(group.titleRes),
@@ -185,6 +253,7 @@ private fun UsefulLinksScreen(onBack: () -> Unit) {
                         .padding(top = tokens.spacing.lg),
                     textAlign = TextAlign.Center
                 )
+            }
             }
         }
     }
@@ -226,7 +295,7 @@ private fun UsefulLinkRow(link: UsefulLink) {
             .fillMaxWidth()
             .height(56.dp)
             .combinedClickable(
-                onClick = { copyLinkToClipboard(context, name, link.url) },
+                onClick = { openLink(context, name, link.url) },
                 onLongClick = { copyLinkToClipboard(context, name, link.url) }
             )
             .padding(horizontal = tokens.spacing.lg),
@@ -284,4 +353,13 @@ private fun copyLinkToClipboard(context: Context, label: String, url: String) {
     val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
     clipboard.setPrimaryClip(ClipData.newPlainText(label, url))
     Toast.makeText(context, R.string.useful_links_copied, Toast.LENGTH_SHORT).show()
+}
+
+private fun openLink(context: Context, label: String, url: String) {
+    runCatching {
+        context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
+    }.onFailure {
+        // 无可用浏览器时退化为复制链接
+        copyLinkToClipboard(context, label, url)
+    }
 }

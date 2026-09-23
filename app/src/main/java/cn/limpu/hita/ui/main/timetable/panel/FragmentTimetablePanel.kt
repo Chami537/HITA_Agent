@@ -130,7 +130,7 @@ private fun TimetablePanelScreen(
     val periodLabel by viewModel.periodLabelLiveData.observeAsState(false)
     val eveningHint by viewModel.eveningHintLiveData.observeAsState(true)
     val zoomCompressed by viewModel.zoomCompressedLiveData.observeAsState(false)
-    val autoReimport by viewModel.autoReimportLiveData.observeAsState(false)
+    val autoReimport by viewModel.autoReimportLiveData.observeAsState(viewModel.isAutoReimportEnabled())
     val scrimOpacity by viewModel.scrimOpacityLiveData.observeAsState(30)
     val cardOpacity by viewModel.cardOpacityLiveData.observeAsState(85)
     val bubbleStyleValue by viewModel.courseBubbleStyleLiveData.observeAsState(
