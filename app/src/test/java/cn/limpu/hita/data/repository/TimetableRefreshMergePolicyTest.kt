@@ -441,6 +441,132 @@ class TimetableRefreshMergePolicyTest {
         assertEquals(listOf("全新课程"), plan.added.map { it.name })
     }
 
+    @Test
+    fun inheritBlankLocalFields_teacherAndPlaceFlapProducesNoChange() {
+        // 实验课字段抖动：本地有教师/地点，源端某周返回空 → 沿用本地 → 无变化、不采纳、不提示
+        val local = listOf(
+            MergeCourse(
+                subjectId = "s1",
+                name = "物理实验",
+                code = null,
+                lessons = listOf(
+                    lesson(dow = 3, fromNumber = 7, lastNumber = 8, clock = 16 * 60, week = 1, place = "格物楼 201", teacher = "张三"),
+                    lesson(dow = 3, fromNumber = 7, lastNumber = 8, clock = 16 * 60, week = 2, place = "格物楼 201", teacher = "张三")
+                )
+            )
+        )
+        val incoming = listOf(
+            MergeCourse(
+                subjectId = "s1",
+                name = "物理实验",
+                code = null,
+                lessons = listOf(
+                    lesson(dow = 3, fromNumber = 7, lastNumber = 8, clock = 16 * 60, week = 1, place = "", teacher = ""),
+                    lesson(dow = 3, fromNumber = 7, lastNumber = 8, clock = 16 * 60, week = 2, place = "格物楼 201", teacher = "张三")
+                )
+            )
+        )
+
+        val protectedIncoming = incoming.map { course ->
+            course.copy(
+                lessons = TimetableRefreshMergePolicy.inheritBlankLocalFields(
+                    local = local.single().lessons,
+                    incoming = course.lessons
+                )
+            )
+        }
+
+        assertEquals("张三", protectedIncoming.single().lessons[0].teacher)
+        assertEquals("格物楼 201", protectedIncoming.single().lessons[0].place)
+        val plan = TimetableRefreshMergePolicy.plan(local, protectedIncoming, emptyMap(), NOW)
+        assertFalse(plan.hasChanges)
+        assertTrue(plan.adopt.isEmpty())
+        assertTrue(plan.updated.isEmpty())
+    }
+
+    @Test
+    fun inheritBlankLocalFields_preservesFieldsWhenCourseAdoptedForRealChange() {
+        // 同一刷新里时间真变 + 教师/地点抖动：课程被采纳，但教师/地点保留本地值、不作为变更上报
+        val local = listOf(
+            MergeCourse(
+                subjectId = "s1",
+                name = "物理实验",
+                code = null,
+                lessons = listOf(
+                    lesson(dow = 3, fromNumber = 7, lastNumber = 8, clock = 16 * 60, week = 1, place = "格物楼 201", teacher = "张三"),
+                    lesson(dow = 3, fromNumber = 7, lastNumber = 8, clock = 16 * 60, week = 2, place = "格物楼 201", teacher = "张三")
+                )
+            )
+        )
+        val incoming = listOf(
+            MergeCourse(
+                subjectId = "s1",
+                name = "物理实验",
+                code = null,
+                lessons = listOf(
+                    lesson(dow = 3, fromNumber = 7, lastNumber = 8, clock = 18 * 60 + 30, week = 1, place = "", teacher = ""),
+                    lesson(dow = 3, fromNumber = 7, lastNumber = 8, clock = 18 * 60 + 30, week = 2, place = "", teacher = "")
+                )
+            )
+        )
+
+        val protectedIncoming = incoming.map { course ->
+            course.copy(
+                lessons = TimetableRefreshMergePolicy.inheritBlankLocalFields(
+                    local = local.single().lessons,
+                    incoming = course.lessons
+                )
+            )
+        }
+
+        val plan = TimetableRefreshMergePolicy.plan(local, protectedIncoming, emptyMap(), NOW)
+        assertEquals(1, plan.adopt.size)
+        val change = plan.updated.single()
+        assertTrue(change.timeAdjusted)
+        assertFalse(change.placeAdjusted)
+        assertFalse(change.teacherAdjusted)
+        // 采纳落库的源端课次带着本地教师/地点，不被清空
+        assertTrue(plan.adopt.single().lessons.all { it.teacher == "张三" && it.place == "格物楼 201" })
+    }
+
+    @Test
+    fun inheritBlankLocalFields_doesNotFillDifferentSlotOrWeek() {
+        // 不同槽位/不同周次的空字段不沿用，避免误填
+        val local = listOf(
+            MergeCourse(
+                subjectId = "s1",
+                name = "高等数学（A）",
+                code = null,
+                lessons = listOf(
+                    lesson(dow = 1, fromNumber = 1, lastNumber = 2, clock = 8 * 60, week = 1, place = "正心楼 101", teacher = "张三")
+                )
+            )
+        )
+        val incoming = listOf(
+            MergeCourse(
+                subjectId = "s1",
+                name = "高等数学（A）",
+                code = null,
+                lessons = listOf(
+                    // 同槽位不同周：不沿用
+                    lesson(dow = 1, fromNumber = 1, lastNumber = 2, clock = 8 * 60, week = 2, place = "", teacher = ""),
+                    // 同周不同槽位：不沿用
+                    lesson(dow = 3, fromNumber = 6, lastNumber = 7, clock = 14 * 60, week = 1, place = "", teacher = "")
+                )
+            )
+        )
+
+        val protectedIncoming = TimetableRefreshMergePolicy.inheritBlankLocalFields(
+            local = local.single().lessons,
+            incoming = incoming.single().lessons
+        )
+
+        assertEquals("", protectedIncoming[0].teacher)
+        assertEquals("", protectedIncoming[0].place)
+        assertEquals("", protectedIncoming[1].teacher)
+        assertEquals("", protectedIncoming[1].place)
+    }
+
     private fun course(
         name: String,
         code: String? = null,

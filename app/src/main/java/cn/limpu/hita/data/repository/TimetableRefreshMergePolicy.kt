@@ -188,7 +188,9 @@ data class TimetableMergePlan(
  * - 同一门课持续缺失/削减达到 [DECISION_OBSERVATIONS] 次且跨度 ≥ [DECISION_WINDOW_MILLIS]
  *   → 升级为待用户确认，由用户决定采纳源端还是继续保留；
  * - 源端与本地匹配率过低 → 判定源端整批异常，挂起等用户决策；
- *   已被 veto 追踪的持续缺失不算新异常（走上一行的升级路径）。
+ *   已被 veto 追踪的持续缺失不算新异常（走上一行的升级路径）；
+ * - 字段级（教师/地点）「有→无」同样视为信息减少：仓库层在比对前调用
+ *   [inheritBlankLocalFields] 沿用本地同槽位值，避免源端字段抖动清空本地数据并反复提示。
  *
  * 纯函数、无 Android 依赖；仓库层负责把 Room 实体映射为 [MergeCourse] 并落库。
  */
@@ -469,6 +471,37 @@ object TimetableRefreshMergePolicy {
             code = incoming.code ?: local.code,
             lessons = incoming.lessons + keptLessons
         )
+    }
+
+    /**
+     * 字段级信息保护：源端课次的教师/地点为空，而本地「同周次 + 同槽位」课次有值时，
+     * 视为课表源字段抖动（与漏课同理：信息减少不可信），沿用本地值。
+     *
+     * 返回与 [incoming] 索引对齐的课次列表；仅填充空字段，不改动任何非空字段。
+     * 由仓库层在比对与落库前对源端事件应用，使「有→无→有」抖动既不触发变更提示，
+     * 也不会在课程因其他变更被采纳时顺带清空本地字段。
+     */
+    internal fun inheritBlankLocalFields(
+        local: List<MergeLesson>,
+        incoming: List<MergeLesson>
+    ): List<MergeLesson> {
+        if (local.isEmpty() || incoming.isEmpty()) return incoming
+        val localBySlotWeek = local.groupBy { "${slotKey(it)}|${it.weekOfTerm}" }
+        return incoming.map { lesson ->
+            val candidates = localBySlotWeek["${slotKey(lesson)}|${lesson.weekOfTerm}"]
+            if (candidates.isNullOrEmpty()) {
+                lesson
+            } else {
+                lesson.copy(
+                    teacher = lesson.teacher.ifEmpty {
+                        candidates.firstOrNull { it.teacher.isNotEmpty() }?.teacher ?: ""
+                    },
+                    place = lesson.place.ifEmpty {
+                        candidates.firstOrNull { it.place.isNotEmpty() }?.place ?: ""
+                    }
+                )
+            }
+        }
     }
 
     /** 槽位内字段比对；无变化返回 null。 */

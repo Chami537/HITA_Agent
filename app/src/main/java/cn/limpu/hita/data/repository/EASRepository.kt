@@ -1023,6 +1023,27 @@ class EASRepository @Inject constructor(
         val snapshotOwnerKey = FollowedTeachingSectionStore.ownerKey(easToken)
         val localEvents = eventItemDao.getImportedClassEventsOfTimetableSync(timetable.id)
         val localSubjectsById = subjectDao.getSubjectsSync(timetable.id).associateBy { it.id }
+
+        // 字段级信息保护：教师/地点「有→无」视为课表源字段抖动（信息减少不可信），
+        // 沿用本地「同周次+同槽位」课次的值。在比对与落库前就地修正源端事件，
+        // 使纯字段抖动不产生变更提示，课程因其他变更被采纳时也不清空本地字段。
+        val localLessonsBySubject = localEvents.groupBy { it.subjectId }
+            .mapValues { (_, subjectEvents) -> subjectEvents.map { it.toMergeLesson(startMillis) } }
+        events.groupBy { it.subjectId }.forEach { (subjectId, courseEvents) ->
+            val localLessons = localLessonsBySubject[subjectId] ?: return@forEach
+            val protectedLessons = TimetableRefreshMergePolicy.inheritBlankLocalFields(
+                local = localLessons,
+                incoming = courseEvents.map { it.toMergeLesson(startMillis) }
+            )
+            courseEvents.forEachIndexed { index, event ->
+                if (event.teacher.isNullOrBlank()) {
+                    event.teacher = protectedLessons[index].teacher.ifBlank { null }
+                }
+                if (event.place.isNullOrBlank()) {
+                    event.place = protectedLessons[index].place.ifBlank { null }
+                }
+            }
+        }
         val localCourses = localEvents.groupBy { it.subjectId }.mapNotNull { (subjectId, lessons) ->
             val subject = localSubjectsById[subjectId] ?: return@mapNotNull null
             MergeCourse(subjectId, subject.name, subject.code, lessons.map { it.toMergeLesson(startMillis) })
