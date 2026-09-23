@@ -30,6 +30,7 @@ CLAUDE.md
 # Build outputs are distributed by CI/releases, not source control
 /app/debug/
 *.apk
+/app-debug.apk
 *.aab
 **/*-sources.jar
 
