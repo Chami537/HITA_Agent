@@ -1,7 +1,12 @@
 package cn.limpu.hita.ui.notice
 
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
+import android.widget.Toast
 import android.os.Bundle
 import androidx.appcompat.app.AppCompatActivity
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
@@ -19,10 +24,12 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.ComposeView
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.res.stringResource
@@ -136,6 +143,26 @@ private fun NoticeCard(notice: AppNotice) {
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(top = 8.dp),
             )
+            // kind=group 的公告（用户群）：从正文提取群号，点按直接复制（与实用网址的复制交互一致）
+            val groupNumber = remember(notice.id, notice.body, notice.kind) {
+                if (notice.kind == "group") Regex("\\d{5,}").find(notice.body)?.value else null
+            }
+            if (groupNumber != null) {
+                val context = LocalContext.current
+                val copiedText = stringResource(R.string.notice_group_copied)
+                Text(
+                    text = stringResource(R.string.notice_copy_group, groupNumber),
+                    fontSize = 13.sp,
+                    color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier
+                        .padding(top = 8.dp)
+                        .clickable {
+                            val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                            clipboard.setPrimaryClip(ClipData.newPlainText(groupNumber, groupNumber))
+                            Toast.makeText(context, copiedText, Toast.LENGTH_SHORT).show()
+                        },
+                )
+            }
         }
     }
 }
