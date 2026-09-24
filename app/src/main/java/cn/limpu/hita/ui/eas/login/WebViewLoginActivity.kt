@@ -12,7 +12,6 @@ import android.graphics.Color
 import android.view.View
 import android.view.ViewGroup
 import android.webkit.CookieManager
-import android.webkit.JavascriptInterface
 import android.webkit.RenderProcessGoneDetail
 import android.webkit.WebResourceResponse
 import android.webkit.WebChromeClient
@@ -22,10 +21,14 @@ import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import cn.limpu.hita.data.model.eas.EASToken
+import cn.limpu.hita.data.source.preference.EasCredential
+import cn.limpu.hita.data.source.preference.EasCredentialStore
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.compose.setContent
 import androidx.activity.viewModels
 import androidx.appcompat.app.AppCompatActivity
+import androidx.webkit.WebViewCompat
+import androidx.webkit.WebViewFeature
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -95,6 +98,8 @@ internal data class MfaOverlayState(
 
 @AndroidEntryPoint
 class WebViewLoginActivity : AppCompatActivity() {
+
+    @Inject lateinit var easCredentialStore: EasCredentialStore
 
     protected val viewModel: WebViewLoginViewModel by viewModels()
 
@@ -198,6 +203,8 @@ class WebViewLoginActivity : AppCompatActivity() {
     private var shenzhenUnifiedLoginClicked = false
     private var shenzhenRoleSelectionClicked = false
     private var shenzhenReauthenticationStarted = false
+    private val credentialCaptureState = EasWebCredentialCaptureState()
+    private val credentialBridgeName = "hitaCredentialBridge"
 
     override fun onCreate(savedInstanceState: Bundle?) {
         val campus = runCatching {
@@ -260,6 +267,7 @@ class WebViewLoginActivity : AppCompatActivity() {
         CookieManager.getInstance().setAcceptCookie(true)
         CookieManager.getInstance().setAcceptThirdPartyCookies(webView, true)
         setupWebView()
+        installCredentialBridge()
         if (silentMode) {
             webView.postDelayed({
                 if (!finished) {
@@ -439,6 +447,8 @@ class WebViewLoginActivity : AppCompatActivity() {
                     if (finished) {
                         return
                     }
+
+                    prepareLoginPageCredentials(view, url)
 
                     // Handle eelabinfo navigation for JWT token
                     if (navigatingToEelab) {
@@ -1886,6 +1896,64 @@ class WebViewLoginActivity : AppCompatActivity() {
         }
     }
 
+    private fun approvedCredentialOrigins(): Set<String> = when (config.campus) {
+        EASToken.Campus.BENBU -> setOf(
+            "http://ids-hit-edu-cn-s.ivpn.hit.edu.cn",
+            "https://ids.hit.edu.cn"
+        )
+        EASToken.Campus.WEIHAI -> setOf(
+            "https://webvpn.hitwh.edu.cn",
+            "https://ids.hit.edu.cn"
+        )
+        EASToken.Campus.SHENZHEN -> emptySet()
+    }
+
+    private fun installCredentialBridge() {
+        if (config.campus == EASToken.Campus.SHENZHEN ||
+            !WebViewFeature.isFeatureSupported(WebViewFeature.WEB_MESSAGE_LISTENER)
+        ) return
+        runCatching {
+            WebViewCompat.addWebMessageListener(
+                webView,
+                credentialBridgeName,
+                approvedCredentialOrigins()
+            ) { view, message, sourceOrigin, isMainFrame, _ ->
+                if (!isMainFrame || !EasWebCredentialPolicy.matchesLoginOrigin(
+                        config.campus,
+                        sourceOrigin.toString()
+                    ) || !EasWebCredentialPolicy.matchesLoginPage(
+                        config.campus,
+                        view.url.orEmpty(),
+                        isMainFrame = true
+                    )
+                ) return@addWebMessageListener
+
+                runCatching {
+                    val payload = JSONObject(message.data ?: return@runCatching)
+                    val username = payload.optString("username").trim()
+                    val password = payload.optString("password")
+                    if (username.isNotEmpty() && password.isNotEmpty()) {
+                        credentialCaptureState.stage(EasCredential(config.campus, username, password))
+                    }
+                }
+            }
+        }.onFailure {
+            LogUtils.w("credential bridge unavailable; manual login remains available")
+        }
+    }
+
+    private fun prepareLoginPageCredentials(view: WebView, url: String) {
+        if (!EasWebCredentialPolicy.matchesLoginPage(config.campus, url, isMainFrame = true)) return
+        view.evaluateJavascript(EasWebCredentialPolicy.captureScript(), null)
+        val credential = EasWebCredentialPolicy.readOptionalCredential {
+            easCredentialStore.get(config.campus)
+        } ?: return
+        view.evaluateJavascript(
+            EasWebCredentialPolicy.autofillScript(credential.username, credential.password),
+            null
+        )
+    }
+
     private fun autoOpenJwts(webView: WebView) {
         if (autoOpeningJwts) return
         autoOpeningJwts = true
@@ -1951,6 +2019,12 @@ class WebViewLoginActivity : AppCompatActivity() {
 
     private fun handleSuccessPage() {
         if (finished) return
+
+        credentialCaptureState.commitOnSuccess { credential ->
+            runCatching {
+                easCredentialStore.save(credential.campus, credential.username, credential.password)
+            }
+        }
 
         val cookies = collectCookies()
 
@@ -2280,6 +2354,7 @@ class WebViewLoginActivity : AppCompatActivity() {
     private fun finishWithCancelledResult() {
         if (finished) return
         finished = true
+        credentialCaptureState.discard()
         stopCookiePolling()
         setResult(Activity.RESULT_CANCELED)
         finish()
@@ -2313,8 +2388,12 @@ class WebViewLoginActivity : AppCompatActivity() {
 
     override fun onDestroy() {
         finished = true
+        credentialCaptureState.discard()
         stopCookiePolling()
         if (::webView.isInitialized) {
+            if (WebViewFeature.isFeatureSupported(WebViewFeature.WEB_MESSAGE_LISTENER)) {
+                runCatching { WebViewCompat.removeWebMessageListener(webView, credentialBridgeName) }
+            }
             (webView.parent as? ViewGroup)?.removeView(webView)
             webView.stopLoading()
             webView.webChromeClient = WebChromeClient()

@@ -67,7 +67,6 @@ class EasPreferenceSource(context: Context) {
             .putString("refreshToken", token.refreshToken)
             .putString("campus", token.campus.name)
             .putString("username", token.username)
-            .putString("password", token.password)
             .putString("cookies", Gson().toJson(token.cookies))
             .putString("webCookies", Gson().toJson(token.webCookies))
             .putString("webBaseUrl", token.webBaseUrl)
@@ -88,9 +87,22 @@ class EasPreferenceSource(context: Context) {
             .apply()
     }
 
+    fun getLegacyCredentialFields(): LegacyEasCredentialFields {
+        val campus = preference.getString("campus", EASToken.Campus.SHENZHEN.name)
+            ?.let { runCatching { EASToken.Campus.valueOf(it) }.getOrNull() }
+            ?: EASToken.Campus.SHENZHEN
+        return LegacyEasCredentialFields(
+            campus = campus,
+            username = preference.getString("username", null),
+            password = preference.getString("password", null)
+        )
+    }
+
+    fun clearLegacyPassword(): Boolean = preference.edit().remove("password").commit()
+
 
     fun clearEasToken() {
-        // Logout is a security boundary: remove credentials and cached identity atomically.
+        // Saved credentials live in EasCredentialStore; clear only session and cached identity.
         preference.edit().clear().commit()
     }
 
@@ -102,7 +114,6 @@ class EasPreferenceSource(context: Context) {
             runCatching { EASToken.Campus.valueOf(it) }.getOrNull()
         } ?: EASToken.Campus.SHENZHEN
         result.username = preference.getString("username", null)
-        result.password = preference.getString("password", null)
         result.name = preference.getString("name", null)
         result.stutype = if (preference.getString("stutype", "1")
                 .equals("1")

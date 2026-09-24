@@ -37,6 +37,11 @@ object RepositoryModule {
 
     @Provides
     @Singleton
+    fun provideEasCredentialStore(@ApplicationContext context: Context): EasCredentialStore =
+        EasCredentialStore(context)
+
+    @Provides
+    @Singleton
     fun provideBenbuStartDatePreferenceSource(@ApplicationContext context: Context): BenbuStartDatePreferenceSource = BenbuStartDatePreferenceSource(context)
 
     @Provides
