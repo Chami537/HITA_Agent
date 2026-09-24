@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="live_course_room_and_time">%1$s · %2$s</string>
+    <string name="live_course_time_range">%1$s–%2$s</string>
+</resources>

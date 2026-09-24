@@ -8,6 +8,7 @@ import androidx.annotation.WorkerThread
 import com.google.gson.Gson
 import com.google.gson.JsonObject
 import cn.limpu.hita.data.AppDatabase
+import androidx.room.InvalidationTracker
 import cn.limpu.hita.data.model.GsonBuilderUtil
 import cn.limpu.hita.data.model.timetable.EventItem
 import cn.limpu.hita.data.model.timetable.TermSubject
@@ -18,6 +19,7 @@ import cn.limpu.hita.agent.remote.AgentBackendClient
 import cn.limpu.hita.data.analytics.UsageAnalyticsClient
 import cn.limpu.hita.data.work.CourseReminderScheduler
 import cn.limpu.hita.data.work.WidgetRefreshScheduler
+import cn.limpu.hita.feature.livecourse.scheduler.LiveCourseScheduler
 import cn.limpu.hita.ui.widgets.WidgetUtils
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -55,6 +57,17 @@ class HApplication : Application() {
                     database.timetableDao()
                     database.subjectDao()
                     database.eventItemDao()
+                    database.invalidationTracker.addObserver(object : InvalidationTracker.Observer("events") {
+                        override fun onInvalidated(tables: Set<String>) {
+                            applicationScope.launch(Dispatchers.IO) {
+                                try {
+                                    LiveCourseScheduler.autoSchedule(this@HApplication)
+                                } catch (e: Exception) {
+                                    LogUtils.e("Live Course timetable reschedule failed", e)
+                                }
+                            }
+                        }
+                    })
                 } catch (e: Exception) {
                     LogUtils.e("Database initialization failed", e)
                 }
@@ -71,6 +84,12 @@ class HApplication : Application() {
             CourseReminderScheduler.autoSchedule(this)
         } catch (e: Exception) {
             LogUtils.e("CourseReminderScheduler.autoSchedule failed", e)
+        }
+
+        try {
+            LiveCourseScheduler.autoSchedule(this)
+        } catch (e: Exception) {
+            LogUtils.e("LiveCourseScheduler.autoSchedule failed", e)
         }
 
         try {
