@@ -41,6 +41,8 @@ import cn.limpu.hita.data.model.timetable.TermSubject
 import cn.limpu.hita.data.model.timetable.TimeInDay
 import cn.limpu.hita.data.model.timetable.TimePeriodInDay
 import cn.limpu.hita.data.source.web.service.EASService
+import cn.limpu.hita.data.repository.EasCredentialReloginPolicy
+import cn.limpu.hita.data.source.preference.EasCredential
 import cn.limpu.hita.ui.eas.classroom.BuildingItem
 import cn.limpu.hita.ui.eas.classroom.ClassroomItem
 import cn.limpu.hita.utils.JsonUtils
@@ -140,7 +142,8 @@ class EASWebSource internal constructor(
     private val courseSelectionHostOverride: String? = null,
     private val courseSelectionTimeoutMillis: Int? = null,
     private val courseSelectionTransport: ShenzhenCourseSelectionTransport =
-        ShenzhenCourseSelectionTransport { request -> request.execute() }
+        ShenzhenCourseSelectionTransport { request -> request.execute() },
+    private val credentialProvider: (EASToken.Campus, String?) -> EasCredential? = { _, _ -> null }
 ) : EASService {
 
     private val hostName = "https://mjw.hitsz.edu.cn/incoSpringBoot"
@@ -423,8 +426,14 @@ class EASWebSource internal constructor(
 
     private fun tryRelogin(token: EASToken): Boolean {
         val username = token.username?.trim().orEmpty()
-        val password = token.password.orEmpty()
-        LogUtils.d("tryRelogin: username=$username, hasPassword=${password.isNotBlank()}")
+        val password = EasCredentialReloginPolicy.passwordFor(
+            tokenCampus = token.campus,
+            tokenUsername = username,
+            credential = runCatching {
+                credentialProvider(EASToken.Campus.SHENZHEN, username)
+            }.getOrNull()
+        ).orEmpty()
+        LogUtils.d("tryRelogin: hasUsername=${username.isNotBlank()}, hasPassword=${password.isNotBlank()}")
         if (username.isBlank() || password.isBlank()) {
             LogUtils.e("tryRelogin: failed, username or password blank")
             return false
@@ -437,6 +446,7 @@ class EASWebSource internal constructor(
         LogUtils.d("tryRelogin: success, newToken=${refreshed.accessToken?.take(8)}, cookies=${refreshed.cookies.size}")
         token.accessToken = refreshed.accessToken
         token.refreshToken = refreshed.refreshToken
+        refreshed.password = null
         token.cookies.clear()
         token.cookies.putAll(refreshed.cookies)
         onTokenRefreshed?.invoke(token)

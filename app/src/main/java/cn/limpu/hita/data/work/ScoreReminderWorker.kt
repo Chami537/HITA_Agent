@@ -19,6 +19,7 @@ import cn.limpu.hita.data.model.eas.TermItem
 import cn.limpu.hita.data.repository.EASRepository
 import cn.limpu.hita.data.repository.TimetableChangeStore
 import cn.limpu.hita.data.source.preference.EasPreferenceSource
+import cn.limpu.hita.data.source.preference.EasCredentialStore
 import cn.limpu.hita.data.source.preference.ScoreReminderStore
 import cn.limpu.hita.data.source.preference.TimetablePreferenceSource
 import cn.limpu.hita.data.source.web.service.EASService
@@ -35,6 +36,7 @@ class ScoreReminderWorker(appContext: Context, params: WorkerParameters) : Worke
         val repository = EASRepository(
             app,
             EasPreferenceSource(applicationContext),
+            EasCredentialStore(applicationContext),
             TimetablePreferenceSource(applicationContext),
             TimetableChangeStore(app)
         )

@@ -29,6 +29,8 @@ import cn.limpu.hita.data.model.timetable.TermSubject
 import cn.limpu.hita.data.model.timetable.TimePeriodInDay
 import cn.limpu.hita.data.model.timetable.Timetable
 import cn.limpu.hita.data.source.preference.EasPreferenceSource
+import cn.limpu.hita.data.source.preference.EasCredential
+import cn.limpu.hita.data.source.preference.EasCredentialStore
 import cn.limpu.hita.data.source.preference.TimetablePreferenceSource
 import cn.limpu.hita.data.source.web.eas.BenbuEASWebSource
 import cn.limpu.hita.data.source.web.eas.EASWebSource
@@ -94,6 +96,7 @@ internal class CourseSelectionExecutionTokenStore(
 class EASRepository @Inject constructor(
     application: Application,
     private val easPreferenceSource: EasPreferenceSource,
+    private val easCredentialStore: EasCredentialStore,
     private val timetablePreferenceSource: TimetablePreferenceSource,
     private val timetableChangeStore: TimetableChangeStore
 ) : ShenzhenCourseSelectionGateway {
@@ -104,7 +107,8 @@ class EASRepository @Inject constructor(
     private val autoImportInProgress = AtomicBoolean(false)
     @Volatile private var acceptServiceTokenRefresh = easPreferenceSource.getEasToken().isLogin()
     private val shenzhenService: EASWebSource = EASWebSource(
-        onTokenRefreshed = { token -> saveRefreshedEasToken(token) }
+        onTokenRefreshed = { token -> saveRefreshedEasToken(token) },
+        credentialProvider = { campus, username -> easCredentialStore.get(campus, username) }
     )
     private val benbuService: EASService = BenbuEASWebSource { token ->
         saveRefreshedEasToken(token)
@@ -131,6 +135,10 @@ class EASRepository @Inject constructor(
         private const val JW_DIRECT_BASE_URL = "https://jw.hitsz.edu.cn"
         private const val JW_PROXY_BASE_URL = "https://jw-hitsz-edu-cn.hitsz.edu.cn"
         private const val SCORE_CACHE_RETENTION_MS = 365L * 24L * 60L * 60L * 1000L
+    }
+
+    init {
+        runCatching { easCredentialStore.migrateLegacyIfNeeded(easPreferenceSource) }
     }
 
     /**
@@ -244,12 +252,23 @@ class EASRepository @Inject constructor(
                 return@addSource
             }
             token.campus = campus
+            val credentialToSave = if (campus == EASToken.Campus.SHENZHEN) {
+                EasCredential(campus, username, password)
+            } else {
+                null
+            }
             if ((campus == EASToken.Campus.BENBU || campus == EASToken.Campus.WEIHAI) &&
                 password.isNotBlank()
             ) {
                 token.electronicExpToken = password
             }
-            enrichLoginToken(result, token, campus, expectedEpoch = expectedEpoch)
+            enrichLoginToken(
+                result,
+                token,
+                campus,
+                expectedEpoch = expectedEpoch,
+                credentialsToSave = credentialToSave
+            )
             result.removeSource(loginSource)
         }
         return result
@@ -260,7 +279,8 @@ class EASRepository @Inject constructor(
         token: EASToken,
         campus: EASToken.Campus,
         attempt: Int = 0,
-        expectedEpoch: Long
+        expectedEpoch: Long,
+        credentialsToSave: EasCredential? = null
     ) {
         if (authEpoch.get() != expectedEpoch) {
             result.value = DataState(false, DataState.STATE.NOT_LOGGED_IN)
@@ -290,7 +310,8 @@ class EASRepository @Inject constructor(
                             token,
                             campus,
                             attempt + 1,
-                            expectedEpoch
+                            expectedEpoch,
+                            credentialsToSave
                         )
                     },
                     LOGIN_ENRICH_RETRY_DELAY_MS
@@ -307,7 +328,7 @@ class EASRepository @Inject constructor(
                 "login: saving token campus=$campus name=${finalToken.name} " +
                     "stuId=${finalToken.stuId} electronic=${!finalToken.electronicExpToken.isNullOrBlank()}"
             )
-            if (saveEasToken(finalToken, expectedEpoch)) {
+            if (saveEasToken(finalToken, expectedEpoch, credentialsToSave)) {
                 result.value = DataState(true, DataState.STATE.SUCCESS)
             } else {
                 result.value = DataState(false, DataState.STATE.NOT_LOGGED_IN)
@@ -1960,12 +1981,15 @@ class EASRepository @Inject constructor(
 
     private fun saveEasToken(
         token: EASToken,
-        expectedEpoch: Long = authEpoch.get()
+        expectedEpoch: Long = authEpoch.get(),
+        credentialsToSave: EasCredential? = null
     ): Boolean = synchronized(tokenStateLock) {
         if (authEpoch.get() != expectedEpoch) {
             LogUtils.d("saveEasToken: ignored result from an operation cancelled by logout")
             return@synchronized false
         }
+        credentialsToSave?.let { easCredentialStore.save(it.campus, it.username, it.password) }
+        token.password = null
         val storedToken = easPreferenceSource.getEasToken()
         token.sessionGeneration = EasSessionGenerationGuard.resolveCredentialScopeGeneration(
             storedToken = storedToken,
@@ -1994,6 +2018,7 @@ class EASRepository @Inject constructor(
                 return
             }
             val storedToken = easPreferenceSource.getEasToken()
+            token.password = null
             token.sessionGeneration = EasSessionGenerationGuard.resolveCredentialScopeGeneration(
                 storedToken = storedToken,
                 incomingToken = token,
@@ -2044,7 +2069,6 @@ class EASRepository @Inject constructor(
             ?: stored.username?.takeIf {
                 stored.campus == EASToken.Campus.SHENZHEN && it.isNotBlank() && it != "value"
             }
-        token.password = token.password?.takeIf { it.isNotBlank() } ?: stored.password
         if (stored.cookies.isNotEmpty()) {
             val mergedCookies = HashMap(stored.cookies)
             mergedCookies.putAll(token.cookies)
@@ -2075,6 +2099,10 @@ class EASRepository @Inject constructor(
             }
         }
         clearShenzhenWebViewCookies(previousToken)
+    }
+
+    fun forgetCredentials(campus: EASToken.Campus, username: String) {
+        easCredentialStore.remove(campus, username)
     }
 
     private fun nextCredentialScopeGeneration(): Long {

@@ -45,6 +45,7 @@ import cn.limpu.hita.data.model.timetable.TimeInDay
 import cn.limpu.hita.data.repository.EASRepository
 import cn.limpu.hita.data.repository.TimetableChangeStore
 import cn.limpu.hita.data.source.preference.EasPreferenceSource
+import cn.limpu.hita.data.source.preference.EasCredentialStore
 import cn.limpu.hita.data.source.preference.TimetablePreferenceSource
 import cn.limpu.hita.ui.design.HitaComposeTheme
 import cn.limpu.hita.ui.design.HitaCoursePaletteDialog
@@ -73,6 +74,7 @@ class EventItemFragment : Fragment() {
         EASRepository(
             requireActivity().application,
             EasPreferenceSource(requireActivity().application.applicationContext),
+            EasCredentialStore(requireActivity().application.applicationContext),
             TimetablePreferenceSource(requireActivity().application.applicationContext),
             TimetableChangeStore(requireActivity().application)
         )

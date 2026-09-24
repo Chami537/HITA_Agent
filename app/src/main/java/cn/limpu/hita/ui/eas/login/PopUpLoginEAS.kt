@@ -61,6 +61,7 @@ import com.google.android.material.bottomsheet.BottomSheetDialogFragment
 import com.limpu.component.data.DataState
 import cn.limpu.hita.R
 import cn.limpu.hita.data.model.eas.EASToken
+import cn.limpu.hita.data.source.preference.EasCredentialStore
 import cn.limpu.hita.ui.about.UserAgreementDialog
 import cn.limpu.hita.ui.design.HitaComposeTheme
 import cn.limpu.hita.ui.design.HitaTheme
@@ -68,9 +69,12 @@ import cn.limpu.hita.utils.ImageUtils
 import cn.limpu.hita.utils.LogUtils
 import dagger.hilt.android.AndroidEntryPoint
 import org.json.JSONObject
+import javax.inject.Inject
 
 @AndroidEntryPoint
 class PopUpLoginEAS : BottomSheetDialogFragment() {
+
+    @Inject lateinit var easCredentialStore: EasCredentialStore
 
     var lock = false
     var autoLaunchWebLogin = false
@@ -124,6 +128,7 @@ class PopUpLoginEAS : BottomSheetDialogFragment() {
 
                     LoginEASScreen(
                         viewModel = viewModel,
+                        credentialStore = easCredentialStore,
                         loginResult = loginResult,
                         loginCheckResult = loginCheckResult,
                         isLoading = loginInProgress,
@@ -141,6 +146,7 @@ class PopUpLoginEAS : BottomSheetDialogFragment() {
                             if (!autoLaunchTriggered && autoLaunchWebLogin &&
                                 campus in setOf(
                                     EASToken.Campus.BENBU,
+                                    EASToken.Campus.WEIHAI,
                                     EASToken.Campus.SHENZHEN
                                 ) && isUserAgreementAccepted()
                             ) {
@@ -208,6 +214,7 @@ class PopUpLoginEAS : BottomSheetDialogFragment() {
             pendingWebViewCampus = null
             if (autoLaunchWebLogin && silentWebLoginTried && campus in setOf(
                     EASToken.Campus.BENBU,
+                    EASToken.Campus.WEIHAI,
                     EASToken.Campus.SHENZHEN
                 )
             ) {
@@ -300,6 +307,7 @@ class PopUpLoginEAS : BottomSheetDialogFragment() {
 @Composable
 private fun LoginEASScreen(
     viewModel: LoginEASViewModel,
+    credentialStore: EasCredentialStore,
     loginResult: DataState<Boolean>?,
     loginCheckResult: DataState<Boolean>?,
     isLoading: Boolean,
@@ -316,21 +324,21 @@ private fun LoginEASScreen(
 ) {
     val tokens = HitaTheme.tokens
     val view = LocalView.current
-    val token = viewModel.easRepo.getEasToken()
-
     var selectedCampus by remember { mutableStateOf(initialCampus) }
-    var username by remember {
-        mutableStateOf(token.username?.takeIf { token.campus == EASToken.Campus.SHENZHEN } ?: "")
-    }
-    var password by remember {
-        mutableStateOf(token.password?.takeIf { token.campus == EASToken.Campus.SHENZHEN } ?: "")
-    }
+    var username by remember { mutableStateOf("") }
+    var password by remember { mutableStateOf("") }
     var agreementChecked by remember { mutableStateOf(isAgreementAccepted) }
     var lastHandledLoginResult by remember { mutableStateOf<DataState<Boolean>?>(null) }
     var lastHandledCheckResult by remember { mutableStateOf<DataState<Boolean>?>(null) }
 
     LaunchedEffect(Unit) {
         onAutoLaunch(initialCampus)
+    }
+
+    LaunchedEffect(selectedCampus) {
+        val savedCredential = runCatching { credentialStore.get(selectedCampus) }.getOrNull()
+        username = savedCredential?.username.orEmpty()
+        password = savedCredential?.password.orEmpty()
     }
 
     LaunchedEffect(loginResult) {
