@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application>
+        <!-- ADB-only diagnostic hook. This source set is excluded from release APKs. -->
+        <receiver
+            android:name=".feature.livecourse.debug.LiveCourseDebugReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="cn.limpu.hita.action.SHOW_LIVE_COURSE_DEBUG" />
+                <action android:name="cn.limpu.hita.action.SHOW_PRE_CLASS_DEBUG" />
+                <action android:name="cn.limpu.hita.action.ENABLE_STRONG_REMINDER_DEBUG" />
+            </intent-filter>
+        </receiver>
+    </application>
+</manifest>
