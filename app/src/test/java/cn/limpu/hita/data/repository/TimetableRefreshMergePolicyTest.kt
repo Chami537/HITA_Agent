@@ -21,7 +21,8 @@ class TimetableRefreshMergePolicyTest {
         val plan = TimetableRefreshMergePolicy.plan(local, incoming, emptyMap(), NOW)
 
         assertFalse(plan.holdBatch)
-        assertEquals(1, plan.adopt.size)
+        assertTrue(plan.adopt.isEmpty())
+        assertEquals(1, plan.pendingUpdates.size)
         assertEquals(1, plan.updated.size)
         assertTrue(plan.updated.single().timeAdjusted)
         assertTrue(plan.updated.single().placeAdjusted)
@@ -145,9 +146,11 @@ class TimetableRefreshMergePolicyTest {
 
         val plan = TimetableRefreshMergePolicy.plan(local, incoming, emptyMap(), NOW)
 
-        assertEquals(2, plan.adopt.size)
+        assertTrue(plan.adopt.isEmpty())
         assertEquals(listOf("大学物理"), plan.added.map { it.name })
         assertEquals(1, plan.updated.single().lessonCountDelta)
+        assertEquals(2, plan.pendingUpdates.size)
+        assertTrue(plan.pendingUpdates.any { it.isAdded && it.name == "大学物理" })
         assertTrue(plan.vetoes.isEmpty())
     }
 
@@ -173,7 +176,6 @@ class TimetableRefreshMergePolicyTest {
     }
     @Test
     fun plan_partiallyMergesWhenLessonCountReduced() {
-        // 课次减少：缩掉的槽位（周三 6-7 节）保留本地，重叠槽位（周一 1-2 节）的地点更新仍采纳
         val local = listOf(
             MergeCourse(
                 subjectId = "s1",
@@ -201,15 +203,9 @@ class TimetableRefreshMergePolicyTest {
 
         val plan = TimetableRefreshMergePolicy.plan(local, incoming, emptyMap(), NOW)
 
-        assertEquals(1, plan.adopt.size)
-        assertEquals(1, plan.replacedLocal.size)
-        val partial = plan.partialMerges.single()
-        assertEquals("s1", partial.subjectId)
-        assertEquals(1, partial.incomingSlotKeys.size)
-        val change = plan.updated.single()
-        val adjusted = change.slotChanges.single { it.kind == SlotChangeKind.ADJUSTED }
-        assertEquals("诚意楼 202", adjusted.place)
-        assertEquals("正心楼 101", adjusted.placeBefore)
+        assertTrue(plan.adopt.isEmpty())
+        assertTrue(plan.replacedLocal.isEmpty())
+        assertTrue(plan.partialMerges.isEmpty())
         val kept = plan.kept.single()
         assertEquals(CourseVetoReason.LESSON_COUNT_REDUCED, kept.reason)
         assertEquals(4, kept.localLessonCount)
@@ -307,7 +303,8 @@ class TimetableRefreshMergePolicyTest {
 
         val plan = TimetableRefreshMergePolicy.plan(local, incoming, emptyMap(), NOW)
 
-        assertEquals(1, plan.adopt.size)
+        assertTrue(plan.adopt.isEmpty())
+        assertEquals(1, plan.pendingUpdates.size)
         assertTrue(plan.kept.isEmpty())
         assertEquals("高等数学（A）", plan.updated.single().name)
     }
@@ -520,13 +517,13 @@ class TimetableRefreshMergePolicyTest {
         }
 
         val plan = TimetableRefreshMergePolicy.plan(local, protectedIncoming, emptyMap(), NOW)
-        assertEquals(1, plan.adopt.size)
+        assertTrue(plan.adopt.isEmpty())
+        assertEquals(1, plan.pendingUpdates.size)
         val change = plan.updated.single()
         assertTrue(change.timeAdjusted)
         assertFalse(change.placeAdjusted)
         assertFalse(change.teacherAdjusted)
-        // 采纳落库的源端课次带着本地教师/地点，不被清空
-        assertTrue(plan.adopt.single().lessons.all { it.teacher == "张三" && it.place == "格物楼 201" })
+        assertTrue(plan.pendingUpdates.single().incoming.lessons.all { it.teacher == "张三" && it.place == "格物楼 201" })
     }
 
     @Test

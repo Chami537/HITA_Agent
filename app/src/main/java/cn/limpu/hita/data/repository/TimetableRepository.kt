@@ -169,6 +169,11 @@ class TimetableRepository @Inject constructor(val application: Application) {
         return eventItemDao.getClassesOfSubject(subjectId)
     }
 
+    @WorkerThread
+    fun getClassesOfSubjectSync(subjectId: String): List<EventItem> {
+        return eventItemDao.getClassesOfSubjectSync(subjectId)
+    }
+
     fun getEventsOfTimetable(timetableId: String): LiveData<List<EventItem>> {
         return eventItemDao.getEventsOfTimetable(timetableId)
     }
@@ -819,6 +824,13 @@ class TimetableRepository @Inject constructor(val application: Application) {
     fun actionUpdateEvent(event: EventItem) {
         executor.execute {
             eventItemDao.updateEventSync(event)
+        }
+    }
+
+    fun actionUpdateEvents(events: Collection<EventItem>) {
+        if (events.isEmpty()) return
+        executor.execute {
+            eventItemDao.updateEventsSync(events.toList())
         }
     }
 

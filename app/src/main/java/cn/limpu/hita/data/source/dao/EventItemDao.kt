@@ -149,6 +149,9 @@ interface EventItemDao {
     @Update
     fun updateEventSync(event: EventItem)
 
+    @Update
+    fun updateEventsSync(events: List<EventItem>)
+
     /**
      * 将某课表的所有课程时间加上offset
      */

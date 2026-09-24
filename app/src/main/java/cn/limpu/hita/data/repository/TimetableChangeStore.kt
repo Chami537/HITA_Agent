@@ -49,14 +49,16 @@ data class TimetableHeldBatch(
     val unmatchedLocal: List<MergeCourse> = emptyList()
 )
 
-/** 课表变更的完整 UI 状态。 */
 data class TimetableChangeState(
     val info: TimetableChangeInfo? = null,
     val decisions: List<TimetableDecisionItem> = emptyList(),
-    val heldBatch: TimetableHeldBatch? = null
+    val heldBatch: TimetableHeldBatch? = null,
+    val pendingUpdates: List<PendingCourseUpdate> = emptyList(),
+    val pendingRevision: Long = 0L,
 ) {
     val pendingCount: Int
-        get() = decisions.size + if (heldBatch != null) 1 else 0
+        get() = pendingUpdates.sumOf { it.rows.size } +
+            decisions.size + if (heldBatch != null) 1 else 0
 }
 
 /**
@@ -78,7 +80,10 @@ class TimetableChangeStore @Inject constructor(application: Application) {
         val info: TimetableChangeInfo? = null,
         val decisions: List<TimetableDecisionItem> = emptyList(),
         val heldBatch: TimetableHeldBatch? = null,
-        val vetoes: Map<String, Map<String, CourseVetoRecord>> = emptyMap()
+        val vetoes: Map<String, Map<String, CourseVetoRecord>> = emptyMap(),
+        val pendingUpdates: List<PendingCourseUpdate> = emptyList(),
+        val ignoredFingerprints: List<String> = emptyList(),
+        val pendingRevision: Long = 0L,
     ) {
         fun toChangeState(): TimetableChangeState = TimetableChangeState(
             info = info?.let {
@@ -92,7 +97,9 @@ class TimetableChangeStore @Inject constructor(application: Application) {
                 )
             },
             decisions = decisions.orEmpty(),
-            heldBatch = heldBatch
+            heldBatch = heldBatch,
+            pendingUpdates = pendingUpdates.orEmpty(),
+            pendingRevision = pendingRevision,
         )
     }
 
@@ -144,6 +151,35 @@ class TimetableChangeStore @Inject constructor(application: Application) {
                 )
             }
         }
+
+    fun ignoredFingerprints(): Set<String> =
+        synchronized(lock) { cached.ignoredFingerprints.toSet() }
+
+    fun recordPendingUpdates(updates: List<PendingCourseUpdate>) = synchronized(lock) {
+        mutate { state ->
+            state.copy(
+                pendingUpdates = updates,
+                pendingRevision = System.currentTimeMillis(),
+            )
+        }
+    }
+
+    fun consumePendingUpdates(): List<PendingCourseUpdate> = synchronized(lock) {
+        val updates = cached.pendingUpdates
+        if (updates.isNotEmpty()) {
+            mutate { state -> state.copy(pendingUpdates = emptyList()) }
+        }
+        updates
+    }
+
+    fun rememberIgnored(fingerprints: Collection<String>) = synchronized(lock) {
+        if (fingerprints.isEmpty()) return@synchronized
+        mutate { state ->
+            state.copy(
+                ignoredFingerprints = (state.ignoredFingerprints + fingerprints).distinct()
+            )
+        }
+    }
 
     fun markInfoViewed() = synchronized(lock) {
         mutate { state -> state.copy(info = null) }
@@ -233,7 +269,8 @@ class TimetableChangeStore @Inject constructor(application: Application) {
             state.copy(
                 info = null,
                 decisions = state.decisions.filterNot { it.termId == termId },
-                vetoes = state.vetoes.filterKeys { it != termId }
+                vetoes = state.vetoes.filterKeys { it != termId },
+                pendingUpdates = state.pendingUpdates.filterNot { it.termId == termId },
             )
         }
     }
@@ -271,7 +308,8 @@ class TimetableChangeStore @Inject constructor(application: Application) {
                 schemaVersion = CURRENT_SCHEMA_VERSION,
                 info = null,
                 decisions = emptyList(),
-                heldBatch = null
+                heldBatch = null,
+                pendingUpdates = emptyList(),
             )
         }
         return parsed
@@ -288,7 +326,7 @@ class TimetableChangeStore @Inject constructor(application: Application) {
     }
 
     companion object {
-        /** 落盘结构版本：info/decisions/heldBatch 的形状变更后 +1，旧数据整体作废。 */
-        private const val CURRENT_SCHEMA_VERSION = 2
+        /** 落盘结构版本：info/decisions/heldBatch/pending 的形状变更后 +1，旧数据整体作废。 */
+        private const val CURRENT_SCHEMA_VERSION = 3
     }
 }

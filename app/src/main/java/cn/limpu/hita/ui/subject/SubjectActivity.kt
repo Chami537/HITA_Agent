@@ -60,6 +60,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.livedata.observeAsState
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -1089,7 +1090,13 @@ private fun SubjectScreen(
     val teachers by viewModel.teachersLiveData.observeAsState(emptyList())
     val currentSubject = subject
     val selectionMode = selectedEventIds.isNotEmpty()
+    val allClasses by viewModel.classesLiveData.observeAsState(emptyList())
+    val realClasses = remember(allClasses) { allClasses.filter { it.type != EventItem.TYPE.TAG } }
+    var editScope by remember { mutableStateOf<SubjectBatchEditScope?>(null) }
+    var deleteScope by remember { mutableStateOf<SubjectBatchDeleteScope?>(null) }
+    val context = LocalContext.current
 
+    Box(modifier = Modifier.fillMaxSize()) {
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -1121,7 +1128,8 @@ private fun SubjectScreen(
             SelectionBar(
                 selectedCount = selectedEventIds.size,
                 onClearSelection = onClearSelection,
-                onDeleteSelected = onDeleteSelected,
+                onEditSelected = { editScope = SubjectBatchEditScope.SELECTED },
+                onDeleteSelected = { deleteScope = SubjectBatchDeleteScope.SELECTED },
             )
         }
 
@@ -1240,6 +1248,67 @@ private fun SubjectScreen(
                     onCourseClick = onCourseClick,
                     onCourseLongClick = onCourseLongClick,
                     onAddCourse = onAddCourse,
+                    onEditAll = { editScope = SubjectBatchEditScope.ALL },
+                    onDeleteAll = { deleteScope = SubjectBatchDeleteScope.ALL },
+                )
+            }
+        }
+    }
+        editScope?.let { scope ->
+            val targets = if (scope == SubjectBatchEditScope.ALL) {
+                realClasses
+            } else {
+                realClasses.filter { it.id in selectedEventIds }
+            }
+            if (targets.isNotEmpty()) {
+                SubjectBatchEditDialog(
+                    scope = scope,
+                    events = targets,
+                    timetable = timetable,
+                    onDismiss = { editScope = null },
+                    onApply = { place, teacher, time ->
+                        val (edited, skippedTime) = applySubjectBatchEdit(
+                            events = targets,
+                            timetable = timetable,
+                            place = place,
+                            teacher = teacher,
+                            time = time,
+                        )
+                        viewModel.updateCourses(edited)
+                        Toast.makeText(
+                            context,
+                            context.getString(R.string.subject_batch_updated, edited.size),
+                            Toast.LENGTH_SHORT,
+                        ).show()
+                        if (skippedTime) {
+                            Toast.makeText(context, R.string.subject_batch_week_missing, Toast.LENGTH_SHORT).show()
+                        }
+                        editScope = null
+                        onClearSelection()
+                    },
+                )
+            }
+        }
+        deleteScope?.let { scope ->
+            val count = if (scope == SubjectBatchDeleteScope.ALL) {
+                realClasses.size
+            } else {
+                realClasses.count { it.id in selectedEventIds }
+            }
+            if (count > 0) {
+                SubjectBatchDeleteDialog(
+                    scope = scope,
+                    count = count,
+                    onDismiss = { deleteScope = null },
+                    onConfirm = {
+                        if (scope == SubjectBatchDeleteScope.ALL) {
+                            viewModel.deleteAllCourses()
+                        } else {
+                            onDeleteSelected()
+                        }
+                        deleteScope = null
+                        onClearSelection()
+                    },
                 )
             }
         }
@@ -1250,6 +1319,7 @@ private fun SubjectScreen(
 private fun SelectionBar(
     selectedCount: Int,
     onClearSelection: () -> Unit,
+    onEditSelected: () -> Unit,
     onDeleteSelected: () -> Unit,
 ) {
     val tokens = HitaTheme.tokens
@@ -1266,6 +1336,14 @@ private fun SelectionBar(
                 color = MaterialTheme.colorScheme.onSurface,
                 fontWeight = FontWeight.Bold
             )
+            Button(
+                onClick = onEditSelected,
+                shape = RoundedCornerShape(16.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
+                modifier = Modifier.padding(end = tokens.spacing.sm),
+            ) {
+                Text(text = stringResource(R.string.subject_batch_edit_selected))
+            }
             Button(
                 onClick = onDeleteSelected,
                 shape = RoundedCornerShape(16.dp),
@@ -1829,6 +1907,8 @@ private fun AllCoursesSection(
     onCourseClick: (EventItem) -> Unit,
     onCourseLongClick: (EventItem) -> Unit,
     onAddCourse: () -> Unit,
+    onEditAll: () -> Unit,
+    onDeleteAll: () -> Unit,
 ) {
     val tokens = HitaTheme.tokens
     Card(
@@ -1848,6 +1928,20 @@ private fun AllCoursesSection(
                     fontSize = 18.sp,
                     fontWeight = FontWeight.Bold
                 )
+                IconButton(onClick = onEditAll) {
+                    Icon(
+                        painter = painterResource(R.drawable.ic_baseline_edit_24),
+                        contentDescription = stringResource(R.string.subject_batch_edit_all),
+                        tint = MaterialTheme.colorScheme.primary
+                    )
+                }
+                IconButton(onClick = onDeleteAll) {
+                    Icon(
+                        painter = painterResource(R.drawable.ic_baseline_delete_24),
+                        contentDescription = stringResource(R.string.subject_batch_delete_all),
+                        tint = MaterialTheme.colorScheme.error
+                    )
+                }
                 IconButton(onClick = onAddCourse) {
                     Icon(
                         painter = painterResource(R.drawable.ic_baseline_add_24),

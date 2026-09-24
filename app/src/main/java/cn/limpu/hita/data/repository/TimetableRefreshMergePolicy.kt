@@ -140,12 +140,14 @@ data class CourseDecision(
 
 /** 一次刷新的合并计划。 */
 data class TimetableMergePlan(
-    /** 采纳源端的课（含匹配更新的课、课次减少课的部分合并与源端新增的课）。 */
+    /** 采纳源端的课（课次减少的部分合并等仍自动落库的项）。 */
     val adopt: List<MergeCourse> = emptyList(),
     /** 匹配后被更新的课的变更描述（不含新增）。 */
     val updated: List<CourseChange> = emptyList(),
     /** 源端新增的课。 */
     val added: List<MergeCourse> = emptyList(),
+    /** 时间/地点/教师调整与新增课：挂起等用户多选确认，不自动覆盖本地。 */
+    val pendingUpdates: List<PendingCourseUpdate> = emptyList(),
     /** 静默保留本地的课（未达到待确认阈值），含保留原因与课次对比。 */
     val kept: List<KeptCourse> = emptyList(),
     /** 达到待确认阈值、等待用户决策的课。 */
@@ -172,19 +174,19 @@ data class TimetableMergePlan(
      */
     val hasChanges: Boolean
         get() = updated.isNotEmpty() || added.isNotEmpty() || decisions.isNotEmpty() ||
+            pendingUpdates.isNotEmpty() ||
             kept.any { it.newlyObserved }
 }
 
 /**
  * 课表刷新合并策略。
  *
- * 背景：课表源会临时调课（地点/时间变动，必须及时采纳），也会整门漏课或削减课次
+ * 背景：课表源会临时调课（地点/时间变动），也会整门漏课或削减课次
  *（课程并未取消，必须保留本地，不被错误源覆盖）。策略按课程粒度逐门裁决：
- * - 源端课次数 ≥ 本地 → 采纳源端（覆盖时间/地点/教师变更，或新增课次）；
+ * - 源端课次数 ≥ 本地且字段有变化 → 挂起为 [pendingUpdates]，由用户多选确认后才覆盖；
  *   无真实变化的匹配课不重写，避免课次 id 抖动与无效快照；
- * - 源端课次数减少 → 缩掉的槽位保留本地，重叠槽位的时间/地点/教师/周次与改名仍采纳，
- *   并记 veto 记忆；
- * - 源端整门缺失 → 保留本地，并记 veto 记忆；
+ * - 源端新增课 → 同样挂起，不自动插入；
+ * - 源端课次数减少 / 整门缺失 → 保留本地，并记 veto 记忆；
  * - 同一门课持续缺失/削减达到 [DECISION_OBSERVATIONS] 次且跨度 ≥ [DECISION_WINDOW_MILLIS]
  *   → 升级为待用户确认，由用户决定采纳源端还是继续保留；
  * - 源端与本地匹配率过低 → 判定源端整批异常，挂起等用户决策；
@@ -285,32 +287,21 @@ object TimetableRefreshMergePolicy {
         val decisions = mutableListOf<CourseDecision>()
         val replacedLocal = mutableListOf<MergeCourse>()
         val partialMerges = mutableListOf<ReducedCourseMerge>()
+        val pendingUpdates = mutableListOf<PendingCourseUpdate>()
 
         for ((localCourse, incomingCourse) in replacedPairs) {
             val key = courseKey(localCourse.name, localCourse.code)
             if (incomingCourse.lessonCount >= localCourse.lessonCount) {
-                // 仅真实变化的课重写：无变化的匹配课保持本地行与课次 id 不变，
-                // 避免每次打开应用都删插课次、打快照。
                 describeChange(localCourse, incomingCourse)?.let { change ->
-                    adopt += incomingCourse
                     updated += change
-                    replacedLocal += localCourse
+                    pendingUpdates += CourseChangeConfirm.updatedCourse(
+                        local = localCourse,
+                        incoming = incomingCourse,
+                        change = change,
+                    )
                 }
                 nextVetoes.remove(key)
             } else {
-                // 课次减少：缩掉的槽位保留本地，重叠槽位的时间/地点/教师/周次与改名仍采纳；
-                // 与当前本地状态一致时（上次已合并过）不重复写库。
-                val merged = mergeReducedCourse(localCourse, incomingCourse)
-                describeChange(localCourse, merged)?.let { change ->
-                    adopt += incomingCourse
-                    updated += change
-                    replacedLocal += localCourse
-                    partialMerges += ReducedCourseMerge(
-                        subjectId = localCourse.subjectId,
-                        name = localCourse.name,
-                        incomingSlotKeys = incomingCourse.lessons.mapTo(HashSet()) { slotKey(it) }
-                    )
-                }
                 val isNewVeto = nextVetoes[key] == null
                 val record = upsertVeto(nextVetoes, key, localCourse.name, nowMillis)
                 if (record.isDueForDecision(nowMillis)) {
@@ -363,12 +354,17 @@ object TimetableRefreshMergePolicy {
         }
 
         val added = incoming.filterIndexed { index, _ -> !usedIncoming[index] }
-        adopt += added
+        if (local.isEmpty()) {
+            adopt += added
+        } else {
+            pendingUpdates += added.map { CourseChangeConfirm.addedCourse(it) }
+        }
 
         return TimetableMergePlan(
             adopt = adopt,
             updated = updated,
             added = added,
+            pendingUpdates = pendingUpdates.filter { it.rows.isNotEmpty() },
             kept = kept,
             decisions = decisions,
             replacedLocal = replacedLocal,

@@ -18,6 +18,8 @@ import cn.limpu.hita.data.repository.TimetableStyleRepository
 import cn.limpu.hita.data.repository.KEY_WALLPAPER_PATH
 import cn.limpu.hita.utils.LogUtils
 import cn.limpu.hita.ui.main.timetable.TimetableFragment.Companion.WEEK_MILLS
+import cn.limpu.hita.ui.subject.SubjectBatchDeleteScope
+import cn.limpu.hita.ui.subject.SubjectBatchEditScope
 import cn.limpu.hita.ui.main.timetable.TimetableFragment.Companion.WINDOW_SIZE
 import com.limpu.component.data.DataState
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -43,6 +45,8 @@ class TimetableViewModel @Inject constructor(
     /** 用户决策（采用/保留）的执行结果，供界面提示失败原因。 */
     private val decisionResultLiveData = MutableLiveData<DataState<Boolean>>()
     val decisionResult: LiveData<DataState<Boolean>> = decisionResultLiveData
+    private val batchSessionLiveData = MutableLiveData<TimetableBatchSession?>(null)
+    internal val batchSession: LiveData<TimetableBatchSession?> = batchSessionLiveData
     val startTimeLiveData: LiveData<Int>
         get() = timetableStyleRepository.startTimeLiveData
     val periodLabelLiveData: LiveData<Boolean>
@@ -121,6 +125,31 @@ class TimetableViewModel @Inject constructor(
         runDecision { sourceApplier.dismissHeldBatch() }
     }
 
+    fun confirmPendingChanges(adopted: Set<String>, remember: Collection<String>) {
+        runDecision { sourceApplier.applyPendingConfirmations(adopted, remember) }
+    }
+
+    internal fun beginBatchEdit(session: TimetableBatchSession) {
+        batchSessionLiveData.postValue(session)
+    }
+
+    internal fun clearBatchSession() {
+        batchSessionLiveData.postValue(null)
+    }
+
+    fun updateEvents(events: Collection<EventItem>) {
+        timetableRepository.actionUpdateEvents(events)
+    }
+
+    fun deleteEvents(events: Collection<EventItem>) {
+        timetableRepository.actionDeleteEvents(events)
+    }
+
+    fun classesOfSubjectSync(subjectId: String): List<EventItem> =
+        timetableRepository.getClassesOfSubjectSync(subjectId)
+
+    fun timetableByIdSync(id: String): Timetable? = timetableRepository.getTimetableByIdSync(id)
+
     private fun runDecision(block: () -> Unit) {
         viewModelScope.launch(Dispatchers.IO) {
             val result = runCatching { block() }
@@ -148,6 +177,14 @@ class TimetableViewModel @Inject constructor(
     }
 
 }
+
+internal data class TimetableBatchSession(
+    val edit: Boolean,
+    val editScope: SubjectBatchEditScope,
+    val deleteScope: SubjectBatchDeleteScope,
+    val events: List<EventItem>,
+    val timetable: Timetable?,
+)
 
 /** Wrapper that uses reference equality so Compose always recomposes on new emissions. */
 class EventStylePair(

@@ -115,6 +115,7 @@ import com.bumptech.glide.request.transition.Transition
 import com.limpu.component.data.DataState
 import cn.limpu.hita.R
 import cn.limpu.hita.data.repository.EASRepository
+import cn.limpu.hita.data.repository.BlogRepository
 import cn.limpu.hita.data.repository.EasSettingsRepository
 import cn.limpu.hita.data.repository.KEY_WALLPAPER_PATH
 import cn.limpu.hita.data.repository.TimetableStyleRepository
@@ -154,6 +155,7 @@ import cn.limpu.hita.ui.design.SoraVermilion
 import cn.limpu.hita.ui.eas.login.PopUpLoginEAS
 import cn.limpu.hita.ui.event.add.PopupAddEvent
 import cn.limpu.hita.ui.main.agent.AgentChatFragment
+import cn.limpu.hita.ui.main.blog.BlogFragment
 import cn.limpu.hita.ui.main.navigation.NavigationFragment
 import cn.limpu.hita.ui.main.timeline.FragmentTimeLine
 import cn.limpu.hita.data.model.timetable.Timetable
@@ -191,11 +193,13 @@ class MainActivity : HiltBaseActivity<ComposeViewBinding>(),
 
     companion object {
         private const val STATE_SELECTED_TAB = "selected_tab"
+        private const val STATE_SELECTED_TAB_NAME = "selected_tab_name"
     }
 
     @Inject lateinit var localUserRepository: LocalUserRepository
     @Inject lateinit var easRepository: EASRepository
     @Inject lateinit var timetableStyleRepository: TimetableStyleRepository
+    @Inject lateinit var blogRepository: BlogRepository
 
     protected val viewModel: MainViewModel by viewModels()
 
@@ -206,6 +210,10 @@ class MainActivity : HiltBaseActivity<ComposeViewBinding>(),
     private var lastCheckTs: Long = 0
 
     private var selectedTab by mutableIntStateOf(0)
+    private var visibleTabs by mutableStateOf(MainTab.visibleFor(null))
+    private var blogDotVisible by mutableStateOf(false)
+    private var restoredTabName: String? = null
+    private var blogSyncAttempted = false
     private var drawerOpen by mutableStateOf(false)
     private var todayTitle by mutableStateOf("")
     private var timetableTitle by mutableStateOf("")
@@ -220,10 +228,12 @@ class MainActivity : HiltBaseActivity<ComposeViewBinding>(),
 
     private val easTokenObserver = Observer<cn.limpu.hita.data.model.eas.EASToken> {
         refreshDrawerState()
+        applyVisibleTabs(it)
         if (easLoginTransitionTracker.shouldTriggerLoginWork(it)) {
             autoReimportAttempted = false
             maybeAutoReimportTimetable()
         }
+        maybeSyncBlog()
     }
 
     private val pickAvatarLauncher = registerForActivityResult(
@@ -260,6 +270,7 @@ class MainActivity : HiltBaseActivity<ComposeViewBinding>(),
 
     override fun onCreate(savedInstanceState: Bundle?) {
         installSplashScreen()
+        restoredTabName = savedInstanceState?.getString(STATE_SELECTED_TAB_NAME)
         selectedTab = savedInstanceState?.getInt(STATE_SELECTED_TAB, selectedTab) ?: selectedTab
         super.onCreate(savedInstanceState)
         @Suppress("DEPRECATION")
@@ -273,11 +284,19 @@ class MainActivity : HiltBaseActivity<ComposeViewBinding>(),
 
     override fun onSaveInstanceState(outState: Bundle) {
         outState.putInt(STATE_SELECTED_TAB, selectedTab)
+        outState.putString(STATE_SELECTED_TAB_NAME, visibleTabs.getOrNull(selectedTab)?.name)
         super.onSaveInstanceState(outState)
     }
 
     override fun initViews() {
         todayTitle = getString(R.string.maintab_today)
+        applyVisibleTabs(easRepository.getEasToken())
+        restoredTabName?.let { name ->
+            MainTab.fromName(name)?.let { tab ->
+                val idx = visibleTabs.indexOf(tab)
+                if (idx >= 0) selectedTab = idx
+            }
+        }
         (binding.root as ComposeView).setContent {
             HitaComposeTheme {
                 val activeThemeStyle = HitaTheme.preferenceStyle
@@ -288,6 +307,8 @@ class MainActivity : HiltBaseActivity<ComposeViewBinding>(),
                 }
                 MainScreen(
                     selectedTab = selectedTab,
+                    visibleTabs = visibleTabs,
+                    showBlogDot = blogDotVisible,
                     drawerOpen = drawerOpen,
                     todayTitle = todayTitle,
                     timetableTitle = timetableTitle,
@@ -338,12 +359,13 @@ class MainActivity : HiltBaseActivity<ComposeViewBinding>(),
                     onGitHubProject = { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/LiPu-jpg"))) },
                     onGitHubMingyu = { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/orgs/HIT-A/people/SpeechlessPanda"))) },
                     onGitHubRuannuo = { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/orgs/HIT-A/people/StrayRN"))) },
-                    fragmentFactory = { position ->
-                        when (position) {
-                            0 -> FragmentTimeLine()
-                            1 -> TimetableFragment()
-                            2 -> AgentChatFragment()
-                            else -> NavigationFragment()
+                    fragmentFactory = { tab ->
+                        when (tab) {
+                            MainTab.TIMELINE -> FragmentTimeLine()
+                            MainTab.TIMETABLE -> TimetableFragment()
+                            MainTab.AGENT -> AgentChatFragment()
+                            MainTab.BLOG -> BlogFragment()
+                            MainTab.NAVIGATION -> NavigationFragment()
                         }
                     }
                 )
@@ -373,6 +395,7 @@ class MainActivity : HiltBaseActivity<ComposeViewBinding>(),
             refreshDrawerState()
         }
         onBackPressedDispatcher.addCallback(this, onBackPressedCallback)
+        blogRepository.tabUnseenLiveData.observe(this) { blogDotVisible = it == true }
         checkNotices()
     }
 
@@ -383,6 +406,7 @@ class MainActivity : HiltBaseActivity<ComposeViewBinding>(),
         refreshDrawerState()
         easRepository.observeEasToken().observe(this, easTokenObserver)
         maybeAutoReimportTimetable()
+        maybeSyncBlog()
         // 公告红点兜底刷新（fetch 完成/标记已读也会推送，这里覆盖冷启动与页面返回）
         AppNoticeCenter.refreshUnseenState(this)
         try {
@@ -407,6 +431,25 @@ class MainActivity : HiltBaseActivity<ComposeViewBinding>(),
     override fun onStop() {
         easRepository.observeEasToken().removeObserver(easTokenObserver)
         super.onStop()
+    }
+
+    private fun applyVisibleTabs(token: cn.limpu.hita.data.model.eas.EASToken?) {
+        val current = visibleTabs.getOrNull(selectedTab)
+        val next = MainTab.visibleFor(token)
+        val blogAppeared = MainTab.BLOG !in visibleTabs && MainTab.BLOG in next
+        visibleTabs = next
+        val idx = current?.let { next.indexOf(it) } ?: -1
+        selectedTab = if (idx >= 0) idx else 0
+        if (blogAppeared) {
+            blogSyncAttempted = false
+        }
+    }
+
+    private fun maybeSyncBlog() {
+        if (MainTab.BLOG !in visibleTabs) return
+        if (blogSyncAttempted) return
+        blogSyncAttempted = true
+        blogRepository.syncOnAppOpen()
     }
 
     private var criticalNoticeHandled = false
@@ -786,14 +829,12 @@ private data class DrawerUserState(
     val loggedInLocalUser: Boolean = false,
 )
 
-private data class MainTabSpec(
-    val titleRes: Int,
-    val iconRes: Int,
-)
 
 @Composable
 private fun MainScreen(
     selectedTab: Int,
+    visibleTabs: List<MainTab>,
+    showBlogDot: Boolean,
     drawerOpen: Boolean,
     todayTitle: String,
     timetableTitle: String,
@@ -827,7 +868,7 @@ private fun MainScreen(
     onGitHubProject: () -> Unit,
     onGitHubMingyu: () -> Unit,
     onGitHubRuannuo: () -> Unit,
-    fragmentFactory: (Int) -> Fragment,
+    fragmentFactory: (MainTab) -> Fragment,
 ) {
     val density = LocalDensity.current
     val drawerWidth = 260.dp
@@ -869,7 +910,8 @@ private fun MainScreen(
         LiquidGlassBackdropHandle(liquidGlassBackdrop)
     }
     val useGlobalHaze = isAppleGlass
-    val timetableWallpaper = wallpaperBitmap.takeIf { selectedTab == 1 && wallpaperVisible }
+    val selectedTabId = visibleTabs.getOrNull(selectedTab)
+    val timetableWallpaper = wallpaperBitmap.takeIf { selectedTabId == MainTab.TIMETABLE && wallpaperVisible }
     val showTimetableWallpaper = timetableWallpaper != null
     val wallpaperTargetAlpha = if (showTimetableWallpaper) 1f else 0f
     val wallpaperAlpha by animateFloatAsState(
@@ -900,7 +942,7 @@ private fun MainScreen(
                 SumiBackground()
             }
 
-            // 用户壁纸只属于课表，不应透到“今日 / 助手 / 功能”页的状态栏区域。
+            // 用户壁纸只属于课表，不应透到“今日 / 助手 / 资讯 / 功能”页的状态栏区域。
             if (timetableWallpaper != null) {
                 Box(modifier = Modifier.fillMaxSize().graphicsLayer { alpha = wallpaperAlpha }) {
                     Image(
@@ -939,7 +981,7 @@ private fun MainScreen(
                     }
             ) {
                 MainTopBar(
-                    selectedTab = selectedTab,
+                    selectedTabId = selectedTabId,
                     todayTitle = todayTitle,
                     timetableTitle = timetableTitle,
                     timetableName = timetableName,
@@ -963,7 +1005,8 @@ private fun MainScreen(
                         .fillMaxWidth()
                 ) {
                     MainFragmentPager(
-                        selectedTab = selectedTab,
+                        selectedTabId = selectedTabId,
+                        visibleTabs = visibleTabs,
                         fragmentFactory = fragmentFactory,
                         modifier = Modifier.fillMaxSize()
                     )
@@ -977,7 +1020,9 @@ private fun MainScreen(
         if (!imeVisible) {
             MainPillTabBar(
                 selectedTab = selectedTab,
+                visibleTabs = visibleTabs,
                 showNoticeDot = noticeDotVisible,
+                showBlogDot = showBlogDot,
                 alpha = if (showTimetableWallpaper) 0.72f else 1f,
                 themeStyle = themeStyle,
                 hazeState = if (useGlobalHaze) hazeState else null,
@@ -1134,7 +1179,7 @@ private fun SumiBackground() {
 
 @Composable
 private fun MainTopBar(
-    selectedTab: Int,
+    selectedTabId: MainTab?,
     todayTitle: String,
     timetableTitle: String,
     timetableName: String,
@@ -1190,9 +1235,9 @@ private fun MainTopBar(
             .padding(start = HitaTheme.tokens.spacing.sm),
         verticalAlignment = Alignment.Bottom
     ) {
-        when (selectedTab) {
-            0 -> ToolbarTitle(todayTitle, titleColor)
-            1 -> TimetableToolbarTitle(
+        when (selectedTabId) {
+            MainTab.TIMELINE -> ToolbarTitle(todayTitle, titleColor)
+            MainTab.TIMETABLE -> TimetableToolbarTitle(
                 title = timetableTitle,
                 name = timetableName,
                 showName = showTimetableName,
@@ -1204,7 +1249,8 @@ private fun MainTopBar(
                 onTimetableSetting = onTimetableSetting,
                 onAddEvent = onAddEvent
             )
-            2 -> ToolbarTitle(stringResource(R.string.title_agent), titleColor)
+            MainTab.AGENT -> ToolbarTitle(stringResource(R.string.title_agent), titleColor)
+            MainTab.BLOG -> ToolbarTitle(stringResource(R.string.title_blog), titleColor)
             else -> NavigationToolbar(
                 themeIcon = themeIcon,
                 onTheme = onTheme,
@@ -1389,69 +1435,74 @@ private fun ToolbarIcon(
 
 @Composable
 private fun MainFragmentPager(
-    selectedTab: Int,
-    fragmentFactory: (Int) -> Fragment,
+    selectedTabId: MainTab?,
+    visibleTabs: List<MainTab>,
+    fragmentFactory: (MainTab) -> Fragment,
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
     val activity = context as MainActivity
-    val containerIds = remember { IntArray(4) { View.generateViewId() } }
-    val createdTabs = remember { mutableStateListOf(0) }
+    val containerIds = remember {
+        MainTab.entries.associateWith { View.generateViewId() }
+    }
+    val createdTabs = remember { mutableStateListOf(MainTab.TIMELINE) }
     val committedTags = remember { mutableSetOf<String>() }
 
-    LaunchedEffect(selectedTab) {
-        if (!createdTabs.contains(selectedTab)) {
-            createdTabs.add(selectedTab)
+    LaunchedEffect(selectedTabId) {
+        if (selectedTabId != null && selectedTabId !in createdTabs) {
+            createdTabs.add(selectedTabId)
         }
     }
 
     Box(modifier = modifier) {
-        createdTabs.forEach { index ->
-            val targetAlpha = if (index == selectedTab) 1f else 0f
+        createdTabs.forEach { tab ->
+            val selected = tab == selectedTabId && tab in visibleTabs
+            val targetAlpha = if (selected) 1f else 0f
             val alpha by animateFloatAsState(
                 targetValue = targetAlpha,
                 animationSpec = if (targetAlpha > 0f) spring(dampingRatio = 0.9f, stiffness = 300f) else snap(),
-                label = "tab_alpha_$index"
+                label = "tab_alpha_${tab.name}"
             )
 
-            AndroidView(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .graphicsLayer { this.alpha = alpha },
-                factory = { ctx ->
-                    FragmentContainerView(ctx).apply {
-                        id = containerIds[index]
-                        layoutParams = android.view.ViewGroup.LayoutParams(
-                            android.view.ViewGroup.LayoutParams.MATCH_PARENT,
-                            android.view.ViewGroup.LayoutParams.MATCH_PARENT
-                        )
-                    }
-                },
-                update = { container ->
-                    val selected = index == selectedTab
-                    val tag = "main_tab_$index"
-                    container.alpha = alpha
-                    container.visibility = if (selected) View.VISIBLE else View.INVISIBLE
-                    container.isEnabled = selected
-                    if (selected) {
-                        container.bringToFront()
-                        val f = activity.supportFragmentManager.findFragmentByTag(tag)
-                        (f as? FragmentTimeLine)?.onTabActivated()
-                    }
-                    if (tag !in committedTags) {
-                        val existing = activity.supportFragmentManager.findFragmentByTag(tag)
-                        if (existing != null) {
-                            activity.supportFragmentManager.beginTransaction()
-                                .remove(existing)
-                                .commitNowAllowingStateLoss()
+            androidx.compose.runtime.key(tab) {
+                AndroidView(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .graphicsLayer { this.alpha = alpha },
+                    factory = { ctx ->
+                        FragmentContainerView(ctx).apply {
+                            id = containerIds.getValue(tab)
+                            layoutParams = android.view.ViewGroup.LayoutParams(
+                                android.view.ViewGroup.LayoutParams.MATCH_PARENT,
+                                android.view.ViewGroup.LayoutParams.MATCH_PARENT
+                            )
                         }
-                        activity.supportFragmentManager.beginTransaction()
-                            .replace(containerIds[index], fragmentFactory(index), tag)
-                            .commitNowAllowingStateLoss()
-                        committedTags.add(tag)
+                    },
+                    update = { container ->
+                        val tag = "main_tab_${tab.name}"
+                        container.alpha = alpha
+                        container.visibility = if (selected) View.VISIBLE else View.INVISIBLE
+                        container.isEnabled = selected
+                        if (selected) {
+                            container.bringToFront()
+                            val f = activity.supportFragmentManager.findFragmentByTag(tag)
+                            (f as? FragmentTimeLine)?.onTabActivated()
+                        }
+                        if (tag !in committedTags) {
+                            val existing = activity.supportFragmentManager.findFragmentByTag(tag)
+                            if (existing != null) {
+                                activity.supportFragmentManager.beginTransaction()
+                                    .remove(existing)
+                                    .commitNowAllowingStateLoss()
+                            }
+                            activity.supportFragmentManager.beginTransaction()
+                                .replace(containerIds.getValue(tab), fragmentFactory(tab), tag)
+                                .commitNowAllowingStateLoss()
+                            committedTags.add(tag)
+                        }
                     }
-                }
-            )
+                )
+            }
         }
     }
 }
@@ -1514,7 +1565,9 @@ private fun Modifier.liquidGlassSurface(
 @Composable
 private fun MainPillTabBar(
     selectedTab: Int,
+    visibleTabs: List<MainTab>,
     showNoticeDot: Boolean,
+    showBlogDot: Boolean,
     alpha: Float,
     themeStyle: ThemeTools.STYLE,
     hazeState: HazeState?,
@@ -1522,17 +1575,11 @@ private fun MainPillTabBar(
     onSelectTab: (Int) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val tabs = remember {
-        listOf(
-            MainTabSpec(R.string.title_timeline, R.drawable.ic_nav_today),
-            MainTabSpec(R.string.title_timetable, R.drawable.ic_nav_timetable),
-            MainTabSpec(R.string.title_agent, R.drawable.ic_baseline_toys_24),
-            MainTabSpec(R.string.title_navigation, R.drawable.ic_nav_navigation),
-        )
-    }
+    val tabs = visibleTabs
     val view = LocalView.current
     val density = LocalDensity.current
-    val tabWidthPx = with(density) { CapsuleTabWidth.toPx() }
+    val tabWidth = if (tabs.size >= 5) 56.dp else CapsuleTabWidth
+    val tabWidthPx = with(density) { tabWidth.toPx() }
 
     val indicatorOffsetPx by animateFloatAsState(
         targetValue = selectedTab * tabWidthPx,
@@ -1653,7 +1700,7 @@ private fun MainPillTabBar(
             Surface(
                 modifier = Modifier
                     .graphicsLayer { translationX = indicatorOffsetPx }
-                    .width(CapsuleTabWidth)
+                    .width(tabWidth)
                     .height(44.dp),
                 shape = indicatorShape,
                 color = indicatorColor
@@ -1671,7 +1718,7 @@ private fun MainPillTabBar(
 
                     Column(
                         modifier = Modifier
-                            .width(CapsuleTabWidth)
+                            .width(tabWidth)
                             .clip(indicatorShape)
                             .clickable(
                                 indication = null,
@@ -1690,8 +1737,10 @@ private fun MainPillTabBar(
                                 tint = tint,
                                 modifier = Modifier.size(CapsuleTabIconSize)
                             )
-                            // 公告未读红点：只挂在「功能中心」tab 上，全主题用 error 色保证可见
-                            if (showNoticeDot && tab.titleRes == R.string.title_navigation) {
+                            // 公告未读红点：功能中心；资讯未读红点：资讯 tab
+                            if ((showNoticeDot && tab == MainTab.NAVIGATION) ||
+                                (showBlogDot && tab == MainTab.BLOG)
+                            ) {
                                 Box(
                                     modifier = Modifier
                                         .align(Alignment.TopEnd)

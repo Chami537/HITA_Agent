@@ -8,11 +8,14 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.remember
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringArrayResource
 import androidx.compose.ui.res.stringResource
@@ -22,6 +25,8 @@ import cn.limpu.hita.data.repository.CourseChange
 import cn.limpu.hita.data.repository.CourseVetoReason
 import cn.limpu.hita.data.repository.KeptCourse
 import cn.limpu.hita.data.repository.LessonSlotChange
+import cn.limpu.hita.data.repository.PendingChangeKind
+import cn.limpu.hita.data.repository.PendingChangeRow
 import cn.limpu.hita.data.repository.SlotChangeKind
 import cn.limpu.hita.data.repository.TimetableChangeState
 import cn.limpu.hita.data.repository.TimetableDecisionItem
@@ -32,14 +37,10 @@ import cn.limpu.hita.ui.design.HitaTheme
  * 课表变更详情弹窗。
  *
  * 分区展示一次刷新带来的全部变化，并承载需要用户决策的事项：
- * - 已更新：时间/地点/教师调整、课次增加的课，逐「周几 + 节次」槽位给出 原值 → 新值；
- * - 新增：课表源里新出现的课；
- * - 已保留：源端未返回或课次减少、被本地缓存保住的课（附保留原因与课次对比）；
+ * - 待采纳：时间/地点/教师调整与新增课，多选勾选后一次性采纳，忽略项可记住指纹；
+ * - 已保留：源端未返回或课次减少、被本地缓存保住的课；
  * - 待确认：持续缺失（3 次且 48 小时）的课，逐门"采用课表源 / 继续保留"；
- * - 课表源数据异常：源端与本地匹配率过低时整批挂起，"采用课表源数据 / 保留当前课表"。
- *
- * 全部文本走 strings.xml，配色走 MaterialTheme.colorScheme，间距走 HitaTheme.tokens，
- * 天然适配七种界面风格与明暗主题。
+ * - 课表源数据异常：源端与本地匹配率过低时整批挂起。
  */
 @Composable
 internal fun TimetableChangeDialog(
@@ -49,7 +50,19 @@ internal fun TimetableChangeDialog(
     onDismissCourse: (TimetableDecisionItem) -> Unit,
     onAdoptBatch: (TimetableHeldBatch) -> Unit,
     onDismissBatch: (TimetableHeldBatch) -> Unit,
+    onConfirmPending: (adopted: Set<String>, remember: Set<String>) -> Unit = { _, _ -> },
 ) {
+    val pendingRows = remember(state.pendingUpdates) { state.pendingUpdates.flatMap { it.rows } }
+    val adopted = remember(pendingRows) {
+        mutableStateMapOf<String, Boolean>().apply {
+            pendingRows.forEach { put(it.fingerprint, true) }
+        }
+    }
+    val rememberIgnore = remember(pendingRows) {
+        mutableStateMapOf<String, Boolean>().apply {
+            pendingRows.forEach { put(it.fingerprint, false) }
+        }
+    }
     AlertDialog(
         onDismissRequest = onDismiss,
         title = {
@@ -63,15 +76,24 @@ internal fun TimetableChangeDialog(
                 modifier = Modifier.verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(HitaTheme.tokens.spacing.md)
             ) {
+                if (pendingRows.isNotEmpty()) {
+                    SectionHeader(
+                        stringResource(R.string.timetable_change_section_confirm, pendingRows.size)
+                    )
+                    state.pendingUpdates.forEach { update ->
+                        CourseNameText(update.name)
+                        update.rows.forEach { row ->
+                            PendingChangeRowItem(
+                                row = row,
+                                adopted = adopted[row.fingerprint] == true,
+                                rememberIgnore = rememberIgnore[row.fingerprint] == true,
+                                onAdoptChange = { adopted[row.fingerprint] = it },
+                                onRememberChange = { rememberIgnore[row.fingerprint] = it },
+                            )
+                        }
+                    }
+                }
                 val info = state.info
-                if (info != null && info.updated.isNotEmpty()) {
-                    SectionHeader(stringResource(R.string.timetable_change_section_updated, info.updated.size))
-                    info.updated.forEach { change -> UpdatedCourseRow(change) }
-                }
-                if (info != null && info.added.isNotEmpty()) {
-                    SectionHeader(stringResource(R.string.timetable_change_section_added, info.added.size))
-                    info.added.forEach { name -> CourseNameText(name) }
-                }
                 if (info != null && info.keptCourses.isNotEmpty()) {
                     SectionHeader(stringResource(R.string.timetable_change_section_kept, info.keptCourses.size))
                     info.keptCourses.forEach { kept -> KeptCourseRow(kept) }
@@ -96,7 +118,11 @@ internal fun TimetableChangeDialog(
                         onKeep = { onDismissBatch(batch) },
                     )
                 }
-                if (state.info == null && state.decisions.isEmpty() && state.heldBatch == null) {
+                if (pendingRows.isEmpty() &&
+                    state.info == null &&
+                    state.decisions.isEmpty() &&
+                    state.heldBatch == null
+                ) {
                     Text(
                         text = stringResource(R.string.timetable_change_empty),
                         style = MaterialTheme.typography.bodyMedium,
@@ -106,11 +132,117 @@ internal fun TimetableChangeDialog(
             }
         },
         confirmButton = {
-            TextButton(onClick = onDismiss) {
-                Text(stringResource(R.string.timetable_change_close))
+            if (pendingRows.isNotEmpty()) {
+                TextButton(
+                    onClick = {
+                        val adoptedIds = pendingRows.mapNotNull { row ->
+                            row.fingerprint.takeIf { adopted[it] == true }
+                        }.toSet()
+                        val rememberIds = pendingRows.mapNotNull { row ->
+                            row.fingerprint.takeIf {
+                                adopted[it] != true && rememberIgnore[it] == true
+                            }
+                        }.toSet()
+                        onConfirmPending(adoptedIds, rememberIds)
+                        onDismiss()
+                    }
+                ) {
+                    Text(stringResource(R.string.timetable_change_apply_selected))
+                }
+            } else {
+                TextButton(onClick = onDismiss) {
+                    Text(stringResource(R.string.timetable_change_close))
+                }
             }
+        },
+        dismissButton = if (pendingRows.isNotEmpty()) {
+            {
+                TextButton(onClick = onDismiss) {
+                    Text(stringResource(R.string.timetable_change_close))
+                }
+            }
+        } else {
+            null
         }
     )
+}
+
+@Composable
+private fun PendingChangeRowItem(
+    row: PendingChangeRow,
+    adopted: Boolean,
+    rememberIgnore: Boolean,
+    onAdoptChange: (Boolean) -> Unit,
+    onRememberChange: (Boolean) -> Unit,
+) {
+    val weekdayNames = stringArrayResource(R.array.dow2)
+    val noneValue = stringResource(R.string.timetable_change_value_none)
+    val field = when (row.kind) {
+        PendingChangeKind.PLACE -> stringResource(R.string.timetable_change_field_place)
+        PendingChangeKind.TEACHER -> stringResource(R.string.timetable_change_field_teacher)
+        PendingChangeKind.TIME -> stringResource(R.string.timetable_change_field_time)
+        PendingChangeKind.WEEKS -> stringResource(R.string.timetable_change_field_weeks)
+        PendingChangeKind.SLOT_ADDED -> stringResource(R.string.timetable_change_slot_added)
+        PendingChangeKind.SLOT_REMOVED -> stringResource(R.string.timetable_change_slot_removed)
+        PendingChangeKind.ADDED_COURSE -> stringResource(R.string.timetable_change_added_course)
+        PendingChangeKind.RENAME -> stringResource(R.string.timetable_change_renamed_from, row.before)
+    }
+    val weekday = weekdayNames.getOrNull(row.dow - 1).orEmpty()
+    val period = when {
+        row.fromNumber <= 0 -> ""
+        row.lastNumber <= 1 -> stringResource(R.string.timetable_change_period_single, row.fromNumber)
+        else -> stringResource(
+            R.string.timetable_change_period_range,
+            row.fromNumber,
+            row.fromNumber + row.lastNumber - 1,
+        )
+    }
+    val slotLabel = listOf(weekday, period).filter { it.isNotEmpty() }.joinToString(" ")
+    val changeText = when (row.kind) {
+        PendingChangeKind.ADDED_COURSE, PendingChangeKind.SLOT_ADDED ->
+            listOf(slotLabel, row.after).filter { it.isNotEmpty() }.joinToString(" · ")
+        PendingChangeKind.SLOT_REMOVED ->
+            listOf(slotLabel, row.before).filter { it.isNotEmpty() }.joinToString(" · ")
+        PendingChangeKind.RENAME -> field
+        else -> {
+            val body = stringResource(
+                R.string.timetable_change_field_change,
+                field,
+                row.before.ifEmpty { noneValue },
+                row.after.ifEmpty { noneValue },
+            )
+            if (slotLabel.isEmpty()) body else "$slotLabel $body"
+        }
+    }
+    Column(modifier = Modifier.fillMaxWidth()) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Checkbox(checked = adopted, onCheckedChange = onAdoptChange)
+            Text(
+                text = changeText,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurface,
+                modifier = Modifier.weight(1f),
+            )
+        }
+        if (!adopted) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(start = HitaTheme.tokens.spacing.lg),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Checkbox(checked = rememberIgnore, onCheckedChange = onRememberChange)
+                Text(
+                    text = stringResource(R.string.timetable_change_remember_ignore),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+    }
 }
 
 @Composable

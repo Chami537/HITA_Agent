@@ -16,6 +16,8 @@ import cn.limpu.hita.data.model.eas.ScoreTermCacheEntity
 import cn.limpu.hita.data.model.timetable.EventItem
 import cn.limpu.hita.data.model.timetable.TermSubject
 import cn.limpu.hita.data.model.timetable.Timetable
+import cn.limpu.hita.data.model.blog.BlogArticle
+import cn.limpu.hita.data.model.notice.CampusNotice
 import cn.limpu.hita.data.source.dao.ChatMessageDao
 import cn.limpu.hita.data.source.dao.ChatSessionDao
 import cn.limpu.hita.data.source.dao.ClassroomCacheDao
@@ -23,11 +25,13 @@ import cn.limpu.hita.data.source.dao.EventItemDao
 import cn.limpu.hita.data.source.dao.ScoreCacheDao
 import cn.limpu.hita.data.source.dao.SubjectDao
 import cn.limpu.hita.data.source.dao.TimetableDao
+import cn.limpu.hita.data.source.dao.BlogArticleDao
+import cn.limpu.hita.data.source.dao.CampusNoticeDao
 import com.limpu.hitauser.data.source.dao.UserProfileDao
 
 @Database(
-    entities = [EventItem::class, TermSubject::class, Timetable::class, ChatSession::class, ChatMessageEntity::class, ClassroomCacheEntity::class, ScoreCacheEntity::class, ScoreTermCacheEntity::class, ScoreDetailCacheEntity::class],
-    version = 11
+    entities = [EventItem::class, TermSubject::class, Timetable::class, ChatSession::class, ChatMessageEntity::class, ClassroomCacheEntity::class, ScoreCacheEntity::class, ScoreTermCacheEntity::class, ScoreDetailCacheEntity::class, BlogArticle::class, CampusNotice::class],
+    version = 13
 )
 @androidx.room.TypeConverters(TypeConverters::class)
 abstract class AppDatabase : RoomDatabase() {
@@ -38,6 +42,8 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun chatMessageDao(): ChatMessageDao
     abstract fun classroomCacheDao(): ClassroomCacheDao
     abstract fun scoreCacheDao(): ScoreCacheDao
+    abstract fun blogArticleDao(): BlogArticleDao
+    abstract fun campusNoticeDao(): CampusNoticeDao
 
     companion object {
         @Volatile
@@ -51,7 +57,7 @@ abstract class AppDatabase : RoomDatabase() {
                         INSTANCE = Room.databaseBuilder(
                             context.applicationContext,
                             AppDatabase::class.java, "hita"
-                        ).addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11)
+                        ).addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13)
                             .fallbackToDestructiveMigration(true)
                             .build()
                     }
@@ -124,6 +130,21 @@ abstract class AppDatabase : RoomDatabase() {
             override fun migrate(db: SupportSQLiteDatabase) {
                 db.execSQL("CREATE TABLE IF NOT EXISTS score_detail_cache (ownerKey TEXT NOT NULL, cacheKey TEXT NOT NULL, payloadJson TEXT NOT NULL, cachedAt INTEGER NOT NULL, PRIMARY KEY(ownerKey, cacheKey))")
                 db.execSQL("CREATE INDEX IF NOT EXISTS index_score_detail_cache_ownerKey_cachedAt ON score_detail_cache(ownerKey, cachedAt)")
+            }
+        }
+
+        private val MIGRATION_11_12 = object : Migration(11, 12) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("CREATE TABLE IF NOT EXISTS blog_article (guid TEXT NOT NULL, title TEXT NOT NULL, link TEXT NOT NULL, pubDateMillis INTEGER NOT NULL, description TEXT NOT NULL, htmlContent TEXT NOT NULL, path TEXT NOT NULL, PRIMARY KEY(guid))")
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_blog_article_pubDateMillis ON blog_article(pubDateMillis)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_blog_article_path ON blog_article(path)")
+            }
+        }
+
+        private val MIGRATION_12_13 = object : Migration(12, 13) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("CREATE TABLE IF NOT EXISTS campus_notice (id TEXT NOT NULL, title TEXT NOT NULL, url TEXT NOT NULL, pubDateMillis INTEGER NOT NULL, PRIMARY KEY(id))")
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_campus_notice_pubDateMillis ON campus_notice(pubDateMillis)")
             }
         }
     }

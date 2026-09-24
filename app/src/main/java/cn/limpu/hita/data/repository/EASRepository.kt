@@ -1095,7 +1095,7 @@ class EASRepository @Inject constructor(
      *
      * 与手动导入（REPLACE）的差别：
      * - 课表源漏课或课次减少的课保留本地，不被错误源覆盖；
-     * - 时间/地点/教师变更与新增课次照常采纳；
+     * - 时间/地点/教师变更与新增课挂起，等用户多选确认后才覆盖；
      * - 持续缺失（3 次且 48 小时）升级为待用户确认；
      * - 源端与本地匹配率过低时整批挂起，等用户决策。
      *
@@ -1189,6 +1189,13 @@ class EASRepository @Inject constructor(
         // 课重新在源端出现后，清理它的过期待确认项（否则"采用课表源"会误删已回归的课）
         timetableChangeStore.pruneResolvedDecisions(term.id, plan.matchedCourseKeys)
 
+        val ignored = timetableChangeStore.ignoredFingerprints()
+        val pending = plan.pendingUpdates.mapNotNull { update ->
+            val filtered = update.withTerm(term.id, timetable.id).filterRows(ignored)
+            filtered.takeIf { it.rows.isNotEmpty() }
+        }
+        timetableChangeStore.recordPendingUpdates(pending)
+
         // 只有真实落库（有采纳的课）才捕获刷新前快照；纯保留/无变化不改数据，不打快照
         if (plan.adopt.isNotEmpty()) {
             timetableSnapshotStore.capture(
@@ -1207,8 +1214,6 @@ class EASRepository @Inject constructor(
             val adoptSubjectIds = plan.adopt.mapTo(HashSet()) { it.subjectId }
             subjectDao.saveSubjectsSync(plan.adopt.mapNotNull { pendingSubjects[it.subjectId] })
             val adoptEvents = events.filter { it.subjectId in adoptSubjectIds }
-            // 课次减少的课：源端缩掉的槽位保留本地课次（上面按整门删除后在此挂回，
-            // 课次 id 不变）。考试事件 subjectId 为空，不受整门删除影响。
             val keptEvents = mutableListOf<EventItem>()
             plan.partialMerges.forEach { partial ->
                 localEvents
@@ -1219,8 +1224,6 @@ class EASRepository @Inject constructor(
             }
             eventItemDao.saveEvents(adoptEvents + keptEvents)
 
-            // 仅在有采纳时更新课表元数据：整批保留时不动开学日期/作息，
-            // 避免保留课的旧课次与新元数据错位。
             timetable.name = timetableName
             timetable.startTime = Timestamp(startMillis)
             timetable.code = timetableCode
@@ -1239,12 +1242,12 @@ class EASRepository @Inject constructor(
             )
         }
 
-        if (plan.hasChanges && !firstImport) {
+        if ((plan.hasChanges || pending.isNotEmpty()) && !firstImport) {
             timetableChangeStore.recordApplied(
                 TimetableChangeInfo(
                     updatedAtMillis = System.currentTimeMillis(),
-                    updated = plan.updated,
-                    added = plan.added.map { it.name },
+                    updated = emptyList(),
+                    added = emptyList(),
                     keptCourses = plan.kept
                 ),
                 plan.decisions.map { decision ->

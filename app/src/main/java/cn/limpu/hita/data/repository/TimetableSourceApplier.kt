@@ -70,6 +70,59 @@ class TimetableSourceApplier @Inject constructor(
         )
     }
 
+    /**
+     * 用户对时间/地点/教师/新增课的多选确认。
+     * [adopted] 为勾选采纳的指纹；[remember] 为忽略且要求记住的指纹。
+     */
+    fun applyPendingConfirmations(adopted: Set<String>, remember: Collection<String>) {
+        changeStore.rememberIgnored(remember)
+        val updates = changeStore.consumePendingUpdates()
+        if (updates.isEmpty()) return
+        val byTimetable = updates.groupBy { it.timetableId }
+        for ((timetableId, group) in byTimetable) {
+            applyPendingGroup(timetableId, group, adopted)
+        }
+    }
+
+    @WorkerThread
+    private fun applyPendingGroup(
+        timetableId: String,
+        updates: List<PendingCourseUpdate>,
+        adopted: Set<String>,
+    ) {
+        val timetable = timetableDao.getTimetableByIdSync(timetableId) ?: return
+        val termId = updates.firstOrNull()?.termId.orEmpty()
+        if (termId.isNotEmpty()) captureSnapshot(timetable, termId)
+        val localSubjects = subjectDao.getSubjectsSync(timetable.id).associateBy { it.id }
+        var maxTo = timetable.endTime.time
+        for (update in updates) {
+            if (update.rows.none { it.fingerprint in adopted }) continue
+            val patched = CourseChangeConfirm.applyRows(
+                local = update.local,
+                incoming = update.incoming,
+                adopted = adopted,
+                rows = update.rows,
+            ) ?: continue
+            if (patched.lessons.isEmpty() && !update.isAdded) continue
+            val existing = localSubjects[patched.subjectId]
+            val subject = existing ?: TermSubject().apply {
+                this.id = patched.subjectId
+                this.timetableId = timetable.id
+                color = ColorTools.colorForName(CourseNameUtils.normalize(patched.name) ?: patched.name)
+            }
+            subject.name = patched.name
+            subject.timetableId = timetable.id
+            if (!patched.code.isNullOrBlank()) subject.code = patched.code
+            eventItemDao.deleteEventsFromSubjectsSync(listOf(subject.id))
+            subjectDao.saveSubjectsSync(listOf(subject))
+            val events = patched.lessons.map { it.toEventItem(subject.id, timetable.id) }
+            if (events.isNotEmpty()) eventItemDao.saveEvents(events)
+            maxTo = maxOf(maxTo, events.maxOfOrNull { it.to.time } ?: 0L)
+        }
+        timetable.endTime = Timestamp(maxTo)
+        timetableDao.saveTimetableSync(timetable)
+    }
+
     @WorkerThread
     private fun applyCourseDecision(item: TimetableDecisionItem) {
         val timetable = timetableDao.getTimetableByIdSync(item.timetableId)

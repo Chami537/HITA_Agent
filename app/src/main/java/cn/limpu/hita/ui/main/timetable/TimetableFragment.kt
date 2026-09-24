@@ -130,6 +130,11 @@ import cn.limpu.hita.ui.main.timetable.views.TimetableCardTextScale
 import cn.limpu.hita.ui.main.timetable.views.TimetableOverlapLayout
 import cn.limpu.hita.ui.main.timetable.views.TimetableOverlapLayout.PositionedEvent
 import cn.limpu.hita.ui.widgets.WidgetUtils
+import cn.limpu.hita.ui.subject.SubjectBatchDeleteDialog
+import cn.limpu.hita.ui.subject.SubjectBatchDeleteScope
+import cn.limpu.hita.ui.subject.SubjectBatchEditDialog
+import cn.limpu.hita.ui.subject.SubjectBatchEditScope
+import cn.limpu.hita.ui.subject.applySubjectBatchEdit
 import cn.limpu.hita.utils.ActivityUtils
 import cn.limpu.hita.utils.EventsUtils
 import cn.limpu.hita.utils.TimeTools
@@ -193,6 +198,9 @@ class TimetableFragment : HiltBaseFragment<ComposeViewBinding>() {
                     },
                     onAdoptBatch = { viewModel.adoptHeldBatch() },
                     onDismissBatch = { viewModel.dismissHeldBatch() },
+                    onConfirmPending = { adopted, remember ->
+                        viewModel.confirmPendingChanges(adopted, remember)
+                    },
                 )
             }
         }
@@ -302,8 +310,8 @@ class TimetableFragment : HiltBaseFragment<ComposeViewBinding>() {
                 .setIcon(R.drawable.ic_baseline_delete_24)
             pm.setOnMenuItemClickListener { item ->
                 when (item.itemId) {
-                    R.id.menu_edit_event -> showEditEventDialog(eventItem)
-                    R.id.menu_delete_event -> confirmDeleteEvents(listOf(eventItem))
+                    R.id.menu_edit_event -> showBatchScopePicker(eventItem, edit = true)
+                    R.id.menu_delete_event -> showBatchScopePicker(eventItem, edit = false)
                 }
                 true
             }
@@ -312,6 +320,56 @@ class TimetableFragment : HiltBaseFragment<ComposeViewBinding>() {
             }
             pm.show()
         }
+    }
+
+    private fun showBatchScopePicker(eventItem: EventItem, edit: Boolean) {
+        AlertDialog.Builder(requireContext())
+            .setTitle(R.string.subject_batch_scope_title)
+            .setItems(
+                arrayOf(
+                    getString(R.string.subject_batch_scope_this),
+                    getString(R.string.subject_batch_scope_slot),
+                    getString(R.string.subject_batch_scope_all),
+                )
+            ) { _, which ->
+                Thread {
+                    val all = viewModel.classesOfSubjectSync(eventItem.subjectId)
+                        .filter { it.type == EventItem.TYPE.CLASS }
+                    val targets = when (which) {
+                        0 -> listOf(eventItem)
+                        1 -> all.filter {
+                            it.getDow() == eventItem.getDow() &&
+                                it.fromNumber == eventItem.fromNumber &&
+                                it.lastNumber == eventItem.lastNumber
+                        }.ifEmpty { listOf(eventItem) }
+                        else -> all.ifEmpty { listOf(eventItem) }
+                    }
+                    val timetable = viewModel.timetableByIdSync(eventItem.timetableId)
+                    val editScope = when (which) {
+                        0 -> SubjectBatchEditScope.THIS
+                        1 -> SubjectBatchEditScope.SLOT
+                        else -> SubjectBatchEditScope.ALL
+                    }
+                    val deleteScope = when (which) {
+                        0 -> SubjectBatchDeleteScope.THIS
+                        1 -> SubjectBatchDeleteScope.SLOT
+                        else -> SubjectBatchDeleteScope.ALL
+                    }
+                    activity?.runOnUiThread {
+                        viewModel.beginBatchEdit(
+                            TimetableBatchSession(
+                                edit = edit,
+                                editScope = editScope,
+                                deleteScope = deleteScope,
+                                events = targets,
+                                timetable = timetable,
+                            )
+                        )
+                    }
+                }.start()
+            }
+            .setNegativeButton(R.string.button_cancel, null)
+            .show()
     }
 
     private fun confirmDeleteEvents(eventItems: List<EventItem>) {
@@ -355,6 +413,7 @@ private fun TimetableScreen(
     onDismissCourse: (TimetableDecisionItem) -> Unit,
     onAdoptBatch: (TimetableHeldBatch) -> Unit,
     onDismissBatch: (TimetableHeldBatch) -> Unit,
+    onConfirmPending: (Set<String>, Set<String>) -> Unit,
 ) {
     val context = LocalContext.current
     val currentPageStart by viewModel.currentPageStartDate.observeAsState(
@@ -452,9 +511,20 @@ private fun TimetableScreen(
         var showChangeDialog by remember { mutableStateOf(false) }
         val changeInfo = changeState?.info
         val changePendingCount = changeState?.pendingCount ?: 0
-        val changeAdjustCount =
-            (changeInfo?.updated?.size ?: 0) + (changeInfo?.added?.size ?: 0) +
-                (changeInfo?.keptCourses?.size ?: 0)
+        val changeAdjustCount = changeInfo?.keptCourses?.size ?: 0
+        val pendingRows = changeState?.pendingUpdates.orEmpty().sumOf { it.rows.size }
+        LaunchedEffect(
+            changeState?.pendingRevision,
+            changeState?.decisions?.size,
+            changeState?.heldBatch != null,
+        ) {
+            if (pendingRows > 0 ||
+                (changeState?.decisions?.isNotEmpty() == true) ||
+                changeState?.heldBatch != null
+            ) {
+                showChangeDialog = true
+            }
+        }
         if (showChangeDialog) {
             changeState?.let { state ->
                 TimetableChangeDialog(
@@ -467,6 +537,7 @@ private fun TimetableScreen(
                     onDismissCourse = onDismissCourse,
                     onAdoptBatch = onAdoptBatch,
                     onDismissBatch = onDismissBatch,
+                    onConfirmPending = onConfirmPending,
                 )
             }
         }
@@ -484,6 +555,48 @@ private fun TimetableScreen(
                         end = HitaTheme.tokens.spacing.lg,
                     )
             )
+        }
+        val batchSession by viewModel.batchSession.observeAsState()
+        batchSession?.let { session ->
+            if (session.edit) {
+                SubjectBatchEditDialog(
+                    scope = session.editScope,
+                    events = session.events,
+                    timetable = session.timetable,
+                    onDismiss = { viewModel.clearBatchSession() },
+                    onApply = { place, teacher, time ->
+                        val (edited, skippedTime) = applySubjectBatchEdit(
+                            events = session.events,
+                            timetable = session.timetable,
+                            place = place,
+                            teacher = teacher,
+                            time = time,
+                        )
+                        viewModel.updateEvents(edited)
+                        WidgetUtils.sendRefreshToAll(context)
+                        Toast.makeText(
+                            context,
+                            context.getString(R.string.subject_batch_updated, edited.size),
+                            Toast.LENGTH_SHORT,
+                        ).show()
+                        if (skippedTime) {
+                            Toast.makeText(context, R.string.subject_batch_week_missing, Toast.LENGTH_SHORT).show()
+                        }
+                        viewModel.clearBatchSession()
+                    },
+                )
+            } else {
+                SubjectBatchDeleteDialog(
+                    scope = session.deleteScope,
+                    count = session.events.size,
+                    onDismiss = { viewModel.clearBatchSession() },
+                    onConfirm = {
+                        viewModel.deleteEvents(session.events)
+                        WidgetUtils.sendRefreshToAll(context)
+                        viewModel.clearBatchSession()
+                    },
+                )
+            }
         }
     }
 }

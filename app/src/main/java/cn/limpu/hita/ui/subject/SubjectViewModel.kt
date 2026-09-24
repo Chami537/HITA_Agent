@@ -46,7 +46,20 @@ class SubjectViewModel @Inject constructor(
         subjectLiveData.value?.let { it1 -> subjectRepository.actionSaveSubjectInfo(it1) }
     }
 
-    fun deleteCourses(list:Collection<EventItem>) {
-       timetableRepository.actionDeleteEvents(list)
+    fun deleteCourses(list: Collection<EventItem>) {
+        if (list.isEmpty()) return
+        timetableRepository.actionDeleteEvents(list)
+    }
+
+    fun updateCourses(list: Collection<EventItem>) {
+        if (list.isEmpty()) return
+        timetableRepository.actionUpdateEvents(list)
+    }
+
+    fun deleteAllCourses() {
+        val all = classesLiveData.value.orEmpty()
+        if (all.isNotEmpty()) {
+            timetableRepository.actionDeleteEvents(all)
+        }
     }
 }
