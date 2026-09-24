@@ -29,7 +29,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -67,6 +66,9 @@ import cn.limpu.hita.data.repository.EASRepository
 import cn.limpu.hita.data.repository.TimetableRepository
 import cn.limpu.hita.data.source.preference.CourseReminderStore
 import cn.limpu.hita.data.work.CourseReminderScheduler
+import cn.limpu.hita.feature.livecourse.guard.LiveCourseGuardService
+import cn.limpu.hita.feature.livecourse.scheduler.LiveCourseScheduler
+import cn.limpu.hita.feature.livecourse.settings.LiveCourseSettings
 import cn.limpu.hita.ui.credit.CreditStatsActivity
 import cn.limpu.hita.ui.design.HitaComposeTheme
 import cn.limpu.hita.ui.design.HitaTheme
@@ -105,6 +107,8 @@ class NavigationFragment : androidx.fragment.app.Fragment() {
 
     private val viewModel: NavigationViewModel by viewModels()
     private var reminderEnabledState by mutableStateOf(false)
+    private var liveCourseEnabledState by mutableStateOf(false)
+    private var liveCourseStrongReminderState by mutableStateOf(false)
     private var usageAnalyticsEnabledState by mutableStateOf(true)
     private var noticeDotVisibleState by mutableStateOf(false)
     private var userStateVersion by mutableStateOf(0)
@@ -130,6 +134,17 @@ class NavigationFragment : androidx.fragment.app.Fragment() {
         }
     }
 
+    private val liveCourseNotificationPermissionLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { isGranted ->
+        if (isGranted) {
+            enableLiveCourse()
+        } else {
+            liveCourseEnabledState = false
+            Toast.makeText(requireContext(), R.string.live_course_notification_permission_required, Toast.LENGTH_LONG).show()
+        }
+    }
+
     override fun onCreateView(
         inflater: LayoutInflater,
         container: ViewGroup?,
@@ -137,6 +152,10 @@ class NavigationFragment : androidx.fragment.app.Fragment() {
     ): View {
         reminderEnabledState = CourseReminderStore(requireContext()).isEnabled()
         usageAnalyticsEnabledState = UsageAnalyticsClient.isEnabled(requireContext())
+        LiveCourseSettings(requireContext()).also { settings ->
+            liveCourseEnabledState = settings.isEnabled()
+            liveCourseStrongReminderState = settings.isStrongReminderEnabled()
+        }
         return ComposeView(requireContext()).apply {
             setContent {
                 HitaComposeTheme() {
@@ -148,6 +167,13 @@ class NavigationFragment : androidx.fragment.app.Fragment() {
                         easToken = easToken,
                         reminderEnabled = reminderEnabledState,
                         onToggleReminder = { toggleCourseReminder(!reminderEnabledState) },
+                        liveCourseEnabled = liveCourseEnabledState,
+                        onToggleLiveCourse = { toggleLiveCourse(!liveCourseEnabledState) },
+                        onOpenLiveCourseSystemSettings = { openLiveCourseSystemSettings() },
+                        liveCourseStrongReminderEnabled = liveCourseStrongReminderState,
+                        onToggleLiveCourseStrongReminder = {
+                            toggleLiveCourseStrongReminder(!liveCourseStrongReminderState)
+                        },
                         usageAnalyticsEnabled = usageAnalyticsEnabledState,
                         onToggleUsageAnalytics = { toggleUsageAnalytics() },
                         onOpenNotices = { openNotices() },
@@ -201,6 +227,17 @@ class NavigationFragment : androidx.fragment.app.Fragment() {
     override fun onStart() {
         super.onStart()
         reminderEnabledState = CourseReminderStore(requireContext()).isEnabled()
+        LiveCourseSettings(requireContext()).also { settings ->
+            liveCourseEnabledState = settings.isEnabled()
+            liveCourseStrongReminderState = settings.isStrongReminderEnabled()
+        }
+        // Returning from the Android "alarms and reminders" page can grant exact-alarm
+        // access after an inexact fallback alarm was already registered. Reconcile here so
+        // the next course transition is immediately replaced with an exact alarm.
+        if (liveCourseEnabledState) {
+            LiveCourseScheduler.autoSchedule(requireContext())
+            startLiveCourseGuardIfEnabled()
+        }
         usageAnalyticsEnabledState = UsageAnalyticsClient.isEnabled(requireContext())
         // 公告红点：本地内置 + 远程缓存公告有未读即亮；打开公告列表后标记已读，回到此页同步消失
         AppNoticeCenter.refreshUnseenState(requireContext())
@@ -353,6 +390,69 @@ class NavigationFragment : androidx.fragment.app.Fragment() {
         Toast.makeText(requireContext(), "课程提醒已开启（上课前15分钟提醒）", Toast.LENGTH_SHORT).show()
     }
 
+    private fun toggleLiveCourse(enable: Boolean) {
+        if (enable && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+            requireContext().checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) !=
+            android.content.pm.PackageManager.PERMISSION_GRANTED
+        ) {
+            liveCourseNotificationPermissionLauncher.launch(android.Manifest.permission.POST_NOTIFICATIONS)
+            return
+        }
+        if (enable) {
+            enableLiveCourse()
+        } else {
+            liveCourseEnabledState = false
+            LiveCourseSettings(requireContext()).also { settings ->
+                settings.setEnabled(false)
+                settings.setStrongReminderEnabled(false)
+            }
+            liveCourseStrongReminderState = false
+            LiveCourseGuardService.stop(requireContext())
+            LiveCourseScheduler.autoSchedule(requireContext())
+            Toast.makeText(requireContext(), R.string.live_course_disabled, Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    private fun enableLiveCourse() {
+        liveCourseEnabledState = true
+        val liveCourseSettings = LiveCourseSettings(requireContext())
+        liveCourseSettings.setEnabled(true)
+        LiveCourseScheduler.autoSchedule(requireContext())
+        startLiveCourseGuardIfEnabled()
+        Toast.makeText(requireContext(), R.string.live_course_enabled, Toast.LENGTH_SHORT).show()
+        if (!liveCourseSettings.canScheduleExactAlarms()) {
+            Toast.makeText(
+                requireContext(),
+                R.string.live_course_exact_alarm_permission_required,
+                Toast.LENGTH_LONG,
+            ).show()
+            startActivity(liveCourseSettings.exactAlarmSettingsIntent())
+        }
+    }
+
+    private fun openLiveCourseSystemSettings() {
+        startActivity(LiveCourseSettings(requireContext()).promotedNotificationSettingsIntent())
+    }
+
+    private fun toggleLiveCourseStrongReminder(enable: Boolean) {
+        if (!liveCourseEnabledState) return
+        liveCourseStrongReminderState = enable
+        LiveCourseSettings(requireContext()).setStrongReminderEnabled(enable)
+        if (enable) {
+            LiveCourseGuardService.start(requireContext())
+            Toast.makeText(requireContext(), R.string.live_course_strong_reminder_enabled, Toast.LENGTH_SHORT).show()
+        } else {
+            LiveCourseGuardService.stop(requireContext())
+            Toast.makeText(requireContext(), R.string.live_course_strong_reminder_disabled, Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    private fun startLiveCourseGuardIfEnabled() {
+        if (LiveCourseSettings(requireContext()).isStrongReminderEnabled()) {
+            LiveCourseGuardService.start(requireContext())
+        }
+    }
+
     private fun toggleUsageAnalytics() {
         val next = !usageAnalyticsEnabledState
         UsageAnalyticsClient.setEnabled(requireContext(), next)
@@ -373,6 +473,8 @@ private fun NavigationScreen(
     localUser: UserLocal,
     easToken: EASToken,
     reminderEnabled: Boolean,
+    liveCourseEnabled: Boolean,
+    liveCourseStrongReminderEnabled: Boolean,
     usageAnalyticsEnabled: Boolean,
     onAvatarClick: () -> Unit,
     onUserClick: () -> Unit,
@@ -390,6 +492,9 @@ private fun NavigationScreen(
     onCourseSubmit: () -> Unit,
     onUsefulLinks: () -> Unit,
     onToggleReminder: () -> Unit,
+    onToggleLiveCourse: () -> Unit,
+    onOpenLiveCourseSystemSettings: () -> Unit,
+    onToggleLiveCourseStrongReminder: () -> Unit,
     onToggleUsageAnalytics: () -> Unit,
     onOpenNotices: () -> Unit,
     showNoticeDot: Boolean = false,
@@ -501,6 +606,13 @@ private fun NavigationScreen(
                         onCheckedChange = { onToggleReminder() }
                     )
                 }
+            )
+            LiveCourseControl(
+                enabled = liveCourseEnabled,
+                strongReminderEnabled = liveCourseStrongReminderEnabled,
+                onToggle = onToggleLiveCourse,
+                onOpenSystemSettings = onOpenLiveCourseSystemSettings,
+                onToggleStrongReminder = onToggleLiveCourseStrongReminder,
             )
             NavigationRow(
                 icon = R.drawable.ic_info,
@@ -787,6 +899,53 @@ private fun NavigationRow(
                 tint = MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
+    }
+}
+
+@Composable
+private fun LiveCourseControl(
+    enabled: Boolean,
+    strongReminderEnabled: Boolean,
+    onToggle: () -> Unit,
+    onOpenSystemSettings: () -> Unit,
+    onToggleStrongReminder: () -> Unit,
+) {
+    NavigationRow(
+        icon = R.drawable.ic_baseline_access_time_24,
+        title = stringResource(R.string.live_course_title),
+        subtitle = stringResource(
+            if (enabled) R.string.live_course_active_badge else R.string.live_course_subtitle,
+        ),
+        onClick = onToggle,
+        trailing = {
+            Switch(
+                checked = enabled,
+                onCheckedChange = { onToggle() },
+            )
+        },
+    )
+    if (enabled) {
+        NavigationRow(
+            icon = R.drawable.ic_baseline_access_alarm_24,
+            title = stringResource(R.string.live_course_strong_reminder),
+            subtitle = stringResource(
+                if (strongReminderEnabled) R.string.live_course_strong_reminder_active
+                else R.string.live_course_strong_reminder_subtitle,
+            ),
+            onClick = onToggleStrongReminder,
+            trailing = {
+                Switch(
+                    checked = strongReminderEnabled,
+                    onCheckedChange = { onToggleStrongReminder() },
+                )
+            },
+        )
+        NavigationRow(
+            icon = R.drawable.ic_menu_settings,
+            title = stringResource(R.string.live_course_system_permission),
+            subtitle = stringResource(R.string.live_course_system_permission_subtitle),
+            onClick = onOpenSystemSettings,
+        )
     }
 }
 

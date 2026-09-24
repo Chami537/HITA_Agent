@@ -20,19 +20,24 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DatePicker
+import androidx.compose.material3.DatePickerDialog
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -43,10 +48,14 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.TimePicker
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.rememberDatePickerState
+import androidx.compose.material3.rememberTimePickerState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.livedata.observeAsState
 import androidx.compose.runtime.mutableStateOf
@@ -57,8 +66,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
@@ -66,8 +78,12 @@ import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.limpu.component.data.DataState
 import com.limpu.style.widgets.PopUpCheckableList
 import cn.limpu.hita.R
+import cn.limpu.hita.data.model.eas.CourseSelectionCourseStatus
+import cn.limpu.hita.data.model.eas.CourseSelectionJob
+import cn.limpu.hita.data.model.eas.CourseSelectionJobStatus
 import cn.limpu.hita.data.model.eas.EASToken
 import cn.limpu.hita.data.model.eas.ShenzhenCourseCatalogItem
+import cn.limpu.hita.data.model.eas.ShenzhenCourseCatalogPage
 import cn.limpu.hita.data.model.eas.ShenzhenCourseCatalogSource
 import cn.limpu.hita.data.model.eas.ShenzhenCourseAttachment
 import cn.limpu.hita.data.model.eas.ShenzhenCourseAttachmentKind
@@ -75,6 +91,9 @@ import cn.limpu.hita.data.model.eas.ShenzhenHistoricalFailureReport
 import cn.limpu.hita.data.model.eas.ShenzhenTeacherFailureRate
 import cn.limpu.hita.data.model.eas.ShenzhenSelectionPool
 import cn.limpu.hita.data.model.eas.TermItem
+import cn.limpu.hita.data.repository.CourseSelectionDraft
+import cn.limpu.hita.data.repository.CourseSelectionJobPolicy
+import cn.limpu.hita.data.work.CourseSelectionAlarmScheduler
 import cn.limpu.hita.ui.base.ComposeViewBinding
 import cn.limpu.hita.ui.design.HitaComposeTheme
 import cn.limpu.hita.ui.design.HitaTheme
@@ -88,19 +107,39 @@ import cn.limpu.hita.utils.TermNameFormatter
 import cn.limpu.hita.utils.TermUtils
 import cn.limpu.hita.ui.widgets.WidgetUtils
 import dagger.hilt.android.AndroidEntryPoint
+import java.text.SimpleDateFormat
+import java.util.Calendar
 import java.util.Locale
+import java.util.TimeZone
+import javax.inject.Inject
 
 @AndroidEntryPoint
 class ShenzhenCourseCatalogActivity :
     EASActivity<ShenzhenCourseCatalogViewModel, ComposeViewBinding>() {
 
     override val viewModel: ShenzhenCourseCatalogViewModel by viewModels()
+    @Inject
+    lateinit var courseSelectionAlarmScheduler: CourseSelectionAlarmScheduler
+
     private var terms by mutableStateOf<List<TermItem>>(emptyList())
     private var uiState by mutableStateOf<CatalogUiState>(CatalogUiState.Loading)
     private var attachmentDialog by mutableStateOf<CourseAttachmentDialogState?>(null)
     private var historicalFailureDialog by mutableStateOf<HistoricalFailureDialogState?>(null)
     private var isShowingCoursePlanPreview by mutableStateOf(false)
+    private var notificationPermissionGranted by mutableStateOf(true)
     private var pendingDownload: ShenzhenCourseAttachment? = null
+    private val notificationPermissionLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        notificationPermissionGranted = granted
+        if (!granted) {
+            Toast.makeText(
+                this,
+                R.string.course_selection_notification_permission_required,
+                Toast.LENGTH_LONG
+            ).show()
+        }
+    }
     private val storagePermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestPermission()
     ) { granted ->
@@ -121,6 +160,7 @@ class ShenzhenCourseCatalogActivity :
 
     override fun initViews() {
         super.initViews()
+        notificationPermissionGranted = hasNotificationPermission()
         bindLiveData()
         (binding.root as ComposeView).setContent {
             HitaComposeTheme {
@@ -133,17 +173,94 @@ class ShenzhenCourseCatalogActivity :
                         onClearDraft = { viewModel.clearCoursePlan() }
                     )
                 } else {
+                    val source by viewModel.sourceLiveData.observeAsState(
+                        ShenzhenCourseCatalogSource.AVAILABLE
+                    )
+                    val term by viewModel.selectedTermLiveData.observeAsState()
+                    val pool by viewModel.selectedPoolLiveData.observeAsState()
+                    val studentType by viewModel.studentTypeLiveData.observeAsState("1")
+                    val query by viewModel.queryLiveData.observeAsState()
+                    val pageState by viewModel.coursesLiveData.observeAsState()
+                    val followedSectionIds by viewModel.followedSectionIdsLiveData.observeAsState(emptySet())
+                    val coursePlanDraft by viewModel.courseSelectionDraftLiveData.observeAsState()
+                    val selectedCoursesState by viewModel.selectedCoursesLiveData.observeAsState()
+                    val selectedForSubmission by viewModel.selectedForSubmissionLiveData.observeAsState(emptySet())
+                    val selectedSubmissionCourses by
+                        viewModel.selectedSubmissionCoursesLiveData.observeAsState(emptyList())
+                    val selectionJobs by viewModel.selectionJobsLiveData.observeAsState(emptyList())
+
                     ShenzhenCourseCatalogScreen(
-                        viewModel = viewModel,
                         uiState = uiState,
+                        source = source,
+                        term = term,
+                        pool = pool,
+                        studentType = studentType,
+                        query = query,
+                        page = pageState?.data,
+                        followedSectionIds = followedSectionIds,
+                        coursePlanDraft = coursePlanDraft,
+                        selectedCourses = selectedCoursesState?.data.orEmpty(),
+                        selectedForSubmission = selectedForSubmission,
+                        selectedSubmissionCourses = selectedSubmissionCourses,
+                        selectionJobs = selectionJobs,
+                        notificationPermissionGranted = notificationPermissionGranted,
                         onBack = { finish() },
                         onRefresh = { refresh() },
                         onConnectWeb = { connectWebSession() },
+                        onSelectSource = viewModel::selectSource,
+                        onSearch = viewModel::search,
+                        onPreviousPage = viewModel::previousPage,
+                        onNextPage = viewModel::nextPage,
                         onSelectTerm = { showTermPicker() },
                         onSelectPool = { showPoolPicker() },
                         onSelectStudentType = { showStudentTypePicker() },
                         onRecommend = { openCourseRecommendation() },
                         onShowCoursePlan = { showCoursePlan() },
+                        onCoursePlanConflict = viewModel::coursePlanConflict,
+                        onToggleFollow = { course ->
+                            if (!viewModel.toggleFollow(course)) {
+                                Toast.makeText(
+                                    this,
+                                    R.string.course_selection_planning_data_loading,
+                                    Toast.LENGTH_SHORT
+                                ).show()
+                            }
+                        },
+                        onToggleCoursePlan = { course ->
+                            if (!viewModel.toggleCoursePlanCourse(course)) {
+                                Toast.makeText(
+                                    this,
+                                    R.string.course_selection_choose_term_first,
+                                    Toast.LENGTH_SHORT
+                                ).show()
+                            }
+                        },
+                        onToggleSubmission = { viewModel.toggleCourseForSubmission(it) },
+                        onCreateImmediateSelection = { viewModel.createImmediateSelectionJob() },
+                        onCreateScheduledSelection = { viewModel.createScheduledSelectionJob(it) },
+                        onCancelSelectionJob = { jobId ->
+                            if (viewModel.cancelSelectionJob(jobId)) {
+                                Toast.makeText(
+                                    this,
+                                    R.string.course_selection_job_cancelled,
+                                    Toast.LENGTH_SHORT
+                                ).show()
+                            }
+                        },
+                        onConfirmSelectionJob = { jobId ->
+                            if (viewModel.confirmSelectionJob(jobId)) {
+                                Toast.makeText(
+                                    this,
+                                    R.string.course_selection_reconfirmation_started,
+                                    Toast.LENGTH_SHORT
+                                ).show()
+                            }
+                        },
+                        onRequestNotificationPermission = { requestNotificationPermission() },
+                        canScheduleExactAlarms = courseSelectionAlarmScheduler::canScheduleExactAlarms,
+                        onOpenExactAlarmSettings = {
+                            startActivity(courseSelectionAlarmScheduler.exactAlarmSettingsIntent())
+                        },
                         attachmentDialog = attachmentDialog,
                         historicalFailureDialog = historicalFailureDialog,
                         onCourseClick = { showCourseActions(it) },
@@ -156,6 +273,11 @@ class ShenzhenCourseCatalogActivity :
                 }
             }
         }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        notificationPermissionGranted = hasNotificationPermission()
     }
 
     private fun bindLiveData() {
@@ -343,6 +465,37 @@ class ShenzhenCourseCatalogActivity :
                 else -> Unit
             }
         }
+        viewModel.selectionCommandEventLiveData.observe(this) { result ->
+            result ?: return@observe
+            val message = when (result) {
+                is CourseSelectionCommandResult.Created ->
+                    getString(R.string.course_selection_job_created)
+                is CourseSelectionCommandResult.Rejected -> when (result.failure) {
+                    CourseSelectionCommandFailure.NO_TERM ->
+                        getString(R.string.course_selection_choose_term_first)
+                    CourseSelectionCommandFailure.NO_POOL ->
+                        getString(R.string.course_selection_choose_pool_first)
+                    CourseSelectionCommandFailure.NO_COURSES ->
+                        getString(R.string.course_selection_choose_courses_first)
+                    CourseSelectionCommandFailure.TOO_MANY_COURSES ->
+                        getString(
+                            R.string.course_selection_too_many_courses,
+                            CourseSelectionJobPolicy.MAX_COURSES
+                        )
+                    CourseSelectionCommandFailure.SCHEDULE_TOO_SOON,
+                    CourseSelectionCommandFailure.SCHEDULE_TOO_FAR ->
+                        getString(R.string.course_selection_schedule_range_error)
+                    CourseSelectionCommandFailure.CREATION_FAILED ->
+                        getString(R.string.course_selection_job_creation_failed)
+                    CourseSelectionCommandFailure.CANNOT_CANCEL ->
+                        getString(R.string.course_selection_job_cannot_cancel)
+                    CourseSelectionCommandFailure.CANNOT_CONFIRM ->
+                        getString(R.string.course_selection_reconfirmation_failed)
+                }
+            }
+            Toast.makeText(this, message, Toast.LENGTH_LONG).show()
+            viewModel.consumeSelectionCommandEvent()
+        }
     }
 
     override fun refresh() {
@@ -372,6 +525,19 @@ class ShenzhenCourseCatalogActivity :
                 override fun onFailed(window: PopUpLoginEAS) = Unit
             }
         )
+    }
+
+    private fun hasNotificationPermission(): Boolean =
+        Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
+            ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) ==
+            PackageManager.PERMISSION_GRANTED
+
+    private fun requestNotificationPermission() {
+        if (hasNotificationPermission()) {
+            notificationPermissionGranted = true
+        } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+        }
     }
 
     private fun showTermPicker() {
@@ -509,16 +675,43 @@ private data class HistoricalFailureDialogState(
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun ShenzhenCourseCatalogScreen(
-    viewModel: ShenzhenCourseCatalogViewModel,
     uiState: CatalogUiState,
+    source: ShenzhenCourseCatalogSource,
+    term: TermItem?,
+    pool: ShenzhenSelectionPool?,
+    studentType: String,
+    query: ShenzhenCourseCatalogQuery?,
+    page: ShenzhenCourseCatalogPage?,
+    followedSectionIds: Set<String>,
+    coursePlanDraft: CourseSelectionDraft?,
+    selectedCourses: List<ShenzhenCourseCatalogItem>,
+    selectedForSubmission: Set<String>,
+    selectedSubmissionCourses: List<ShenzhenCourseCatalogItem>,
+    selectionJobs: List<CourseSelectionJob>,
+    notificationPermissionGranted: Boolean,
     onBack: () -> Unit,
     onRefresh: () -> Unit,
     onConnectWeb: () -> Unit,
+    onSelectSource: (ShenzhenCourseCatalogSource) -> Unit,
+    onSearch: (String) -> Unit,
+    onPreviousPage: () -> Unit,
+    onNextPage: () -> Unit,
     onSelectTerm: () -> Unit,
     onSelectPool: () -> Unit,
     onSelectStudentType: () -> Unit,
     onRecommend: () -> Unit,
     onShowCoursePlan: () -> Unit,
+    onCoursePlanConflict: (ShenzhenCourseCatalogItem) -> String?,
+    onToggleFollow: (ShenzhenCourseCatalogItem) -> Unit,
+    onToggleCoursePlan: (ShenzhenCourseCatalogItem) -> Unit,
+    onToggleSubmission: (ShenzhenCourseCatalogItem) -> Unit,
+    onCreateImmediateSelection: () -> Unit,
+    onCreateScheduledSelection: (Long) -> Unit,
+    onCancelSelectionJob: (String) -> Unit,
+    onConfirmSelectionJob: (String) -> Unit,
+    onRequestNotificationPermission: () -> Unit,
+    canScheduleExactAlarms: () -> Boolean,
+    onOpenExactAlarmSettings: () -> Unit,
     attachmentDialog: CourseAttachmentDialogState?,
     historicalFailureDialog: HistoricalFailureDialogState?,
     onCourseClick: (ShenzhenCourseCatalogItem) -> Unit,
@@ -528,23 +721,17 @@ private fun ShenzhenCourseCatalogScreen(
     onDismissHistoricalFailure: () -> Unit,
     onRetryHistoricalFailure: () -> Unit
 ) {
-    val context = androidx.compose.ui.platform.LocalContext.current
     val tokens = HitaTheme.tokens
-    val source by viewModel.sourceLiveData.observeAsState(ShenzhenCourseCatalogSource.AVAILABLE)
-    val term by viewModel.selectedTermLiveData.observeAsState()
-    val pool by viewModel.selectedPoolLiveData.observeAsState()
-    val studentType by viewModel.studentTypeLiveData.observeAsState("1")
-    val query by viewModel.queryLiveData.observeAsState()
-    val pageState by viewModel.coursesLiveData.observeAsState()
-    val followedSectionIds by viewModel.followedSectionIdsLiveData.observeAsState(emptySet())
-    val coursePlanDraft by viewModel.courseSelectionDraftLiveData.observeAsState()
-    val selectedCoursesState by viewModel.selectedCoursesLiveData.observeAsState()
-    val selectedCourses = selectedCoursesState?.data.orEmpty()
     val selectedCourseIds = selectedCourses.mapTo(hashSetOf()) { it.taskId.ifBlank { it.id } }
     val effectivePreviewCount = (selectedCourses + coursePlanDraft?.courses.orEmpty())
         .distinctBy { it.taskId.ifBlank { it.id } }
         .size
-    val page = pageState?.data
+    val activeSelectionJobs = selectionJobs
+        .filter { it.status == CourseSelectionJobStatus.WAITING || it.status == CourseSelectionJobStatus.RUNNING }
+        .sortedBy { it.scheduledAtMillis }
+    val terminalSelectionJobs = selectionJobs
+        .filterNot { it.status == CourseSelectionJobStatus.WAITING || it.status == CourseSelectionJobStatus.RUNNING }
+        .sortedByDescending { it.createdAtMillis }
     val isLoading = uiState is CatalogUiState.Loading ||
         (uiState is CatalogUiState.Ready && uiState.refreshing)
     val errorMessage = when (uiState) {
@@ -554,6 +741,22 @@ private fun ShenzhenCourseCatalogScreen(
         CatalogUiState.Loading -> null
     }
     var keyword by remember(query?.keyword) { mutableStateOf(query?.keyword.orEmpty()) }
+    var showImmediateConfirmation by remember { mutableStateOf(false) }
+    var showScheduleDatePicker by remember { mutableStateOf(false) }
+    var scheduledDateMillis by remember { mutableStateOf<Long?>(null) }
+    var showExactAlarmGuidance by remember { mutableStateOf(false) }
+    var awaitingNotificationPermission by remember { mutableStateOf(false) }
+
+    LaunchedEffect(notificationPermissionGranted, awaitingNotificationPermission) {
+        if (notificationPermissionGranted && awaitingNotificationPermission) {
+            awaitingNotificationPermission = false
+            if (canScheduleExactAlarms()) {
+                showScheduleDatePicker = true
+            } else {
+                showExactAlarmGuidance = true
+            }
+        }
+    }
 
     attachmentDialog?.let { state ->
         CourseAttachmentDialog(
@@ -568,6 +771,45 @@ private fun ShenzhenCourseCatalogScreen(
             state = state,
             onDismiss = onDismissHistoricalFailure,
             onRetry = onRetryHistoricalFailure
+        )
+    }
+    if (showImmediateConfirmation) {
+        ImmediateSelectionConfirmationDialog(
+            courses = selectedSubmissionCourses,
+            onDismiss = { showImmediateConfirmation = false },
+            onConfirm = {
+                showImmediateConfirmation = false
+                onCreateImmediateSelection()
+            }
+        )
+    }
+    if (showExactAlarmGuidance) {
+        ExactAlarmGuidanceDialog(
+            onDismiss = { showExactAlarmGuidance = false },
+            onOpenSettings = {
+                showExactAlarmGuidance = false
+                onOpenExactAlarmSettings()
+            }
+        )
+    }
+    if (showScheduleDatePicker) {
+        SelectionScheduleDateDialog(
+            onDismiss = { showScheduleDatePicker = false },
+            onDateSelected = { dateMillis ->
+                showScheduleDatePicker = false
+                scheduledDateMillis = dateMillis
+            }
+        )
+    }
+    scheduledDateMillis?.let { dateMillis ->
+        SelectionScheduleTimeDialog(
+            dateMillis = dateMillis,
+            courseCount = selectedSubmissionCourses.size,
+            onDismiss = { scheduledDateMillis = null },
+            onConfirm = { scheduledAtMillis ->
+                scheduledDateMillis = null
+                onCreateScheduledSelection(scheduledAtMillis)
+            }
         )
     }
 
@@ -610,21 +852,35 @@ private fun ShenzhenCourseCatalogScreen(
             )
         )
 
-        if (uiState is CatalogUiState.NeedsWebLogin) {
-            WebLoginRequiredCard(
-                message = uiState.message,
-                onConnectWeb = onConnectWeb,
-                modifier = Modifier.padding(tokens.spacing.lg)
-            )
-            return@Column
-        }
-
-        if (uiState is CatalogUiState.Error && page == null) {
-            CatalogErrorCard(
-                message = uiState.message,
-                onRetry = onRefresh,
-                modifier = Modifier.padding(tokens.spacing.lg)
-            )
+        if (
+            uiState is CatalogUiState.NeedsWebLogin ||
+            (uiState is CatalogUiState.Error && page == null)
+        ) {
+            LazyColumn(
+                modifier = Modifier.weight(1f),
+                contentPadding = PaddingValues(tokens.spacing.lg),
+                verticalArrangement = Arrangement.spacedBy(tokens.spacing.sm)
+            ) {
+                selectionJobItems(
+                    activeJobs = activeSelectionJobs,
+                    terminalJobs = terminalSelectionJobs,
+                    onCancel = onCancelSelectionJob,
+                    onReconfirm = onConfirmSelectionJob
+                )
+                item {
+                    when (uiState) {
+                        is CatalogUiState.NeedsWebLogin -> WebLoginRequiredCard(
+                            message = uiState.message,
+                            onConnectWeb = onConnectWeb
+                        )
+                        is CatalogUiState.Error -> CatalogErrorCard(
+                            message = uiState.message,
+                            onRetry = onRefresh
+                        )
+                        else -> Unit
+                    }
+                }
+            }
             return@Column
         }
 
@@ -636,13 +892,13 @@ private fun ShenzhenCourseCatalogScreen(
         ) {
             FilterChip(
                 selected = source == ShenzhenCourseCatalogSource.AVAILABLE,
-                onClick = { viewModel.selectSource(ShenzhenCourseCatalogSource.AVAILABLE) },
+                onClick = { onSelectSource(ShenzhenCourseCatalogSource.AVAILABLE) },
                 label = { Text("教务选课池") },
                 modifier = Modifier.weight(1f)
             )
             FilterChip(
                 selected = source == ShenzhenCourseCatalogSource.SCHOOL,
-                onClick = { viewModel.selectSource(ShenzhenCourseCatalogSource.SCHOOL) },
+                onClick = { onSelectSource(ShenzhenCourseCatalogSource.SCHOOL) },
                 label = { Text("全校课表") },
                 modifier = Modifier.weight(1f)
             )
@@ -669,7 +925,7 @@ private fun ShenzhenCourseCatalogScreen(
             },
             keyword = keyword,
             onKeywordChange = { keyword = it },
-            onSearch = { viewModel.search(keyword) },
+            onSearch = { onSearch(keyword) },
             onSelectTerm = onSelectTerm,
             onSelectSecondary = if (source == ShenzhenCourseCatalogSource.AVAILABLE) {
                 onSelectPool
@@ -706,7 +962,7 @@ private fun ShenzhenCourseCatalogScreen(
         }
 
         LazyColumn(
-            modifier = Modifier.fillMaxSize(),
+            modifier = Modifier.weight(1f),
             contentPadding = PaddingValues(
                 start = tokens.spacing.lg,
                 end = tokens.spacing.lg,
@@ -715,6 +971,12 @@ private fun ShenzhenCourseCatalogScreen(
             ),
             verticalArrangement = Arrangement.spacedBy(tokens.spacing.sm)
         ) {
+            selectionJobItems(
+                activeJobs = activeSelectionJobs,
+                terminalJobs = terminalSelectionJobs,
+                onCancel = onCancelSelectionJob,
+                onReconfirm = onConfirmSelectionJob
+            )
             if (page != null) {
                 item {
                     Text(
@@ -730,28 +992,16 @@ private fun ShenzhenCourseCatalogScreen(
                         selectedInEas = item.taskId.ifBlank { item.id } in selectedCourseIds,
                         inCoursePlan = item.taskId.ifBlank { item.id } in coursePlanDraft?.courseIds.orEmpty(),
                         conflictMessage = if (item.source == ShenzhenCourseCatalogSource.AVAILABLE) {
-                            viewModel.coursePlanConflict(item)
+                            onCoursePlanConflict(item)
                         } else {
                             null
                         },
-                        onToggleFollow = {
-                            if (!viewModel.toggleFollow(item)) {
-                                Toast.makeText(
-                                    context,
-                                    "正在加载本学期日期与作息，请稍后再试",
-                                    Toast.LENGTH_SHORT
-                                ).show()
-                            }
-                        },
-                        onToggleCoursePlan = {
-                            if (!viewModel.toggleCoursePlanCourse(item)) {
-                                Toast.makeText(
-                                    context,
-                                    "请先选择课程所在学期",
-                                    Toast.LENGTH_SHORT
-                                ).show()
-                            }
-                        },
+                        selectable = ShenzhenCourseSelectionUiPolicy.canSelect(item),
+                        selectedForSubmission = item.selectionRequestId.isNotBlank() &&
+                            item.selectionRequestId in selectedForSubmission,
+                        onToggleFollow = { onToggleFollow(item) },
+                        onToggleCoursePlan = { onToggleCoursePlan(item) },
+                        onToggleSubmission = { onToggleSubmission(item) },
                         onClick = { onCourseClick(item) }
                     )
                 }
@@ -759,8 +1009,8 @@ private fun ShenzhenCourseCatalogScreen(
                     PaginationRow(
                         page = page.page,
                         hasNext = page.hasNextPage,
-                        onPrevious = viewModel::previousPage,
-                        onNext = viewModel::nextPage
+                        onPrevious = onPreviousPage,
+                        onNext = onNextPage
                     )
                 }
             } else if (isLoading) {
@@ -776,8 +1026,501 @@ private fun ShenzhenCourseCatalogScreen(
                 }
             }
         }
+        if (source == ShenzhenCourseCatalogSource.AVAILABLE) {
+            SelectionActionBar(
+                selectedCount = selectedSubmissionCourses.size,
+                onSubmitNow = { showImmediateConfirmation = true },
+                onSchedule = {
+                    when {
+                        !notificationPermissionGranted -> {
+                            awaitingNotificationPermission = true
+                            onRequestNotificationPermission()
+                        }
+                        !canScheduleExactAlarms() -> showExactAlarmGuidance = true
+                        else -> showScheduleDatePicker = true
+                    }
+                }
+            )
+        }
     }
 }
+
+@Composable
+private fun SelectionActionBar(
+    selectedCount: Int,
+    onSubmitNow: () -> Unit,
+    onSchedule: () -> Unit
+) {
+    val tokens = HitaTheme.tokens
+    Surface(
+        modifier = Modifier.navigationBarsPadding(),
+        color = MaterialTheme.colorScheme.surface,
+        tonalElevation = 4.dp
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = tokens.spacing.lg, vertical = tokens.spacing.sm)
+        ) {
+            Text(
+                text = stringResource(R.string.course_selection_selected_count, selectedCount),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                fontSize = 13.sp
+            )
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = tokens.spacing.xs),
+                horizontalArrangement = Arrangement.spacedBy(tokens.spacing.sm)
+            ) {
+                OutlinedButton(
+                    onClick = onSubmitNow,
+                    enabled = selectedCount > 0,
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Text(stringResource(R.string.course_selection_submit_now))
+                }
+                Button(
+                    onClick = onSchedule,
+                    enabled = selectedCount > 0,
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Text(stringResource(R.string.course_selection_schedule_submit))
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ImmediateSelectionConfirmationDialog(
+    courses: List<ShenzhenCourseCatalogItem>,
+    onDismiss: () -> Unit,
+    onConfirm: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.course_selection_immediate_title)) },
+        text = {
+            Column {
+                Text(
+                    text = stringResource(R.string.course_selection_real_side_effect_warning),
+                    color = MaterialTheme.colorScheme.error,
+                    fontWeight = FontWeight.SemiBold
+                )
+                Text(
+                    text = stringResource(R.string.course_selection_selected_courses_title),
+                    modifier = Modifier.padding(top = 12.dp),
+                    fontWeight = FontWeight.Medium
+                )
+                LazyColumn(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(max = 220.dp),
+                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    items(courses, key = { "confirm-${it.selectionRequestId}" }) { course ->
+                        Text(
+                            text = stringResource(
+                                R.string.course_selection_course_name_item,
+                                course.courseName
+                            ),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onConfirm, enabled = courses.isNotEmpty()) {
+                Text(stringResource(R.string.course_selection_confirm_submit))
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) }
+        }
+    )
+}
+
+@Composable
+private fun ExactAlarmGuidanceDialog(
+    onDismiss: () -> Unit,
+    onOpenSettings: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.course_selection_exact_alarm_title)) },
+        text = {
+            Text(stringResource(R.string.course_selection_exact_alarm_permission_explanation))
+        },
+        confirmButton = {
+            TextButton(onClick = onOpenSettings) {
+                Text(stringResource(R.string.course_selection_open_exact_alarm_settings))
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) }
+        }
+    )
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun SelectionScheduleDateDialog(
+    onDismiss: () -> Unit,
+    onDateSelected: (Long) -> Unit
+) {
+    val initialSelection = remember { defaultSelectionScheduleMillis() }
+    val datePickerState = rememberDatePickerState(initialSelectedDateMillis = initialSelection)
+    DatePickerDialog(
+        onDismissRequest = onDismiss,
+        confirmButton = {
+            TextButton(
+                onClick = { datePickerState.selectedDateMillis?.let(onDateSelected) },
+                enabled = datePickerState.selectedDateMillis != null
+            ) {
+                Text(stringResource(R.string.course_selection_next_to_time))
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) }
+        }
+    ) {
+        DatePicker(
+            state = datePickerState,
+            title = {
+                Text(
+                    text = stringResource(R.string.course_selection_choose_date),
+                    modifier = Modifier.padding(start = 24.dp, top = 16.dp)
+                )
+            },
+            showModeToggle = false
+        )
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun SelectionScheduleTimeDialog(
+    dateMillis: Long,
+    courseCount: Int,
+    onDismiss: () -> Unit,
+    onConfirm: (Long) -> Unit
+) {
+    val initialSelection = remember { Calendar.getInstance().apply { add(Calendar.MINUTE, 1) } }
+    val timePickerState = rememberTimePickerState(
+        initialHour = initialSelection.get(Calendar.HOUR_OF_DAY),
+        initialMinute = initialSelection.get(Calendar.MINUTE),
+        is24Hour = true
+    )
+    var secondsInput by remember {
+        mutableStateOf(initialSelection.get(Calendar.SECOND).toString().padStart(2, '0'))
+    }
+    var validationError by remember { mutableStateOf<Int?>(null) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.course_selection_choose_time)) },
+        text = {
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Text(
+                    text = stringResource(
+                        R.string.course_selection_schedule_date,
+                        formatSelectionDate(dateMillis)
+                    ),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = 8.dp)
+                )
+                TimePicker(state = timePickerState)
+                OutlinedTextField(
+                    value = secondsInput,
+                    onValueChange = { value ->
+                        if (value.length <= 2 && value.all { it.isDigit() }) {
+                            secondsInput = value
+                            validationError = null
+                        }
+                    },
+                    label = { Text(stringResource(R.string.course_selection_seconds)) },
+                    singleLine = true,
+                    isError = validationError != null,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    modifier = Modifier.fillMaxWidth()
+                )
+                Text(
+                    text = stringResource(
+                        R.string.course_selection_schedule_course_count,
+                        courseCount
+                    ),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    fontSize = 12.sp,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 8.dp)
+                )
+                validationError?.let { messageRes ->
+                    Text(
+                        text = stringResource(messageRes),
+                        color = MaterialTheme.colorScheme.error,
+                        fontSize = 12.sp,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 4.dp)
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = {
+                val seconds = secondsInput.toIntOrNull()
+                if (seconds == null || seconds !in 0..59) {
+                    validationError = R.string.course_selection_invalid_seconds
+                } else {
+                    val scheduledAtMillis = combineSelectionDateTime(
+                        dateMillis = dateMillis,
+                        hour = timePickerState.hour,
+                        minute = timePickerState.minute,
+                        second = seconds
+                    )
+                    when (ShenzhenCourseSelectionUiPolicy.validateSchedule(
+                        now = System.currentTimeMillis(),
+                        scheduled = scheduledAtMillis
+                    )) {
+                        CourseSelectionScheduleValidation.VALID -> onConfirm(scheduledAtMillis)
+                        CourseSelectionScheduleValidation.TOO_SOON,
+                        CourseSelectionScheduleValidation.TOO_FAR ->
+                            validationError = R.string.course_selection_schedule_range_error
+                    }
+                }
+            }) {
+                Text(stringResource(R.string.course_selection_create_schedule))
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) }
+        }
+    )
+}
+
+private fun LazyListScope.selectionJobItems(
+    activeJobs: List<CourseSelectionJob>,
+    terminalJobs: List<CourseSelectionJob>,
+    onCancel: (String) -> Unit,
+    onReconfirm: (String) -> Unit
+) {
+    if (activeJobs.isNotEmpty()) {
+        item {
+            SelectionJobSectionTitle(R.string.course_selection_active_jobs)
+        }
+        items(activeJobs, key = { "selection-job-${it.id}" }) { job ->
+            SelectionJobCard(
+                job = job,
+                onCancel = { onCancel(job.id) },
+                onReconfirm = { onReconfirm(job.id) }
+            )
+        }
+    }
+    if (terminalJobs.isNotEmpty()) {
+        item {
+            SelectionJobSectionTitle(R.string.course_selection_recent_jobs)
+        }
+        items(terminalJobs, key = { "selection-job-${it.id}" }) { job ->
+            SelectionJobCard(
+                job = job,
+                onCancel = { onCancel(job.id) },
+                onReconfirm = { onReconfirm(job.id) }
+            )
+        }
+    }
+}
+
+@Composable
+private fun SelectionJobSectionTitle(titleRes: Int) {
+    Text(
+        text = stringResource(titleRes),
+        color = MaterialTheme.colorScheme.primary,
+        fontWeight = FontWeight.SemiBold,
+        modifier = Modifier.padding(top = 8.dp)
+    )
+}
+
+@Composable
+private fun SelectionJobCard(
+    job: CourseSelectionJob,
+    onCancel: () -> Unit,
+    onReconfirm: () -> Unit
+) {
+    val tokens = HitaTheme.tokens
+    val shape = RoundedCornerShape(tokens.radius.lg)
+    val canReconfirm = job.status !in setOf(
+        CourseSelectionJobStatus.WAITING,
+        CourseSelectionJobStatus.RUNNING,
+        CourseSelectionJobStatus.CANCELLED
+    ) && job.results.any {
+        it.status == CourseSelectionCourseStatus.UNCONFIRMED ||
+            it.status == CourseSelectionCourseStatus.UNKNOWN
+    }
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .hitaGlassCardModifier(shape),
+        shape = shape,
+        colors = hitaGlassCardColors(),
+        border = hitaGlassCardBorder(),
+        elevation = CardDefaults.cardElevation(0.dp)
+    ) {
+        Column(modifier = Modifier.padding(tokens.spacing.lg)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    text = selectionJobStatusText(job.status),
+                    color = selectionJobStatusColor(job.status),
+                    fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier.weight(1f)
+                )
+                Text(
+                    text = stringResource(
+                        R.string.course_selection_job_course_count,
+                        job.courses.size
+                    ),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    fontSize = 12.sp
+                )
+            }
+            Text(
+                text = stringResource(
+                    R.string.course_selection_job_schedule,
+                    formatSelectionTime(job.scheduledAtMillis)
+                ),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                fontSize = 12.sp,
+                modifier = Modifier.padding(top = 4.dp)
+            )
+            if (job.message.isNotBlank()) {
+                Text(
+                    text = job.message,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    fontSize = 12.sp,
+                    modifier = Modifier.padding(top = 4.dp)
+                )
+            }
+            HorizontalDivider(
+                modifier = Modifier.padding(vertical = tokens.spacing.sm),
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f)
+            )
+            job.courses.forEach { course ->
+                val result = job.results.firstOrNull { it.courseId == course.courseId }
+                Text(
+                    text = stringResource(
+                        R.string.course_selection_job_course_result,
+                        course.courseName,
+                        selectionCourseResultText(job.status, result?.status)
+                    ),
+                    fontSize = 12.sp,
+                    modifier = Modifier.padding(top = 2.dp)
+                )
+                if (!result?.message.isNullOrBlank()) {
+                    Text(
+                        text = result?.message.orEmpty(),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        fontSize = 11.sp,
+                        modifier = Modifier.padding(start = 12.dp, top = 2.dp)
+                    )
+                }
+            }
+            if (job.status == CourseSelectionJobStatus.WAITING || canReconfirm) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = tokens.spacing.sm),
+                    horizontalArrangement = Arrangement.End
+                ) {
+                    if (job.status == CourseSelectionJobStatus.WAITING) {
+                        TextButton(onClick = onCancel) {
+                            Text(stringResource(R.string.course_selection_cancel_job))
+                        }
+                    }
+                    if (canReconfirm) {
+                        TextButton(onClick = onReconfirm) {
+                            Text(stringResource(R.string.course_selection_reconfirm_results))
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun selectionJobStatusText(status: CourseSelectionJobStatus): String = stringResource(
+    when (status) {
+        CourseSelectionJobStatus.WAITING -> R.string.course_selection_status_waiting
+        CourseSelectionJobStatus.RUNNING -> R.string.course_selection_status_running
+        CourseSelectionJobStatus.COMPLETED -> R.string.course_selection_status_completed
+        CourseSelectionJobStatus.PARTIAL -> R.string.course_selection_status_partial
+        CourseSelectionJobStatus.FAILED -> R.string.course_selection_status_failed
+        CourseSelectionJobStatus.CANCELLED -> R.string.course_selection_status_cancelled
+    }
+)
+
+@Composable
+private fun selectionCourseResultText(
+    jobStatus: CourseSelectionJobStatus,
+    resultStatus: CourseSelectionCourseStatus?
+): String = stringResource(
+    when (resultStatus) {
+        CourseSelectionCourseStatus.CONFIRMED -> R.string.course_selection_result_confirmed
+        CourseSelectionCourseStatus.UNCONFIRMED -> R.string.course_selection_result_unconfirmed
+        CourseSelectionCourseStatus.BUSINESS_FAILURE -> R.string.course_selection_result_business_failure
+        CourseSelectionCourseStatus.AUTH_REQUIRED -> R.string.course_selection_result_auth_required
+        CourseSelectionCourseStatus.UNKNOWN -> R.string.course_selection_result_unknown
+        null -> when (jobStatus) {
+            CourseSelectionJobStatus.WAITING -> R.string.course_selection_result_waiting
+            CourseSelectionJobStatus.RUNNING -> R.string.course_selection_result_running
+            else -> R.string.course_selection_result_missing
+        }
+    }
+)
+
+@Composable
+private fun selectionJobStatusColor(status: CourseSelectionJobStatus) = when (status) {
+    CourseSelectionJobStatus.COMPLETED -> MaterialTheme.colorScheme.primary
+    CourseSelectionJobStatus.PARTIAL,
+    CourseSelectionJobStatus.FAILED -> MaterialTheme.colorScheme.error
+    else -> MaterialTheme.colorScheme.onSurfaceVariant
+}
+
+private fun defaultSelectionScheduleMillis(): Long = Calendar.getInstance().apply {
+    add(Calendar.MINUTE, 1)
+}.timeInMillis
+
+private fun combineSelectionDateTime(
+    dateMillis: Long,
+    hour: Int,
+    minute: Int,
+    second: Int
+): Long {
+    val selectedDate = Calendar.getInstance(TimeZone.getTimeZone("UTC")).apply {
+        timeInMillis = dateMillis
+    }
+    return Calendar.getInstance().apply {
+        set(Calendar.YEAR, selectedDate.get(Calendar.YEAR))
+        set(Calendar.MONTH, selectedDate.get(Calendar.MONTH))
+        set(Calendar.DAY_OF_MONTH, selectedDate.get(Calendar.DAY_OF_MONTH))
+        set(Calendar.HOUR_OF_DAY, hour)
+        set(Calendar.MINUTE, minute)
+        set(Calendar.SECOND, second)
+        set(Calendar.MILLISECOND, 0)
+    }.timeInMillis
+}
+
+private fun formatSelectionDate(timeMillis: Long): String =
+    SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).apply {
+        timeZone = TimeZone.getTimeZone("UTC")
+    }.format(timeMillis)
+
+private fun formatSelectionTime(timeMillis: Long): String =
+    SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(timeMillis)
 
 @Composable
 private fun WebLoginRequiredCard(
@@ -924,8 +1667,11 @@ private fun CourseCatalogCard(
     selectedInEas: Boolean,
     inCoursePlan: Boolean,
     conflictMessage: String?,
+    selectable: Boolean,
+    selectedForSubmission: Boolean,
     onToggleFollow: () -> Unit,
     onToggleCoursePlan: () -> Unit,
+    onToggleSubmission: () -> Unit,
     onClick: () -> Unit
 ) {
     val tokens = HitaTheme.tokens
@@ -982,6 +1728,34 @@ private fun CourseCatalogCard(
                             }
                         )
                     }
+                }
+            }
+            if (selectable) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable(onClick = onToggleSubmission),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Checkbox(
+                        checked = selectedForSubmission,
+                        onCheckedChange = null
+                    )
+                    Text(
+                        text = stringResource(
+                            if (selectedForSubmission) {
+                                R.string.course_selection_selected_for_submission
+                            } else {
+                                R.string.course_selection_select_for_submission
+                            }
+                        ),
+                        color = if (selectedForSubmission) {
+                            MaterialTheme.colorScheme.primary
+                        } else {
+                            MaterialTheme.colorScheme.onSurfaceVariant
+                        },
+                        fontWeight = FontWeight.Medium
+                    )
                 }
             }
             val metadata = listOf(
