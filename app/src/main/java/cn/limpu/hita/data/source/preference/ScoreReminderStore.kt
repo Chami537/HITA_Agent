@@ -20,19 +20,23 @@ class ScoreReminderStore constructor(context: Context) {
         preference.edit().putBoolean(KEY_ENABLED, enabled).apply()
     }
 
-    fun getKnownScores(): Set<String> {
-        val raw = preference.getString(KEY_KNOWN_SCORES, null) ?: return emptySet()
+    fun getKnownScores(scopeKey: String): Set<String>? {
+        val raw = preference.getString("${KEY_KNOWN_SCORES}_$scopeKey", null) ?: return null
         return runCatching {
             val type = object : TypeToken<Set<String>>() {}.type
-            Gson().fromJson<Set<String>>(raw, type) ?: emptySet()
-        }.getOrDefault(emptySet())
+            Gson().fromJson<Set<String>>(raw, type)
+        }.getOrNull()
     }
 
-    fun setKnownScores(values: Set<String>) {
-        preference.edit().putString(KEY_KNOWN_SCORES, Gson().toJson(values)).apply()
+    fun setKnownScores(scopeKey: String, values: Set<String>) {
+        preference.edit().putString("${KEY_KNOWN_SCORES}_$scopeKey", Gson().toJson(values)).apply()
     }
 
     fun clearKnownScores() {
-        preference.edit().remove(KEY_KNOWN_SCORES).apply()
+        val editor = preference.edit().remove(KEY_KNOWN_SCORES)
+        preference.all.keys
+            .filter { it.startsWith("${KEY_KNOWN_SCORES}_") }
+            .forEach(editor::remove)
+        editor.apply()
     }
 }

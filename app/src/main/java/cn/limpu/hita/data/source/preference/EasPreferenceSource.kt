@@ -1,13 +1,11 @@
 package cn.limpu.hita.data.source.preference
 
-import android.annotation.SuppressLint
 import android.content.Context
 import android.content.SharedPreferences
 import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKeys
 import com.google.gson.Gson
 import cn.limpu.hita.data.model.eas.EASToken
-import java.io.File
 
 /**
  * 层次：DataSource
@@ -15,49 +13,87 @@ import java.io.File
  * 类型：SharedPreference (Encrypted)
  * 数据：同步读取，异步写入
  */
-private const val SP_NAME_EAS_TOKEN = "local_eas_token"
+private const val LEGACY_SP_NAME_EAS_TOKEN = "local_eas_token"
+private const val SP_NAME_EAS_TOKEN = "local_eas_token_secure_v2"
+private const val KEY_MIGRATION_COMPLETE = "eas_token_migration_complete"
+private const val ENCRYPTED_PREFS_KEY_PREFIX = "__androidx_security_crypto_encrypted_prefs"
+private val LEGACY_TOKEN_STRING_KEYS = listOf(
+    "accessToken", "refreshToken", "campus", "username", "password", "cookies", "webCookies",
+    "webBaseUrl", "name", "stutype", "picture", "id", "stuId", "school", "major",
+    "grade", "className", "sfxsx", "email", "phone", "electronicExpToken"
+)
 
 class EasPreferenceSource(context: Context) {
-    private val preference: SharedPreferences = run {
-        // Migration: if old plaintext SP exists, move data to encrypted SP then delete plaintext file
-        val oldData = try {
-            val plainPrefs = context.getSharedPreferences(SP_NAME_EAS_TOKEN, Context.MODE_PRIVATE)
-            if (plainPrefs.contains("username")) plainPrefs.all.toMap() else null
-        } catch (_: Exception) { null }
-
-        if (oldData != null) {
-            try {
-                val prefsDir = File(context.applicationInfo.dataDir, "shared_prefs")
-                File(prefsDir, "${SP_NAME_EAS_TOKEN}.xml").delete()
-            } catch (_: Exception) { }
-        }
-
+    private val preference: SharedPreferences = synchronized(EasPreferenceSource::class.java) {
         val encryptedPrefs = EncryptedSharedPreferences.create(
             SP_NAME_EAS_TOKEN,
             MasterKeys.getOrCreate(MasterKeys.AES256_GCM_SPEC),
-            context,
+            context.applicationContext,
             EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
             EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
         )
-
-        if (oldData != null) {
-            val editor = encryptedPrefs.edit()
-            oldData.forEach { (key, value) ->
-                when (value) {
-                    is String -> editor.putString(key, value)
-                    is Int -> editor.putInt(key, value)
-                    is Long -> editor.putLong(key, value)
-                    is Float -> editor.putFloat(key, value)
-                    is Boolean -> editor.putBoolean(key, value)
-                    is Set<*> -> {
-                        @Suppress("UNCHECKED_CAST")
-                        editor.putStringSet(key, value as? Set<String>)
+        if (!encryptedPrefs.getBoolean(KEY_MIGRATION_COMPLETE, false)) {
+            val rawLegacy = context.getSharedPreferences(LEGACY_SP_NAME_EAS_TOKEN, Context.MODE_PRIVATE).all
+            val hasEncryptedLegacy = rawLegacy.keys.any { it.startsWith(ENCRYPTED_PREFS_KEY_PREFIX) }
+            val plainData = rawLegacy.filterKeys {
+                it in LEGACY_TOKEN_STRING_KEYS || it == "sessionGeneration"
+            }
+            val encryptedData = if (hasEncryptedLegacy) {
+                val oldEncrypted = EncryptedSharedPreferences.create(
+                    LEGACY_SP_NAME_EAS_TOKEN,
+                    MasterKeys.getOrCreate(MasterKeys.AES256_GCM_SPEC),
+                    context.applicationContext,
+                    EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
+                    EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
+                )
+                runCatching { oldEncrypted.all }.getOrElse {
+                    // Earlier same-file migrations can leave plaintext keys beside encrypted ones.
+                    // Reading individual encrypted keys still recovers the newer session values.
+                    buildMap<String, Any> {
+                        LEGACY_TOKEN_STRING_KEYS.forEach { key ->
+                            if (oldEncrypted.contains(key)) {
+                                oldEncrypted.getString(key, null)?.let { put(key, it) }
+                            }
+                        }
+                        if (oldEncrypted.contains("sessionGeneration")) {
+                            put("sessionGeneration", oldEncrypted.getLong("sessionGeneration", 0L))
+                        }
                     }
                 }
+            } else null
+            val oldData = LegacyPreferenceMigration.preferredSource(plainData, encryptedData)
+            val saved = LegacyPreferenceMigration.copyThenDelete(
+                oldData,
+                persist = { values ->
+                    val editor = encryptedPrefs.edit()
+                    values.forEach { (key, value) ->
+                        when (value) {
+                            is String -> editor.putString(key, value)
+                            is Int -> editor.putInt(key, value)
+                            is Long -> editor.putLong(key, value)
+                            is Float -> editor.putFloat(key, value)
+                            is Boolean -> editor.putBoolean(key, value)
+                            is Set<*> -> {
+                                @Suppress("UNCHECKED_CAST")
+                                editor.putStringSet(key, value as Set<String>)
+                            }
+                            else -> error("Unsupported legacy preference type for $key")
+                        }
+                    }
+                    editor.putBoolean(KEY_MIGRATION_COMPLETE, true).commit()
+                },
+                deleteLegacy = {
+                    runCatching { context.deleteSharedPreferences(LEGACY_SP_NAME_EAS_TOKEN) }
+                        .getOrDefault(false)
+                }
+            )
+            // A failed deletion leaves the persisted copy intact; retry cleanup on next launch.
+            if (!saved && !encryptedPrefs.getBoolean(KEY_MIGRATION_COMPLETE, false)) {
+                error("Could not persist EAS session migration")
             }
-            editor.apply()
+        } else {
+            runCatching { context.deleteSharedPreferences(LEGACY_SP_NAME_EAS_TOKEN) }
         }
-
         encryptedPrefs
     }
 
@@ -103,7 +139,7 @@ class EasPreferenceSource(context: Context) {
 
     fun clearEasToken() {
         // Saved credentials live in EasCredentialStore; clear only session and cached identity.
-        preference.edit().clear().commit()
+        preference.edit().clear().putBoolean(KEY_MIGRATION_COMPLETE, true).commit()
     }
 
     fun getEasToken(): EASToken {

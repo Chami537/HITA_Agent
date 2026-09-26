@@ -15,7 +15,6 @@ import androidx.work.WorkerParameters
 import com.limpu.component.data.DataState
 import cn.limpu.hita.R
 import cn.limpu.hita.data.model.eas.CourseScoreItem
-import cn.limpu.hita.data.model.eas.TermItem
 import cn.limpu.hita.data.repository.EASRepository
 import cn.limpu.hita.data.repository.TimetableChangeStore
 import cn.limpu.hita.data.source.preference.EasPreferenceSource
@@ -26,6 +25,7 @@ import cn.limpu.hita.data.source.web.service.EASService
 import cn.limpu.hita.ui.eas.score.ScoreInquiryActivity
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicReference
 
 class ScoreReminderWorker(appContext: Context, params: WorkerParameters) : Worker(appContext, params) {
 
@@ -40,49 +40,47 @@ class ScoreReminderWorker(appContext: Context, params: WorkerParameters) : Worke
             TimetablePreferenceSource(applicationContext),
             TimetableChangeStore(app)
         )
-        if (!repository.getEasToken().isLogin()) return Result.success()
+        val token = repository.getEasToken()
+        if (!token.isLogin()) return Result.success()
+        val ownerKey = ScoreReminderPolicy.ownerKey(token) ?: return Result.retry()
 
         val termsState = awaitLiveData(repository.getAllTerms(useCache = false), 6)
         if (termsState.state != DataState.STATE.SUCCESS || termsState.data.isNullOrEmpty()) {
             return Result.retry()
         }
-        val term = selectTerm(termsState.data!!)
-        val scoresState = awaitLiveData(
-            repository.getPersonalScoresWithSummary(
-                term,
-                EASService.TestType.NORMAL,
-                useCache = false
-            ),
-            12
-        )
-        if (scoresState.state != DataState.STATE.SUCCESS || scoresState.data == null) {
-            return Result.retry()
+        val changedItems = mutableListOf<CourseScoreItem>()
+        val baselineUpdates = mutableMapOf<String, Set<String>>()
+        var queryFailed = false
+        for (term in ScoreReminderPolicy.termsToCheck(termsState.data!!)) {
+            val scoresState = awaitLiveData(
+                repository.getPersonalScoresWithSummary(
+                    term,
+                    EASService.TestType.NORMAL,
+                    useCache = false
+                ),
+                12
+            )
+            if (scoresState.state != DataState.STATE.SUCCESS || scoresState.data == null) {
+                queryFailed = true
+                continue
+            }
+            val items = scoresState.data?.items ?: emptyList()
+            val currentKeys = items.map(ScoreReminderPolicy::scoreKey).toSet()
+            val scopeKey = ScoreReminderPolicy.baselineKey(ownerKey, term.id)
+            val known = store.getKnownScores(scopeKey)
+            if (known == null) {
+                baselineUpdates[scopeKey] = currentKeys
+                continue
+            }
+            val diff = ScoreReminderPolicy.newKeys(known, currentKeys)
+            if (diff.isNotEmpty()) {
+                changedItems += items.filter { ScoreReminderPolicy.scoreKey(it) in diff }
+                baselineUpdates[scopeKey] = known + diff
+            }
         }
-        val items = scoresState.data?.items ?: emptyList()
-        val newKeys = items.map { buildKey(it) }.toSet()
-        val known = store.getKnownScores()
-        if (known.isEmpty()) {
-            store.setKnownScores(newKeys)
-            return Result.success()
-        }
-        val diff = newKeys - known
-        if (diff.isNotEmpty()) {
-            val newItems = items.filter { diff.contains(buildKey(it)) }
-            sendNotification(newItems)
-            store.setKnownScores(known + diff)
-        }
-        return Result.success()
-    }
-
-    private fun selectTerm(terms: List<TermItem>): TermItem {
-        return terms.firstOrNull { it.isCurrent } ?: terms.first()
-    }
-
-    private fun buildKey(item: CourseScoreItem): String {
-        val term = item.termName?.trim().orEmpty()
-        val code = item.courseCode?.trim().orEmpty()
-        val name = item.courseName?.trim().orEmpty()
-        return listOf(term, code, name, item.finalScores.toString()).joinToString("|")
+        if (changedItems.isNotEmpty()) sendNotification(changedItems)
+        baselineUpdates.forEach { (scopeKey, keys) -> store.setKnownScores(scopeKey, keys) }
+        return if (queryFailed) Result.retry() else Result.success()
     }
 
     private fun sendNotification(items: List<CourseScoreItem>) {
@@ -136,16 +134,18 @@ class ScoreReminderWorker(appContext: Context, params: WorkerParameters) : Worke
         timeoutSeconds: Long
     ): DataState<T> {
         val latch = CountDownLatch(1)
-        var result = DataState<T>(DataState.STATE.FETCH_FAILED)
+        val result = AtomicReference(DataState<T>(DataState.STATE.FETCH_FAILED))
         val observer = androidx.lifecycle.Observer<DataState<T>> { state ->
-            result = state
-            latch.countDown()
+            if (ScoreReminderPolicy.isTerminal(state.state)) {
+                result.set(state)
+                latch.countDown()
+            }
         }
         val handler = Handler(Looper.getMainLooper())
         handler.post { liveData.observeForever(observer) }
         latch.await(timeoutSeconds, TimeUnit.SECONDS)
         handler.post { liveData.removeObserver(observer) }
-        return result
+        return result.get()
     }
 
     companion object {
