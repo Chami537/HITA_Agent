@@ -38,6 +38,8 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.viewinterop.AndroidView
 import cn.limpu.hita.R
+import cn.limpu.hita.data.repository.EASRepository
+import cn.limpu.hita.ui.main.MainTab
 import cn.limpu.hita.data.model.blog.BlogArticle
 import cn.limpu.hita.data.repository.BlogRepository
 import cn.limpu.hita.ui.design.HitaComposeTheme
@@ -50,6 +52,7 @@ import javax.inject.Inject
 class BlogReaderActivity : AppCompatActivity() {
 
     @Inject lateinit var blogRepository: BlogRepository
+    @Inject lateinit var easRepository: EASRepository
 
     override fun onCreate(savedInstanceState: Bundle?) {
         val mode = when (ThemeTools.getThemeMode(this)) {
@@ -59,6 +62,10 @@ class BlogReaderActivity : AppCompatActivity() {
         }
         AppCompatDelegate.setDefaultNightMode(mode)
         super.onCreate(savedInstanceState)
+        if (!MainTab.showsBlog(easRepository.getEasToken())) {
+            finish()
+            return
+        }
 
         val guid = intent.getStringExtra(EXTRA_GUID).orEmpty()
         if (guid.isBlank()) {

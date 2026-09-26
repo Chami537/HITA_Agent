@@ -14,9 +14,14 @@ enum class MainTab(
     NAVIGATION(R.string.title_navigation, R.drawable.ic_nav_navigation);
 
     companion object {
+        fun showsBlog(token: EASToken?): Boolean {
+            return token != null &&
+                token.campus == EASToken.Campus.SHENZHEN &&
+                token.isLogin()
+        }
+
         fun visibleFor(token: EASToken?): List<MainTab> {
-            val showBlog = token?.campus == EASToken.Campus.SHENZHEN
-            return if (showBlog) entries.toList() else entries.filter { it != BLOG }
+            return if (showsBlog(token)) entries.toList() else entries.filter { it != BLOG }
         }
 
         fun fromName(raw: String?): MainTab? =

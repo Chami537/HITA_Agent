@@ -71,6 +71,8 @@ import cn.limpu.hita.data.model.blog.BlogNode
 import cn.limpu.hita.data.model.blog.BlogSeriesGrouper
 import cn.limpu.hita.data.model.notice.CampusNotice
 import cn.limpu.hita.data.repository.CampusNoticeSyncError
+import cn.limpu.hita.data.repository.EASRepository
+import cn.limpu.hita.ui.main.MainTab
 import cn.limpu.hita.ui.blog.BlogReaderActivity
 import cn.limpu.hita.ui.design.HitaComposeTheme
 import cn.limpu.hita.ui.design.hitaGlassCardBorder
@@ -80,6 +82,7 @@ import cn.limpu.hita.ui.design.hitaStyleCardShape
 import cn.limpu.hita.ui.design.hitaUsesMainBackdrop
 import cn.limpu.hita.ui.notice.InfoPortalLoginActivity
 import dagger.hilt.android.AndroidEntryPoint
+import javax.inject.Inject
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -88,6 +91,8 @@ import java.util.TimeZone
 
 @AndroidEntryPoint
 class BlogFragment : androidx.fragment.app.Fragment() {
+    @Inject lateinit var easRepository: EASRepository
+
     private val viewModel: BlogViewModel by viewModels()
     private val noticeViewModel: CampusNoticeViewModel by viewModels()
     private val loginLauncher = registerForActivityResult(
@@ -106,21 +111,27 @@ class BlogFragment : androidx.fragment.app.Fragment() {
         return ComposeView(requireContext()).apply {
             setContent {
                 HitaComposeTheme {
-                    InfoTabScreen(
-                        blogViewModel = viewModel,
-                        noticeViewModel = noticeViewModel,
-                        onOpenArticle = { article ->
-                            startActivity(
-                                Intent(requireContext(), BlogReaderActivity::class.java)
-                                    .putExtra(BlogReaderActivity.EXTRA_GUID, article.guid)
-                            )
-                        },
-                        onLoginPortal = {
-                            loginLauncher.launch(
-                                Intent(requireContext(), InfoPortalLoginActivity::class.java)
-                            )
-                        },
-                    )
+                    val easToken by easRepository.observeEasToken()
+                        .observeAsState(easRepository.getEasToken())
+                    if (MainTab.showsBlog(easToken)) {
+                        InfoTabScreen(
+                            blogViewModel = viewModel,
+                            noticeViewModel = noticeViewModel,
+                            onOpenArticle = { article ->
+                                startActivity(
+                                    Intent(requireContext(), BlogReaderActivity::class.java)
+                                        .putExtra(BlogReaderActivity.EXTRA_GUID, article.guid)
+                                )
+                            },
+                            onLoginPortal = {
+                                loginLauncher.launch(
+                                    Intent(requireContext(), InfoPortalLoginActivity::class.java)
+                                )
+                            },
+                        )
+                    } else {
+                        Box(Modifier.fillMaxSize())
+                    }
                 }
             }
         }
@@ -128,7 +139,9 @@ class BlogFragment : androidx.fragment.app.Fragment() {
 
     override fun onResume() {
         super.onResume()
-        viewModel.markTabOpened()
+        if (MainTab.showsBlog(easRepository.getEasToken())) {
+            viewModel.markTabOpened()
+        }
     }
 }
 

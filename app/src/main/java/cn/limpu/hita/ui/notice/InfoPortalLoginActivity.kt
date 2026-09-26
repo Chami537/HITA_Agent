@@ -12,6 +12,8 @@ import android.webkit.WebViewClient
 import androidx.activity.OnBackPressedCallback
 import androidx.appcompat.app.AppCompatActivity
 import cn.limpu.hita.data.repository.CampusNoticeRepository
+import cn.limpu.hita.data.repository.EASRepository
+import cn.limpu.hita.ui.main.MainTab
 import cn.limpu.hita.data.source.web.notice.CampusNoticeParser
 import dagger.hilt.android.AndroidEntryPoint
 import org.json.JSONTokener
@@ -20,7 +22,7 @@ import javax.inject.Inject
 @AndroidEntryPoint
 class InfoPortalLoginActivity : AppCompatActivity() {
     @Inject lateinit var noticeRepository: CampusNoticeRepository
-
+    @Inject lateinit var easRepository: EASRepository
     private lateinit var webView: WebView
     private var finished = false
     private var extractScheduled = false
@@ -28,6 +30,12 @@ class InfoPortalLoginActivity : AppCompatActivity() {
     @SuppressLint("SetJavaScriptEnabled")
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        if (!MainTab.showsBlog(easRepository.getEasToken())) {
+            setResult(RESULT_CANCELED)
+            finish()
+            return
+        }
+
         webView = WebView(this)
         setContentView(webView)
         CookieManager.getInstance().setAcceptCookie(true)
