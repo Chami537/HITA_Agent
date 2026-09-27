@@ -63,7 +63,7 @@ import cn.limpu.hita.ui.design.hitaGlassCardModifier
 import cn.limpu.hita.ui.design.hitaStyleCardShape
 import cn.limpu.hita.ui.design.hitaSumiBrushUnderline
 
-/** 实用网址页：常用校内网站列表，点按打开链接、长按复制。按校区展示（深圳/本部），威海校区暂无链接。 */
+/** 实用网址页：常用校内网站列表，点按打开链接、长按复制。按校区展示（深圳/本部/威海）。 */
 class UsefulLinksActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -109,6 +109,7 @@ private val usefulLinkGroups = listOf(
             UsefulLink(R.string.useful_link_info, "https://info.hitsz.edu.cn/", R.drawable.ic_bc_news),
             UsefulLink(R.string.useful_link_xgb, "https://xgb.hit.edu.cn/", R.drawable.ic_bc_organization),
             UsefulLink(R.string.useful_link_xuefei, "https://xuefei.hitsz.edu.cn/", R.drawable.ic_bx_credit),
+            UsefulLink(R.string.useful_link_szsj, "http://szsj.hitsz.edu.cn/index/index/index.html", R.drawable.ic_bc_organization),
         )
     ),
     UsefulLinkGroup(
@@ -124,6 +125,7 @@ private val usefulLinkGroups = listOf(
         titleRes = R.string.useful_links_group_resources,
         links = listOf(
             UsefulLink(R.string.useful_link_hoa, "https://hoa.moe/", R.drawable.ic_baseline_search_24),
+            UsefulLink(R.string.useful_link_hoa_fastdl, "https://gh.hoa.moe/", R.drawable.ic_baseline_cloud_download_24),
             UsefulLink(R.string.useful_link_textbook, "http://www.hitsz.textbook.wang/textbooks/home/index", R.drawable.ic_baseline_link_24),
         )
     ),
@@ -136,6 +138,7 @@ private val benbuLinkGroups = listOf(
         links = listOf(
             UsefulLink(R.string.useful_link_benbu_jwts, "http://jwts.hit.edu.cn", R.drawable.ic_home),
             UsefulLink(R.string.useful_link_benbu_jwes, "http://jwes.hit.edu.cn", R.drawable.ic_baseline_format_list_bulleted_24),
+            UsefulLink(R.string.useful_link_benbu_eelab, "http://eelab.hit.edu.cn", R.drawable.ic_baseline_format_list_bulleted_24),
             UsefulLink(R.string.useful_link_benbu_hituc, "https://hituc.hit.edu.cn", R.drawable.ic_baseline_location_city_24),
             UsefulLink(R.string.useful_link_benbu_lib, "http://www.lib.hit.edu.cn", R.drawable.ic_baseline_search_24),
         )
@@ -167,6 +170,53 @@ private val benbuLinkGroups = listOf(
     ),
 )
 
+/** 威海校区链接（来源：校区首页快速通道，另加实验课与实验室系统）。 */
+private val weihaiLinkGroups = listOf(
+    UsefulLinkGroup(
+        titleRes = R.string.useful_links_group_study,
+        links = listOf(
+            UsefulLink(R.string.useful_link_weihai_jwts, "http://jwts.hitwh.edu.cn/", R.drawable.ic_home),
+            UsefulLink(R.string.useful_link_weihai_yjs, "https://yjsgl.hitwh.edu.cn/", R.drawable.ic_baseline_format_list_bulleted_24),
+            UsefulLink(R.string.useful_link_weihai_lib, "http://lib.hitwh.edu.cn", R.drawable.ic_baseline_search_24),
+            UsefulLink(R.string.useful_link_weihai_wlsy, "http://wlsy.hitwh.edu.cn/", R.drawable.ic_baseline_format_list_bulleted_24),
+            UsefulLink(R.string.useful_link_weihai_ilab, "http://ilab.hitwh.edu.cn/", R.drawable.ic_baseline_format_list_bulleted_24),
+            UsefulLink(
+                R.string.useful_link_weihai_openlab,
+                "http://openlab.hitwh.edu.cn/#/login?redirect=/index",
+                R.drawable.ic_baseline_format_list_bulleted_24,
+            ),
+        )
+    ),
+    UsefulLinkGroup(
+        titleRes = R.string.useful_links_group_affairs,
+        links = listOf(
+            UsefulLink(R.string.useful_link_weihai_news, "http://news.hitwh.edu.cn/1040/list.htm", R.drawable.ic_bc_news),
+            UsefulLink(R.string.useful_link_weihai_notice, "http://today.hitwh.edu.cn/1024/list.htm", R.drawable.ic_bc_news),
+            UsefulLink(R.string.useful_link_weihai_xuegong, "http://xuegong.hitwh.edu.cn/", R.drawable.ic_bc_organization),
+            UsefulLink(R.string.useful_link_weihai_job, "http://job.hitwh.edu.cn/signout", R.drawable.ic_baseline_edit_24),
+            UsefulLink(R.string.useful_link_weihai_box, "http://box.hitwh.edu.cn/", R.drawable.ic_baseline_email_24),
+            UsefulLink(R.string.useful_link_weihai_space, "https://space.hit.edu.cn/cdyygl", R.drawable.ic_baseline_location_city_24),
+        )
+    ),
+    UsefulLinkGroup(
+        titleRes = R.string.useful_links_group_network,
+        links = listOf(
+            UsefulLink(R.string.useful_link_weihai_portal, "https://i.hitwh.edu.cn/", R.drawable.ic_home),
+            UsefulLink(R.string.useful_link_weihai_ivpn, "https://ivpn.hitwh.edu.cn", R.drawable.ic_baseline_link_24),
+            UsefulLink(R.string.useful_link_weihai_webvpn, "https://webvpn.hitwh.edu.cn", R.drawable.ic_baseline_link_24),
+            UsefulLink(R.string.useful_link_weihai_oa, "http://oa.hitwh.edu.cn/", R.drawable.ic_baseline_widgets_24),
+            UsefulLink(R.string.useful_link_weihai_ids, "https://ids.hit.edu.cn/authserver/login", R.drawable.ic_baseline_done_24),
+            UsefulLink(R.string.useful_link_weihai_mail, "https://mail.hit.edu.cn", R.drawable.ic_baseline_email_24),
+        )
+    ),
+    UsefulLinkGroup(
+        titleRes = R.string.useful_links_group_resources,
+        links = listOf(
+            UsefulLink(R.string.useful_link_weihai_homepage, "http://homepage.hit.edu.cn/home-index", R.drawable.ic_baseline_email_24),
+        )
+    ),
+)
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun UsefulLinksScreen(onBack: () -> Unit) {
@@ -192,7 +242,7 @@ private fun UsefulLinksScreen(onBack: () -> Unit) {
     ) { padding ->
         val tokens = HitaTheme.tokens
         val context = LocalContext.current
-        // 按校区选择链接组：深圳/本部已有链接；威海与未登录用户显示占位说明
+        // 按校区选择链接组；未登录显示占位说明
         val linkGroups = remember {
             val token = EasPreferenceSource(context).getEasToken()
             if (!token.isLogin()) {
@@ -200,7 +250,7 @@ private fun UsefulLinksScreen(onBack: () -> Unit) {
             } else when (token.campus) {
                 EASToken.Campus.SHENZHEN -> usefulLinkGroups
                 EASToken.Campus.BENBU -> benbuLinkGroups
-                EASToken.Campus.WEIHAI -> null
+                EASToken.Campus.WEIHAI -> weihaiLinkGroups
             }
         }
         LazyColumn(
