@@ -8,8 +8,9 @@ import org.junit.Test
 class MainTabVisibilityTest {
     @Test
     fun `logged out default token does not show blog`() {
+        assertFalse(MainTab.showsInfo(null))
+        assertFalse(MainTab.showsInfo(EASToken()))
         assertFalse(MainTab.showsBlog(null))
-        assertFalse(MainTab.showsBlog(EASToken()))
         assertFalse(MainTab.BLOG in MainTab.visibleFor(EASToken()))
     }
 
@@ -25,6 +26,7 @@ class MainTabVisibilityTest {
             webCookies["route"] = "route"
         }
         assertTrue(MainTab.showsBlog(appApi))
+        assertTrue(MainTab.showsInfo(appApi))
         assertTrue(MainTab.BLOG in MainTab.visibleFor(appApi))
         assertTrue(MainTab.showsBlog(web))
         assertTrue(MainTab.BLOG in MainTab.visibleFor(web))
@@ -37,17 +39,31 @@ class MainTabVisibilityTest {
             username = "20240001"
             password = "secret"
         }
-        assertFalse(MainTab.showsBlog(token))
+        assertFalse(MainTab.showsInfo(token))
     }
 
     @Test
-    fun `other campuses stay hidden even when logged in`() {
+    fun `benbu and weihai sessions show notice-only info tab`() {
         listOf(EASToken.Campus.BENBU, EASToken.Campus.WEIHAI).forEach { campus ->
             val token = EASToken().apply {
                 this.campus = campus
                 accessToken = "token"
             }
+            assertTrue(MainTab.showsInfo(token))
+            assertTrue(MainTab.BLOG in MainTab.visibleFor(token))
             assertFalse(MainTab.showsBlog(token))
+        }
+    }
+
+    @Test
+    fun `benbu and weihai saved password without session stays hidden`() {
+        listOf(EASToken.Campus.BENBU, EASToken.Campus.WEIHAI).forEach { campus ->
+            val token = EASToken().apply {
+                this.campus = campus
+                username = "20240001"
+                password = "secret"
+            }
+            assertFalse(MainTab.showsInfo(token))
             assertFalse(MainTab.BLOG in MainTab.visibleFor(token))
         }
     }

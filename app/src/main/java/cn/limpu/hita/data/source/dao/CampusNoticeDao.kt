@@ -10,21 +10,21 @@ import cn.limpu.hita.data.model.notice.CampusNotice
 
 @Dao
 interface CampusNoticeDao {
-    @Query("SELECT * FROM campus_notice ORDER BY pubDateMillis DESC, title ASC LIMIT 30")
-    fun observeLatest(): LiveData<List<CampusNotice>>
+    @Query("SELECT * FROM campus_notice WHERE campus = :campus ORDER BY pubDateMillis DESC, title ASC LIMIT 30")
+    fun observeLatest(campus: String): LiveData<List<CampusNotice>>
 
-    @Query("SELECT * FROM campus_notice ORDER BY pubDateMillis DESC, title ASC LIMIT 30")
-    fun getLatest(): List<CampusNotice>
+    @Query("SELECT * FROM campus_notice WHERE campus = :campus ORDER BY pubDateMillis DESC, title ASC LIMIT 30")
+    fun getLatest(campus: String): List<CampusNotice>
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     fun upsertAll(notices: List<CampusNotice>)
 
-    @Query("DELETE FROM campus_notice")
-    fun deleteAll()
+    @Query("DELETE FROM campus_notice WHERE campus = :campus")
+    fun deleteAll(campus: String)
 
     @Transaction
-    fun replaceAll(notices: List<CampusNotice>) {
-        deleteAll()
+    fun replaceAll(campus: String, notices: List<CampusNotice>) {
+        deleteAll(campus)
         if (notices.isNotEmpty()) {
             upsertAll(notices.take(30))
         }

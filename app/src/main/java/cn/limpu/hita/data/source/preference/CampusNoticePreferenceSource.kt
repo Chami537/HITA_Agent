@@ -1,32 +1,37 @@
 package cn.limpu.hita.data.source.preference
 
 import android.content.Context
-import cn.limpu.hita.data.source.web.notice.CampusNoticeParser
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 import java.util.TimeZone
 
-class CampusNoticePreferenceSource(context: Context) {
+/**
+ * 每个校区独立的拉取节流：last_fetch_day_<campus> / parser_version_<campus>。
+ * 旧版无校区后缀的 Shenzhen key 不迁移，升级后首次会多拉一次，可接受。
+ */
+class CampusNoticePreferenceSource(context: Context, campus: String) {
     private val prefs = context.applicationContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+    private val keyDay = "${KEY_LAST_FETCH_DAY}_$campus"
+    private val keyVersion = "${KEY_PARSER_VERSION}_$campus"
 
     var lastFetchDay: String
-        get() = prefs.getString(KEY_LAST_FETCH_DAY, "").orEmpty()
+        get() = prefs.getString(keyDay, "").orEmpty()
         set(value) {
-            prefs.edit().putString(KEY_LAST_FETCH_DAY, value).apply()
+            prefs.edit().putString(keyDay, value).apply()
         }
 
     fun isFetchedToday(): Boolean = lastFetchDay == todayShanghai()
 
     var parserVersion: Int
-        get() = prefs.getInt(KEY_PARSER_VERSION, 0)
+        get() = prefs.getInt(keyVersion, 0)
         set(value) {
-            prefs.edit().putInt(KEY_PARSER_VERSION, value).apply()
+            prefs.edit().putInt(keyVersion, value).apply()
         }
 
-    fun markFetchedToday() {
+    fun markFetchedToday(parserVersion: Int) {
         lastFetchDay = todayShanghai()
-        parserVersion = CampusNoticeParser.PARSER_VERSION
+        this.parserVersion = parserVersion
     }
 
     companion object {

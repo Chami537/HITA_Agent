@@ -14,14 +14,24 @@ enum class MainTab(
     NAVIGATION(R.string.title_navigation, R.drawable.ic_nav_navigation);
 
     companion object {
+        private val infoCampuses = setOf(
+            EASToken.Campus.SHENZHEN,
+            EASToken.Campus.BENBU,
+            EASToken.Campus.WEIHAI,
+        )
+
+        /** 资讯 Tab：任一校区登录即可见（本部/威海仅校园通知）。 */
+        fun showsInfo(token: EASToken?): Boolean {
+            return token != null && token.campus in infoCampuses && token.isLogin()
+        }
+
+        /** 博客内容（系列阅读）仅深圳。 */
         fun showsBlog(token: EASToken?): Boolean {
-            return token != null &&
-                token.campus == EASToken.Campus.SHENZHEN &&
-                token.isLogin()
+            return showsInfo(token) && token?.campus == EASToken.Campus.SHENZHEN
         }
 
         fun visibleFor(token: EASToken?): List<MainTab> {
-            return if (showsBlog(token)) entries.toList() else entries.filter { it != BLOG }
+            return if (showsInfo(token)) entries.toList() else entries.filter { it != BLOG }
         }
 
         fun fromName(raw: String?): MainTab? =

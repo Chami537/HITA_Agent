@@ -11,6 +11,7 @@ object CampusNoticeParser {
     const val PORTAL_URL = "https://info.hitsz.edu.cn/"
     const val LIST_PATH = "list.jsp?urltype=tree.TreeTempUrl&wbtreeid=1053"
     const val LIST_URL = PORTAL_URL + LIST_PATH
+    const val SHENZHEN_CAMPUS = "SHENZHEN"
     const val MAX_NOTICES = 30
     const val PAGES_FOR_CAP = 3
     const val PARSER_VERSION = 2
@@ -105,6 +106,7 @@ object CampusNoticeParser {
             ?: parseDateMillis(container?.text().orEmpty())
         val id = newsIdFromUrl(url) ?: return null
         return CampusNotice(
+            campus = SHENZHEN_CAMPUS,
             id = id,
             title = title,
             url = url,

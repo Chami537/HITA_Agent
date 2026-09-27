@@ -69,6 +69,7 @@ import cn.limpu.hita.R
 import cn.limpu.hita.data.model.blog.BlogArticle
 import cn.limpu.hita.data.model.blog.BlogNode
 import cn.limpu.hita.data.model.blog.BlogSeriesGrouper
+import cn.limpu.hita.data.model.eas.EASToken
 import cn.limpu.hita.data.model.notice.CampusNotice
 import cn.limpu.hita.data.repository.CampusNoticeSyncError
 import cn.limpu.hita.data.repository.EASRepository
@@ -99,7 +100,7 @@ class BlogFragment : androidx.fragment.app.Fragment() {
         ActivityResultContracts.StartActivityForResult(),
     ) { result ->
         if (result.resultCode == Activity.RESULT_OK) {
-            noticeViewModel.refresh()
+            noticeViewModel.refresh(EASToken.Campus.SHENZHEN)
         }
     }
 
@@ -113,22 +114,32 @@ class BlogFragment : androidx.fragment.app.Fragment() {
                 HitaComposeTheme {
                     val easToken by easRepository.observeEasToken()
                         .observeAsState(easRepository.getEasToken())
-                    if (MainTab.showsBlog(easToken)) {
-                        InfoTabScreen(
-                            blogViewModel = viewModel,
-                            noticeViewModel = noticeViewModel,
-                            onOpenArticle = { article ->
-                                startActivity(
-                                    Intent(requireContext(), BlogReaderActivity::class.java)
-                                        .putExtra(BlogReaderActivity.EXTRA_GUID, article.guid)
-                                )
-                            },
-                            onLoginPortal = {
-                                loginLauncher.launch(
-                                    Intent(requireContext(), InfoPortalLoginActivity::class.java)
-                                )
-                            },
-                        )
+                    if (MainTab.showsInfo(easToken)) {
+                        if (easToken.campus == EASToken.Campus.SHENZHEN) {
+                            InfoTabScreen(
+                                campus = EASToken.Campus.SHENZHEN,
+                                blogViewModel = viewModel,
+                                noticeViewModel = noticeViewModel,
+                                onOpenArticle = { article ->
+                                    startActivity(
+                                        Intent(requireContext(), BlogReaderActivity::class.java)
+                                            .putExtra(BlogReaderActivity.EXTRA_GUID, article.guid)
+                                    )
+                                },
+                                onLoginPortal = {
+                                    loginLauncher.launch(
+                                        Intent(requireContext(), InfoPortalLoginActivity::class.java)
+                                    )
+                                },
+                            )
+                        } else {
+                            CampusNoticeScreen(
+                                viewModel = noticeViewModel,
+                                campus = easToken.campus,
+                                onLogin = {},
+                                refreshOnEnter = true,
+                            )
+                        }
                     } else {
                         Box(Modifier.fillMaxSize())
                     }
@@ -148,6 +159,7 @@ class BlogFragment : androidx.fragment.app.Fragment() {
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun InfoTabScreen(
+    campus: EASToken.Campus,
     blogViewModel: BlogViewModel,
     noticeViewModel: CampusNoticeViewModel,
     onOpenArticle: (BlogArticle) -> Unit,
@@ -158,7 +170,7 @@ private fun InfoTabScreen(
     val transparentBackdrop = hitaUsesMainBackdrop()
     LaunchedEffect(pagerState.currentPage) {
         if (pagerState.currentPage == 1) {
-            noticeViewModel.syncOnPageOpen()
+            noticeViewModel.syncOnPageOpen(campus)
         }
     }
     Column(
@@ -192,7 +204,7 @@ private fun InfoTabScreen(
             if (page == 0) {
                 BlogScreen(viewModel = blogViewModel, onOpenArticle = onOpenArticle)
             } else {
-                CampusNoticeScreen(viewModel = noticeViewModel, onLogin = onLoginPortal)
+                CampusNoticeScreen(viewModel = noticeViewModel, campus = campus, onLogin = onLoginPortal)
             }
         }
     }
@@ -202,16 +214,21 @@ private fun InfoTabScreen(
 @Composable
 private fun CampusNoticeScreen(
     viewModel: CampusNoticeViewModel,
+    campus: EASToken.Campus,
     onLogin: () -> Unit,
+    refreshOnEnter: Boolean = false,
 ) {
-    val notices by viewModel.notices.observeAsState(emptyList())
+    val notices by remember(campus) { viewModel.noticesFor(campus) }.observeAsState(emptyList())
     val refreshing by viewModel.refreshing.observeAsState(false)
     val error by viewModel.syncError.observeAsState(null)
     val lxgw = rememberLxgwFontFamily()
     val context = LocalContext.current
+    LaunchedEffect(campus) {
+        if (refreshOnEnter) viewModel.syncOnPageOpen(campus)
+    }
     PullToRefreshBox(
         isRefreshing = refreshing,
-        onRefresh = { viewModel.refresh() },
+        onRefresh = { viewModel.refresh(campus) },
         modifier = Modifier.fillMaxSize(),
     ) {
         when {
@@ -244,7 +261,7 @@ private fun CampusNoticeScreen(
                             Text(stringResource(R.string.campus_notice_login), fontFamily = lxgw)
                         }
                     } else {
-                        TextButton(onClick = { viewModel.refresh() }) {
+                        TextButton(onClick = { viewModel.refresh(campus) }) {
                             Text(stringResource(R.string.blog_retry), fontFamily = lxgw)
                         }
                     }
@@ -258,7 +275,7 @@ private fun CampusNoticeScreen(
                 ) {
                     if (error != null) {
                         item {
-                            NoticeStatusRow(error = error, lxgw = lxgw, onLogin = onLogin, onRetry = { viewModel.refresh() })
+                            NoticeStatusRow(error = error, lxgw = lxgw, onLogin = onLogin, onRetry = { viewModel.refresh(campus) })
                         }
                     }
                     items(notices, key = { it.id }) { notice ->

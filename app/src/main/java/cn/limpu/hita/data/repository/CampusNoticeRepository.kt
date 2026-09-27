@@ -6,16 +6,19 @@ import androidx.lifecycle.LiveData
 import androidx.lifecycle.MutableLiveData
 import cn.limpu.hita.BuildConfig
 import cn.limpu.hita.data.AppDatabase
+import cn.limpu.hita.data.model.eas.EASToken
 import cn.limpu.hita.data.model.notice.CampusNotice
 import cn.limpu.hita.data.source.preference.CampusNoticePreferenceSource
+import cn.limpu.hita.data.source.web.notice.BenbuNoticeParser
 import cn.limpu.hita.data.source.web.notice.CampusNoticeParser
+import cn.limpu.hita.data.source.web.notice.WeihaiNoticeParser
 import cn.limpu.hita.utils.LogUtils
 import okhttp3.OkHttpClient
 import okhttp3.Request
-import org.json.JSONArray
 import java.io.IOException
 import java.net.SocketTimeoutException
 import java.net.UnknownHostException
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 import javax.inject.Inject
@@ -30,7 +33,11 @@ enum class CampusNoticeSyncError {
 @Singleton
 class CampusNoticeRepository @Inject constructor(application: Application) {
     private val dao = AppDatabase.getDatabase(application).campusNoticeDao()
-    private val prefs = CampusNoticePreferenceSource(application)
+    private val prefsByCampus = mapOf(
+        EASToken.Campus.SHENZHEN to CampusNoticePreferenceSource(application, CampusNoticeParser.SHENZHEN_CAMPUS),
+        EASToken.Campus.BENBU to CampusNoticePreferenceSource(application, BenbuNoticeParser.CAMPUS),
+        EASToken.Campus.WEIHAI to CampusNoticePreferenceSource(application, WeihaiNoticeParser.CAMPUS),
+    )
     private val executor = Executors.newSingleThreadExecutor()
     private val httpClient by lazy {
         OkHttpClient.Builder()
@@ -48,60 +55,58 @@ class CampusNoticeRepository @Inject constructor(application: Application) {
     private val _syncError = MutableLiveData<CampusNoticeSyncError?>(null)
     val syncError: LiveData<CampusNoticeSyncError?> = _syncError
 
-    fun observeNotices(): LiveData<List<CampusNotice>> = dao.observeLatest()
+    private val noticesByCampus = ConcurrentHashMap<EASToken.Campus, LiveData<List<CampusNotice>>>()
 
-    fun syncOnPageOpen() {
-        refresh(force = false)
+    fun observeNotices(campus: EASToken.Campus): LiveData<List<CampusNotice>> =
+        noticesByCampus.getOrPut(campus) { dao.observeLatest(campus.name) }
+
+    fun syncOnPageOpen(campus: EASToken.Campus) {
+        refresh(campus, force = false)
     }
 
-    fun ingestWebExtract(json: String) {
-        executor.execute {
-            val notices = noticesFromExtract(json)
-            if (notices.isEmpty()) return@execute
-            dao.replaceAll(notices)
-            prefs.markFetchedToday()
-            _syncError.postValue(null)
-        }
-    }
-
-    fun refresh(force: Boolean) {
+    fun refresh(campus: EASToken.Campus, force: Boolean) {
+        val source = sourceFor(campus)
+        val prefs = prefsByCampus.getValue(campus)
         executor.execute {
             _refreshing.postValue(true)
             var cached = emptyList<CampusNotice>()
             try {
-                cached = dao.getLatest()
+                cached = dao.getLatest(campus.name)
                 val skipNetwork = !force &&
-                    !cacheIsJunk(cached) &&
+                    !cacheIsJunk(source, cached) &&
                     prefs.isFetchedToday() &&
-                    prefs.parserVersion >= CampusNoticeParser.PARSER_VERSION
+                    prefs.parserVersion >= source.parserVersion
                 if (skipNetwork) {
                     _syncError.postValue(null)
                     return@execute
                 }
-                val notices = fetchLatestNotices()
+                val notices = fetchLatestNotices(source)
                 if (notices.isNotEmpty()) {
-                    dao.replaceAll(notices)
-                    prefs.markFetchedToday()
+                    dao.replaceAll(campus.name, notices)
+                    prefs.markFetchedToday(source.parserVersion)
                     _syncError.postValue(null)
                     return@execute
                 }
-                if (cacheIsJunk(cached)) {
-                    dao.replaceAll(emptyList())
+                if (cacheIsJunk(source, cached)) {
+                    dao.replaceAll(campus.name, emptyList())
                 }
-                if (dao.getLatest().isNotEmpty()) {
+                if (dao.getLatest(campus.name).isNotEmpty()) {
                     _syncError.postValue(null)
                     return@execute
                 }
                 _syncError.postValue(
-                    if (hasPortalCookie()) CampusNoticeSyncError.FAILED
-                    else CampusNoticeSyncError.NEED_LOGIN
+                    if (campus == EASToken.Campus.SHENZHEN && !hasPortalCookie()) CampusNoticeSyncError.NEED_LOGIN
+                    else CampusNoticeSyncError.FAILED
                 )
             } catch (e: CampusNoticeLoginRequired) {
-                if (cacheIsJunk(cached)) dao.replaceAll(emptyList())
-                _syncError.postValue(CampusNoticeSyncError.NEED_LOGIN)
+                if (cacheIsJunk(source, cached)) dao.replaceAll(campus.name, emptyList())
+                _syncError.postValue(
+                    if (campus == EASToken.Campus.SHENZHEN) CampusNoticeSyncError.NEED_LOGIN
+                    else CampusNoticeSyncError.FAILED
+                )
             } catch (e: Exception) {
                 LogUtils.e("campus notice sync failed: ${e.message}", e)
-                if (cacheIsJunk(cached)) dao.replaceAll(emptyList())
+                if (cacheIsJunk(source, cached)) dao.replaceAll(campus.name, emptyList())
                 _syncError.postValue(classify(e))
             } finally {
                 _refreshing.postValue(false)
@@ -109,25 +114,61 @@ class CampusNoticeRepository @Inject constructor(application: Application) {
         }
     }
 
-    private fun cacheIsJunk(cached: List<CampusNotice>): Boolean {
-        if (prefs.parserVersion < CampusNoticeParser.PARSER_VERSION) return true
-        if (cached.isEmpty()) return true
-        return cached.none { CampusNoticeParser.isPersistedNotice(it) }
+    private interface NoticeSource {
+        val parserVersion: Int
+        val pagesForCap: Int
+        val maxNotices: Int
+        fun listPageUrl(page: Int): String
+        fun parse(html: String, baseUrl: String): List<CampusNotice>
+        fun isPersistedNotice(notice: CampusNotice): Boolean
     }
 
-    private fun fetchLatestNotices(): List<CampusNotice> {
+    private fun sourceFor(campus: EASToken.Campus): NoticeSource = when (campus) {
+        EASToken.Campus.SHENZHEN -> object : NoticeSource {
+            override val parserVersion = CampusNoticeParser.PARSER_VERSION
+            override val pagesForCap = CampusNoticeParser.PAGES_FOR_CAP
+            override val maxNotices = CampusNoticeParser.MAX_NOTICES
+            override fun listPageUrl(page: Int) = CampusNoticeParser.listPageUrl(page)
+            override fun parse(html: String, baseUrl: String) = CampusNoticeParser.parse(html, baseUrl)
+            override fun isPersistedNotice(notice: CampusNotice) = CampusNoticeParser.isPersistedNotice(notice)
+        }
+        EASToken.Campus.BENBU -> object : NoticeSource {
+            override val parserVersion = BenbuNoticeParser.PARSER_VERSION
+            override val pagesForCap = BenbuNoticeParser.PAGES_FOR_CAP
+            override val maxNotices = BenbuNoticeParser.MAX_NOTICES
+            override fun listPageUrl(page: Int) = BenbuNoticeParser.listPageUrl(page)
+            override fun parse(html: String, baseUrl: String) = BenbuNoticeParser.parse(html, baseUrl)
+            override fun isPersistedNotice(notice: CampusNotice) = BenbuNoticeParser.isPersistedNotice(notice)
+        }
+        EASToken.Campus.WEIHAI -> object : NoticeSource {
+            override val parserVersion = WeihaiNoticeParser.PARSER_VERSION
+            override val pagesForCap = WeihaiNoticeParser.PAGES_FOR_CAP
+            override val maxNotices = WeihaiNoticeParser.MAX_NOTICES
+            override fun listPageUrl(page: Int) = WeihaiNoticeParser.listPageUrl(page)
+            override fun parse(html: String, baseUrl: String) = WeihaiNoticeParser.parse(html, baseUrl)
+            override fun isPersistedNotice(notice: CampusNotice) = WeihaiNoticeParser.isPersistedNotice(notice)
+        }
+    }
+
+    private fun cacheIsJunk(source: NoticeSource, cached: List<CampusNotice>): Boolean {
+        if (cached.isEmpty()) return true
+        return cached.none { source.isPersistedNotice(it) }
+    }
+
+    private fun fetchLatestNotices(source: NoticeSource): List<CampusNotice> {
         val byId = LinkedHashMap<String, CampusNotice>()
-        for (page in 1..CampusNoticeParser.PAGES_FOR_CAP) {
-            val pageNotices = downloadAndParse(CampusNoticeParser.listPageUrl(page))
+        for (page in 1..source.pagesForCap) {
+            val url = source.listPageUrl(page)
+            val pageNotices = source.parse(download(url), url)
             if (pageNotices.isEmpty()) break
             for (notice in pageNotices) {
                 if (notice.id !in byId) byId[notice.id] = notice
             }
-            if (byId.size >= CampusNoticeParser.MAX_NOTICES) break
+            if (byId.size >= source.maxNotices) break
         }
         return byId.values
             .sortedWith(compareByDescending<CampusNotice> { it.pubDateMillis }.thenBy { it.title })
-            .take(CampusNoticeParser.MAX_NOTICES)
+            .take(source.maxNotices)
     }
 
     private fun classify(error: Exception): CampusNoticeSyncError {
@@ -155,11 +196,6 @@ class CampusNoticeRepository @Inject constructor(application: Application) {
                 runCatching { manager.getCookie(url) }.getOrNull()?.takeIf { it.isNotBlank() }
             }.joinToString("; ")
         }.getOrDefault("")
-    }
-
-    private fun downloadAndParse(url: String): List<CampusNotice> {
-        val html = download(url)
-        return CampusNoticeParser.parse(html, url)
     }
 
     private fun download(url: String): String {
@@ -192,23 +228,5 @@ class CampusNoticeRepository @Inject constructor(application: Application) {
             return response.body?.string() ?: throw IOException("empty body")
         }
     }
-
-    private fun noticesFromExtract(json: String): List<CampusNotice> {
-        val array = runCatching { JSONArray(json) }.getOrNull() ?: return emptyList()
-        val notices = ArrayList<CampusNotice>()
-        for (i in 0 until array.length()) {
-            val obj = array.optJSONObject(i) ?: continue
-            val title = obj.optString("title").replace('\u00a0', ' ').replace(Regex("\\s+"), " ").trim()
-            val rawUrl = obj.optString("url").substringBefore('#').trim()
-            if (title.length < 4 || !CampusNoticeParser.isNoticeUrl(rawUrl)) continue
-            val url = CampusNoticeParser.canonicalContentUrl(rawUrl)
-            val near = obj.optString("near")
-            val millis = CampusNoticeParser.parseDateMillis("$title $near")
-            val id = CampusNoticeParser.newsIdFromUrl(url) ?: continue
-            notices += CampusNotice(id = id, title = title, url = url, pubDateMillis = millis)
-        }
-        return notices.distinctBy { it.id }.take(CampusNoticeParser.MAX_NOTICES)
-    }
-
     private class CampusNoticeLoginRequired : Exception("login required")
 }
