@@ -506,25 +506,28 @@ class EASRepository @Inject constructor(
     fun queryEmptyClassroom(
         term: TermItem,
         buildingItem: BuildingItem,
-        week: Int
+        week: Int,
+        useCache: Boolean = true,
     ): LiveData<DataState<List<ClassroomItem>>> {
         val easToken = easPreferenceSource.getEasToken()
         LogUtils.d("queryEmptyClassroom: isLogin=${easToken.isLogin()}, term=${term.getCode()}, building=${buildingItem.name}")
         if (easToken.isLogin()) {
             val result = MediatorLiveData<DataState<List<ClassroomItem>>>()
             val hasCachedResult = AtomicBoolean(false)
-            thread(name = "classroom-cache-load") {
-                val cached = classroomCacheDao.getByQuerySync(
-                    buildingItem.id,
-                    term.yearCode,
-                    term.termCode,
-                    week
-                )
-                if (cached.isNotEmpty()) {
-                    hasCachedResult.set(true)
-                    result.postValue(
-                        DataState(cached.map { it.toClassroomItem() }).setFromCache(true)
+            if (useCache) {
+                thread(name = "classroom-cache-load") {
+                    val cached = classroomCacheDao.getByQuerySync(
+                        buildingItem.id,
+                        term.yearCode,
+                        term.termCode,
+                        week
                     )
+                    if (cached.isNotEmpty()) {
+                        hasCachedResult.set(true)
+                        result.postValue(
+                            DataState(cached.map { it.toClassroomItem() }).setFromCache(true)
+                        )
+                    }
                 }
             }
             val remote = getService(easToken.campus).queryEmptyClassroom(
@@ -534,7 +537,7 @@ class EASRepository @Inject constructor(
                 listOf(week.toString())
             )
             result.addSource(remote) { state ->
-                if (hasCachedResult.get() && state.state != DataState.STATE.SUCCESS) {
+                if (useCache && hasCachedResult.get() && state.state != DataState.STATE.SUCCESS) {
                     return@addSource
                 }
                 result.value = state
