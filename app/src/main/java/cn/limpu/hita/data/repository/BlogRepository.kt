@@ -51,8 +51,13 @@ class BlogRepository @Inject constructor(application: Application) {
 
     init {
         executor.execute {
-            articleCache = dao.getAll()
-            publishUnseenLocked()
+            try {
+                articleCache = dao.getAll()
+                publishUnseenLocked()
+            } catch (e: Exception) {
+                LogUtils.e("blog cache load failed", e)
+                _syncErrorLiveData.postValue(e.message ?: "sync failed")
+            }
         }
     }
 

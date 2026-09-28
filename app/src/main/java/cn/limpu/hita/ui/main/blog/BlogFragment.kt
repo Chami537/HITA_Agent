@@ -226,65 +226,66 @@ private fun CampusNoticeScreen(
     LaunchedEffect(campus) {
         if (refreshOnEnter) viewModel.syncOnPageOpen(campus)
     }
-    PullToRefreshBox(
-        isRefreshing = refreshing,
-        onRefresh = { viewModel.refresh(campus) },
-        modifier = Modifier.fillMaxSize(),
-    ) {
-        when {
-            notices.isEmpty() && refreshing -> {
-                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    CircularProgressIndicator()
-                }
-            }
-            notices.isEmpty() -> {
-                Column(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(32.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.Center,
-                ) {
-                    Text(
-                        text = when (error) {
-                            CampusNoticeSyncError.NEED_LOGIN -> stringResource(R.string.campus_notice_need_login)
-                            CampusNoticeSyncError.NEED_CAMPUS_NET -> stringResource(R.string.campus_notice_need_campus_net)
-                            CampusNoticeSyncError.FAILED -> stringResource(R.string.campus_notice_load_failed)
-                            null -> stringResource(R.string.campus_notice_empty)
-                        },
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        fontFamily = lxgw,
-                        fontSize = 16.sp,
-                    )
-                    if (error == CampusNoticeSyncError.NEED_LOGIN) {
-                        TextButton(onClick = onLogin) {
-                            Text(stringResource(R.string.campus_notice_login), fontFamily = lxgw)
-                        }
-                    } else {
-                        TextButton(onClick = { viewModel.refresh(campus) }) {
-                            Text(stringResource(R.string.blog_retry), fontFamily = lxgw)
-                        }
+    val failureText = when (error) {
+        CampusNoticeSyncError.NEED_LOGIN -> stringResource(R.string.campus_notice_need_login)
+        CampusNoticeSyncError.NEED_CAMPUS_NET -> stringResource(R.string.campus_notice_need_campus_net)
+        CampusNoticeSyncError.FAILED -> stringResource(R.string.campus_notice_load_failed)
+        null -> null
+    }
+    Column(modifier = Modifier.fillMaxSize()) {
+        if (failureText != null) {
+            SyncFailureCaption(text = failureText, fontFamily = lxgw)
+        }
+        PullToRefreshBox(
+            isRefreshing = refreshing,
+            onRefresh = { viewModel.refresh(campus) },
+            modifier = Modifier.weight(1f),
+        ) {
+            when {
+                notices.isEmpty() && refreshing -> {
+                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        CircularProgressIndicator()
                     }
                 }
-            }
-            else -> {
-                LazyColumn(
-                    modifier = Modifier.fillMaxSize(),
-                    contentPadding = PaddingValues(start = 12.dp, end = 12.dp, top = 4.dp, bottom = 96.dp),
-                    verticalArrangement = Arrangement.spacedBy(6.dp),
-                ) {
-                    if (error != null) {
-                        item {
-                            NoticeStatusRow(error = error, lxgw = lxgw, onLogin = onLogin, onRetry = { viewModel.refresh(campus) })
-                        }
-                    }
-                    items(notices, key = { it.id }) { notice ->
-                        CampusNoticeRow(
-                            notice = notice,
+                notices.isEmpty() -> {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(32.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.Center,
+                    ) {
+                        Text(
+                            text = stringResource(R.string.campus_notice_empty),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
                             fontFamily = lxgw,
-                            onOpen = { openNoticeLink(context, notice.title, notice.url) },
-                            onCopy = { copyNoticeLink(context, notice.title, notice.url) },
+                            fontSize = 16.sp,
                         )
+                        if (error == CampusNoticeSyncError.NEED_LOGIN) {
+                            TextButton(onClick = onLogin) {
+                                Text(stringResource(R.string.campus_notice_login), fontFamily = lxgw)
+                            }
+                        } else {
+                            TextButton(onClick = { viewModel.refresh(campus) }) {
+                                Text(stringResource(R.string.blog_retry), fontFamily = lxgw)
+                            }
+                        }
+                    }
+                }
+                else -> {
+                    LazyColumn(
+                        modifier = Modifier.fillMaxSize(),
+                        contentPadding = PaddingValues(start = 12.dp, end = 12.dp, top = 4.dp, bottom = 96.dp),
+                        verticalArrangement = Arrangement.spacedBy(6.dp),
+                    ) {
+                        items(notices, key = { "${it.campus}:${it.id}" }) { notice ->
+                            CampusNoticeRow(
+                                notice = notice,
+                                fontFamily = lxgw,
+                                onOpen = { openNoticeLink(context, notice.title, notice.url) },
+                                onCopy = { copyNoticeLink(context, notice.title, notice.url) },
+                            )
+                        }
                     }
                 }
             }
@@ -293,34 +294,18 @@ private fun CampusNoticeScreen(
 }
 
 @Composable
-private fun NoticeStatusRow(
-    error: CampusNoticeSyncError?,
-    lxgw: FontFamily,
-    onLogin: () -> Unit,
-    onRetry: () -> Unit,
-) {
-    Column(modifier = Modifier.fillMaxWidth().padding(bottom = 4.dp)) {
-        Text(
-            text = when (error) {
-                CampusNoticeSyncError.NEED_LOGIN -> stringResource(R.string.campus_notice_need_login)
-                CampusNoticeSyncError.NEED_CAMPUS_NET -> stringResource(R.string.campus_notice_need_campus_net)
-                CampusNoticeSyncError.FAILED -> stringResource(R.string.campus_notice_load_failed)
-                null -> ""
-            },
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            fontFamily = lxgw,
-            fontSize = 13.sp,
-        )
-        if (error == CampusNoticeSyncError.NEED_LOGIN) {
-            TextButton(onClick = onLogin) {
-                Text(stringResource(R.string.campus_notice_login), fontFamily = lxgw)
-            }
-        } else if (error != null) {
-            TextButton(onClick = onRetry) {
-                Text(stringResource(R.string.blog_retry), fontFamily = lxgw)
-            }
-        }
-    }
+private fun SyncFailureCaption(text: String, fontFamily: FontFamily) {
+    Text(
+        text = text,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        fontFamily = fontFamily,
+        fontSize = 12.sp,
+        maxLines = 1,
+        overflow = TextOverflow.Ellipsis,
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 2.dp),
+    )
 }
 
 @OptIn(ExperimentalFoundationApi::class)
@@ -396,9 +381,7 @@ private fun BlogScreen(
     val lxgw = rememberLxgwFontFamily()
     val transparentBackdrop = hitaUsesMainBackdrop()
 
-    PullToRefreshBox(
-        isRefreshing = refreshing,
-        onRefresh = { viewModel.refresh() },
+    Column(
         modifier = Modifier
             .fillMaxSize()
             .then(
@@ -406,45 +389,56 @@ private fun BlogScreen(
                 else Modifier.background(MaterialTheme.colorScheme.background)
             ),
     ) {
-        when {
-            articles.isEmpty() && refreshing -> {
-                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    CircularProgressIndicator()
-                }
-            }
-            articles.isEmpty() -> {
-                Column(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(32.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.Center,
-                ) {
-                    Text(
-                        text = error?.let { stringResource(R.string.blog_load_failed) }
-                            ?: stringResource(R.string.blog_empty),
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        fontFamily = lxgw,
-                        fontSize = 16.sp,
-                    )
-                    TextButton(onClick = { viewModel.refresh() }) {
-                        Text(stringResource(R.string.blog_retry), fontFamily = lxgw)
+        if (error != null) {
+            SyncFailureCaption(
+                text = stringResource(R.string.blog_load_failed),
+                fontFamily = lxgw,
+            )
+        }
+        PullToRefreshBox(
+            isRefreshing = refreshing,
+            onRefresh = { viewModel.refresh() },
+            modifier = Modifier.weight(1f),
+        ) {
+            when {
+                articles.isEmpty() && refreshing -> {
+                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        CircularProgressIndicator()
                     }
                 }
-            }
-            else -> {
-                LazyColumn(
-                    modifier = Modifier.fillMaxSize(),
-                    contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 96.dp),
-                    verticalArrangement = Arrangement.spacedBy(10.dp),
-                ) {
-                    items(nodes, key = { it.article.guid }) { node ->
-                        BlogNodeCard(
-                            node = node,
-                            unread = unread,
+                articles.isEmpty() -> {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(32.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.Center,
+                    ) {
+                        Text(
+                            text = stringResource(R.string.blog_empty),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
                             fontFamily = lxgw,
-                            onOpenArticle = onOpenArticle,
+                            fontSize = 16.sp,
                         )
+                        TextButton(onClick = { viewModel.refresh() }) {
+                            Text(stringResource(R.string.blog_retry), fontFamily = lxgw)
+                        }
+                    }
+                }
+                else -> {
+                    LazyColumn(
+                        modifier = Modifier.fillMaxSize(),
+                        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 96.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp),
+                    ) {
+                        items(nodes, key = { it.article.guid }) { node ->
+                            BlogNodeCard(
+                                node = node,
+                                unread = unread,
+                                fontFamily = lxgw,
+                                onOpenArticle = onOpenArticle,
+                            )
+                        }
                     }
                 }
             }
