@@ -74,10 +74,12 @@ class EasPreferenceSource(context: Context) {
                             is Float -> editor.putFloat(key, value)
                             is Boolean -> editor.putBoolean(key, value)
                             is Set<*> -> {
-                                @Suppress("UNCHECKED_CAST")
-                                editor.putStringSet(key, value as Set<String>)
+                                editor.putStringSet(key, value.filterIsInstance<String>().toSet())
                             }
-                            else -> error("Unsupported legacy preference type for $key")
+                            // Old SharedPreferences may contain a value that the current
+                            // EncryptedSharedPreferences schema cannot represent. Skip only
+                            // that field so it cannot prevent the rest of the session migrating.
+                            else -> Unit
                         }
                     }
                     editor.putBoolean(KEY_MIGRATION_COMPLETE, true).commit()
