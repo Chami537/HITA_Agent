@@ -22,6 +22,7 @@ import cn.limpu.hita.data.analytics.UsageAnalyticsClient
 import cn.limpu.hita.data.analytics.UsageAnalyticsEvent
 import cn.limpu.hita.data.model.chat.ChatMessageEntity
 import cn.limpu.hita.data.model.chat.ChatSession
+import cn.limpu.hita.data.repository.EASRepository
 import cn.limpu.hita.utils.LogUtils
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
@@ -44,6 +45,7 @@ internal fun nextSessionIdAfterDeletion(
 @HiltViewModel
 class AgentChatViewModel @Inject constructor(
     private val application: Application,
+    private val easRepository: EASRepository,
 ) : ViewModel() {
 
     private val db = AppDatabase.getDatabase(application)
@@ -307,6 +309,7 @@ class AgentChatViewModel @Inject constructor(
                 history = history.toList(),
                 timetableId = null,
                 application = application,
+                easRepository = easRepository,
                 agentProvider = agentProvider,
                 onTrace = { trace ->
                     if (currentSessionId != sid) return@chat
@@ -397,6 +400,7 @@ class AgentChatViewModel @Inject constructor(
                 attachmentMimeType = mimeType,
                 timetableId = null,
                 application = application,
+                easRepository = easRepository,
                 agentProvider = agentProvider,
                 onTrace = { trace: AgentTraceEvent ->
                     if (currentSessionId != sid) return@chatWithAttachment

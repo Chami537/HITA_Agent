@@ -11,6 +11,7 @@ import cn.limpu.hita.data.analytics.UsageAnalyticsClient
 import cn.limpu.hita.data.analytics.UsageAnalyticsDimensions
 import cn.limpu.hita.data.analytics.UsageAnalyticsEvent
 import cn.limpu.hita.data.model.resource.AgentResourceCard
+import cn.limpu.hita.data.repository.EASRepository
 import cn.limpu.hita.utils.LogUtils
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -24,6 +25,7 @@ object LlmChatService {
         history: List<ChatMessage>,
         timetableId: String?,
         application: Application,
+        easRepository: EASRepository,
         agentProvider: AgentProvider<TimetableAgentInput, TimetableAgentOutput>,
         onTrace: (AgentTraceEvent) -> Unit,
         onResult: (LlmChatResult) -> Unit,
@@ -51,6 +53,7 @@ object LlmChatService {
                     contextMessage = contextMessage,
                     userMessage = userMessage,
                     application = application,
+                    easRepository = easRepository,
                     timetableId = timetableId,
                     agentProvider = agentProvider,
                     onTrace = onTrace,
@@ -75,6 +78,7 @@ object LlmChatService {
         contextMessage: String,
         userMessage: String,
         application: Application,
+        easRepository: EASRepository,
         timetableId: String?,
         agentProvider: AgentProvider<TimetableAgentInput, TimetableAgentOutput>,
         onTrace: (AgentTraceEvent) -> Unit,
@@ -200,6 +204,7 @@ object LlmChatService {
                     actionInput = parsed.actionInput,
                     userMessage = userMessage,
                     application = application,
+                    easRepository = easRepository,
                     timetableId = timetableId,
                     agentProvider = agentProvider,
                     onTrace = onTrace,
@@ -431,6 +436,7 @@ suspend fun LlmChatService.chatWithAttachment(
     attachmentMimeType: String,
     timetableId: String?,
     application: Application,
+    easRepository: EASRepository,
     agentProvider: AgentProvider<TimetableAgentInput, TimetableAgentOutput>,
     onTrace: (AgentTraceEvent) -> Unit,
     onResult: (LlmChatResult) -> Unit,
@@ -549,6 +555,7 @@ suspend fun LlmChatService.chatWithAttachment(
                 history = newHistory,
                 timetableId = timetableId,
                 application = application,
+                easRepository = easRepository,
                 agentProvider = agentProvider,
                 onTrace = onTrace,
                 onResult = onResult
