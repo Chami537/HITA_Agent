@@ -100,8 +100,7 @@ class EasPreferenceSource(context: Context) {
                             is Float -> editor.putFloat(key, value)
                             is Boolean -> editor.putBoolean(key, value)
                             is Set<*> -> {
-                                @Suppress("UNCHECKED_CAST")
-                                editor.putStringSet(key, value as Set<String>)
+                                editor.putStringSet(key, value.filterIsInstance<String>().toSet())
                             }
                             else -> LogUtils.e("Unsupported legacy preference type for $key")
                         }
