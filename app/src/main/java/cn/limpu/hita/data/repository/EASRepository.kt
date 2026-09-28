@@ -252,7 +252,10 @@ class EASRepository @Inject constructor(
                 return@addSource
             }
             token.campus = campus
-            val credentialToSave = if (campus == EASToken.Campus.SHENZHEN) {
+            val credentialToSave = if (
+                campus == EASToken.Campus.SHENZHEN &&
+                !username.trim().startsWith("{")
+            ) {
                 EasCredential(campus, username, password)
             } else {
                 null
@@ -1189,6 +1192,12 @@ class EASRepository @Inject constructor(
                     "local=${plan.holdLocalCount} incoming=${plan.holdIncomingCount} " +
                     "matched=${plan.holdMatchedCount}"
             )
+            timetableChangeStore.pruneResolvedDecisions(
+                term.id,
+                incomingCourses.map {
+                    TimetableRefreshMergePolicy.courseKey(it.name, it.code)
+                }.toSet()
+            )
             timetableChangeStore.recordHeldBatch(
                 TimetableHeldBatch(
                     createdAtMillis = System.currentTimeMillis(),
@@ -1591,6 +1600,9 @@ class EASRepository @Inject constructor(
         val latch = CountDownLatch(1)
         var result = DataState<T>(DataState.STATE.FETCH_FAILED)
         val observer = Observer<DataState<T>> { state ->
+            if (state.state == DataState.STATE.NOTHING || state.state == DataState.STATE.LOADING) {
+                return@Observer
+            }
             result = state
             latch.countDown()
         }
@@ -1968,7 +1980,14 @@ class EASRepository @Inject constructor(
             runCatching {
                 val token = easPreferenceSource.getEasToken()
                 val ownerKey = FollowedTeachingSectionStore.ownerKey(token)
-                timetableSnapshotStore.restore(ownerKey, snapshotId)
+                val restored = timetableSnapshotStore.restore(ownerKey, snapshotId)
+                timetableChangeStore.pruneResolvedDecisions(
+                    restored.termId,
+                    restored.subjects.map {
+                        TimetableRefreshMergePolicy.courseKey(it.name, it.code)
+                    }.toSet()
+                )
+                restored
             }.onSuccess {
                 result.postValue(DataState(it, DataState.STATE.SUCCESS))
             }.onFailure { error ->
@@ -2049,7 +2068,10 @@ class EASRepository @Inject constructor(
 
     private fun mergeWithStoredEasToken(token: EASToken): EASToken {
         val stored = easPreferenceSource.getEasToken()
-        if (!stored.isLogin() || stored.campus != token.campus) {
+        if (!stored.isLogin() ||
+            stored.campus != token.campus ||
+            EasSessionGenerationGuard.blocksStoredSessionInheritance(stored, token)
+        ) {
             return token
         }
 

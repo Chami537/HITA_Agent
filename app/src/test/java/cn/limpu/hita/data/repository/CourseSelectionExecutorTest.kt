@@ -299,6 +299,18 @@ class CourseSelectionExecutorTest {
     }
 
     @Test
+    fun `business failure is not confirmed by a colliding course id`() = runBlocking {
+        val fake = RecordingGateway(acceptedIds = setOf("course-1"))
+        val submitted = jobWithCourses(1).copy(
+            results = listOf(resultFor(course(1), CourseSelectionCourseStatus.BUSINESS_FAILURE))
+        )
+
+        val confirmed = CourseSelectionExecutor(fake).confirm(submitted)
+
+        assertEquals(CourseSelectionCourseStatus.BUSINESS_FAILURE, confirmed.results.single().status)
+    }
+
+    @Test
     fun `local successful submission sends exactly one post`() {
         val receivedPosts = AtomicInteger(0)
         LocalSelectionServer(

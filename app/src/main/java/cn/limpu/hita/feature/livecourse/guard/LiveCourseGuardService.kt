@@ -39,11 +39,12 @@ class LiveCourseGuardService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        startForeground(NOTIFICATION_ID, guardNotification())
         if (!isGuardEnabled()) {
+            stopForeground(STOP_FOREGROUND_REMOVE)
             stopSelf()
             return START_NOT_STICKY
         }
-        startForeground(NOTIFICATION_ID, guardNotification())
         if (guardJob?.isActive != true) {
             guardJob = serviceScope.launch {
                 while (isActive && isGuardEnabled()) {

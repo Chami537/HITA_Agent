@@ -25,8 +25,9 @@ object LegacyEasCredentialPolicy {
         password: String?
     ): EasCredential? {
         if (campus != EASToken.Campus.SHENZHEN) return null
-        val normalizedUsername = username?.trim()?.takeIf(String::isNotEmpty) ?: return null
-        val usablePassword = password?.takeIf(String::isNotEmpty) ?: return null
+        val normalizedUsername = username?.trim()?.takeIf { it.isNotEmpty() && !it.startsWith("{") }
+            ?: return null
+        val usablePassword = password?.takeIf { it.isNotEmpty() } ?: return null
         return EasCredential(campus, normalizedUsername, usablePassword)
     }
 }
@@ -63,7 +64,8 @@ class EasCredentialStore(context: Context) {
 
     @Synchronized
     fun save(campus: EASToken.Campus, username: String, password: String) {
-        val normalizedUsername = username.trim().takeIf(String::isNotEmpty) ?: return
+        val normalizedUsername = username.trim().takeIf { it.isNotEmpty() && !it.startsWith("{") }
+            ?: return
         if (password.isEmpty()) return
         val storageKey = EasCredentialStoreKeyPolicy.key(campus, normalizedUsername)
         runCatching {

@@ -109,7 +109,7 @@ internal class CourseSelectionExecutor(
         val confirmedAtMillis = nowMillis()
         val confirmedResults = job.results.map { result ->
             val course = courseById[result.courseId]
-            if (course != null && course.identities().any(selectedIds::contains)) {
+            if (course != null && canConfirm(result, course, selectedIds)) {
                 result.copy(
                     status = CourseSelectionCourseStatus.CONFIRMED,
                     confirmedAtMillis = confirmedAtMillis
@@ -127,8 +127,19 @@ internal class CourseSelectionExecutor(
         )
     }
 
-    private fun CourseSelectionJobCourse.identities(): Set<String> =
-        setOf(requestId, taskId, courseId).filterTo(linkedSetOf()) { it.isNotBlank() }
+
+    private fun canConfirm(
+        result: CourseSelectionCourseResult,
+        course: CourseSelectionJobCourse,
+        selectedIds: Set<String>,
+    ): Boolean {
+        if (result.status == CourseSelectionCourseStatus.BUSINESS_FAILURE ||
+            result.status == CourseSelectionCourseStatus.AUTH_REQUIRED
+        ) {
+            return false
+        }
+        return listOf(course.requestId, course.taskId).any { it.isNotBlank() && it in selectedIds }
+    }
 }
 
 private class CourseSelectionExecutionProgress(

@@ -24,7 +24,7 @@ private val LEGACY_TOKEN_STRING_KEYS = listOf(
     "grade", "className", "sfxsx", "email", "phone", "electronicExpToken"
 )
 
-private fun openEncryptedPrefs(context: Context, name: String): SharedPreferences {
+private fun openEncryptedPrefs(context: Context, name: String): SharedPreferences? {
     fun create(): SharedPreferences = EncryptedSharedPreferences.create(
         name,
         MasterKeys.getOrCreate(MasterKeys.AES256_GCM_SPEC),
@@ -38,22 +38,11 @@ private fun openEncryptedPrefs(context: Context, name: String): SharedPreference
         LogUtils.e("encrypted prefs $name failed, recreating file", error)
         runCatching { context.deleteSharedPreferences(name) }
     }
-    try {
-        return create()
-    } catch (error: Exception) {
-        LogUtils.e("encrypted prefs $name failed after recreate", error)
-        runCatching {
-            val keyStore = java.security.KeyStore.getInstance("AndroidKeyStore")
-            keyStore.load(null)
-            keyStore.deleteEntry("_androidx_security_master_key_")
-        }
-        runCatching { context.deleteSharedPreferences(name) }
-    }
     return try {
         create()
     } catch (error: Exception) {
-        LogUtils.e("encrypted prefs $name unavailable, using private fallback", error)
-        context.getSharedPreferences("${name}_fallback", Context.MODE_PRIVATE)
+        LogUtils.e("encrypted prefs $name unavailable; session will not be persisted", error)
+        null
     }
 }
 
@@ -61,6 +50,11 @@ private fun openEncryptedPrefs(context: Context, name: String): SharedPreference
 class EasPreferenceSource(context: Context) {
     private val preference: SharedPreferences = synchronized(EasPreferenceSource::class.java) {
         val encryptedPrefs = openEncryptedPrefs(context, SP_NAME_EAS_TOKEN)
+        if (encryptedPrefs == null) {
+            LogUtils.e("EAS encrypted prefs unavailable; not persisting session or migrating secrets")
+            return@synchronized MemorySharedPreferences()
+        }
+        runCatching { context.deleteSharedPreferences("${SP_NAME_EAS_TOKEN}_fallback") }
         if (!encryptedPrefs.getBoolean(KEY_MIGRATION_COMPLETE, false)) {
             val rawLegacy = context.getSharedPreferences(LEGACY_SP_NAME_EAS_TOKEN, Context.MODE_PRIVATE).all
             val hasEncryptedLegacy = rawLegacy.keys.any { it.startsWith(ENCRYPTED_PREFS_KEY_PREFIX) }
@@ -225,4 +219,80 @@ class EasPreferenceSource(context: Context) {
         return result
     }
 
+}
+
+/** 加密偏好打不开时的进程内占位，不把会话或密码写到磁盘。 */
+private class MemorySharedPreferences : SharedPreferences {
+    private val data = HashMap<String, Any>()
+
+    override fun getAll(): MutableMap<String, *> = HashMap(data)
+
+    override fun getString(key: String?, defValue: String?): String? = data[key] as? String ?: defValue
+
+    override fun getStringSet(key: String?, defValues: MutableSet<String>?): MutableSet<String>? {
+        val value = data[key] ?: return defValues
+        @Suppress("UNCHECKED_CAST")
+        return (value as? Set<String>)?.toMutableSet() ?: defValues
+    }
+
+    override fun getInt(key: String?, defValue: Int): Int = data[key] as? Int ?: defValue
+
+    override fun getLong(key: String?, defValue: Long): Long = data[key] as? Long ?: defValue
+
+    override fun getFloat(key: String?, defValue: Float): Float = data[key] as? Float ?: defValue
+
+    override fun getBoolean(key: String?, defValue: Boolean): Boolean = data[key] as? Boolean ?: defValue
+
+    override fun contains(key: String?): Boolean = key in data
+
+    override fun edit(): SharedPreferences.Editor = Editor()
+
+    override fun registerOnSharedPreferenceChangeListener(
+        listener: SharedPreferences.OnSharedPreferenceChangeListener?,
+    ) = Unit
+
+    override fun unregisterOnSharedPreferenceChangeListener(
+        listener: SharedPreferences.OnSharedPreferenceChangeListener?,
+    ) = Unit
+
+    private inner class Editor : SharedPreferences.Editor {
+        private val updates = HashMap<String, Any?>()
+        private var clearAll = false
+
+        override fun putString(key: String?, value: String?) = put(key, value)
+
+        override fun putStringSet(key: String?, values: MutableSet<String>?) = put(key, values)
+
+        override fun putInt(key: String?, value: Int) = put(key, value)
+
+        override fun putLong(key: String?, value: Long) = put(key, value)
+
+        override fun putFloat(key: String?, value: Float) = put(key, value)
+
+        override fun putBoolean(key: String?, value: Boolean) = put(key, value)
+
+        override fun remove(key: String?) = put(key, null)
+
+        override fun clear(): SharedPreferences.Editor {
+            clearAll = true
+            return this
+        }
+
+        override fun commit(): Boolean {
+            if (clearAll) data.clear()
+            updates.forEach { (key, value) ->
+                if (value == null) data.remove(key) else data[key] = value
+            }
+            return true
+        }
+
+        override fun apply() {
+            commit()
+        }
+
+        private fun put(key: String?, value: Any?): SharedPreferences.Editor {
+            if (key != null) updates[key] = value
+            return this
+        }
+    }
 }

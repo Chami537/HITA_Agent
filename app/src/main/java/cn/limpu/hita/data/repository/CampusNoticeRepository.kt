@@ -180,21 +180,14 @@ class CampusNoticeRepository @Inject constructor(application: Application) {
     }
 
     private fun hasPortalCookie(): Boolean {
-        val cookie = portalCookieHeader()
+        val cookie = portalCookieHeader("https://info.hitsz.edu.cn/")
         return cookie.contains("JSESSIONID", ignoreCase = true) ||
             cookie.contains("iPlanetDirectoryPro", ignoreCase = true)
     }
 
-    private fun portalCookieHeader(): String {
+    private fun portalCookieHeader(url: String): String {
         return runCatching {
-            val manager = CookieManager.getInstance()
-            listOf(
-                "https://info.hitsz.edu.cn/",
-                "http://info.hitsz.edu.cn/",
-                "https://ids.hit.edu.cn/",
-            ).mapNotNull { url ->
-                runCatching { manager.getCookie(url) }.getOrNull()?.takeIf { it.isNotBlank() }
-            }.joinToString("; ")
+            CookieManager.getInstance().getCookie(url).orEmpty()
         }.getOrDefault("")
     }
 
@@ -208,7 +201,7 @@ class CampusNoticeRepository @Inject constructor(application: Application) {
             )
             .header("Accept", "text/html,application/xhtml+xml")
             .apply {
-                val cookie = portalCookieHeader()
+                val cookie = portalCookieHeader(url)
                 if (cookie.isNotBlank() && url.contains("info.hitsz.edu.cn")) {
                     header("Cookie", cookie)
                 }

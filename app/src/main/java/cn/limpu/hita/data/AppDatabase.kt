@@ -1,13 +1,13 @@
 package cn.limpu.hita.data
 
 import android.content.Context
-import android.database.sqlite.SQLiteException
+
 import androidx.room.Database
 import androidx.room.Room
 import androidx.room.RoomDatabase
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
-import cn.limpu.hita.utils.LogUtils
+
 import com.limpu.hitauser.data.model.UserProfile
 import cn.limpu.hita.data.model.chat.ChatMessageEntity
 import cn.limpu.hita.data.model.chat.ChatSession
@@ -58,36 +58,11 @@ abstract class AppDatabase : RoomDatabase() {
             INSTANCE?.let { return it }
             synchronized(AppDatabase::class.java) {
                 INSTANCE?.let { return it }
-                val opened = openOrRecreate(context.applicationContext)
-                INSTANCE = opened
-                return opened
-            }
-        }
-
-        private fun openOrRecreate(context: Context): AppDatabase {
-            val first = build(context)
-            try {
-                first.openHelper.writableDatabase
-                return first
-            } catch (error: IllegalStateException) {
-                return recreate(context, first, error)
-            } catch (error: SQLiteException) {
-                return recreate(context, first, error)
-            }
-        }
-
-        private fun recreate(context: Context, failed: AppDatabase, error: Exception): AppDatabase {
-            LogUtils.e("Room database open failed, recreating", error)
-            runCatching { failed.close() }
-            context.deleteDatabase(DB_NAME)
-            val second = build(context)
-            second.openHelper.writableDatabase
-            return second
-        }
-
-        private fun build(context: Context): AppDatabase {
-            return Room.databaseBuilder(context, AppDatabase::class.java, DB_NAME)
-                .addMigrations(
+                val opened = Room.databaseBuilder(
+                    context.applicationContext,
+                    AppDatabase::class.java,
+                    DB_NAME,
+                ).addMigrations(
                     MIGRATION_1_2,
                     MIGRATION_2_3,
                     MIGRATION_3_4,
@@ -101,10 +76,11 @@ abstract class AppDatabase : RoomDatabase() {
                     MIGRATION_11_12,
                     MIGRATION_12_13,
                     MIGRATION_13_14,
-                )
-                .fallbackToDestructiveMigration(true)
-                .fallbackToDestructiveMigrationOnDowngrade(true)
-                .build()
+                ).fallbackToDestructiveMigration(true)
+                    .build()
+                INSTANCE = opened
+                return opened
+            }
         }
 
         private val MIGRATION_1_2 = object : Migration(1, 2) {

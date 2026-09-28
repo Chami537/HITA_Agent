@@ -234,7 +234,20 @@ private fun CampusNoticeScreen(
     }
     Column(modifier = Modifier.fillMaxSize()) {
         if (failureText != null) {
-            SyncFailureCaption(text = failureText, fontFamily = lxgw)
+            SyncFailureCaption(
+                text = failureText,
+                fontFamily = lxgw,
+                actionLabel = when (error) {
+                    CampusNoticeSyncError.NEED_LOGIN -> stringResource(R.string.campus_notice_login)
+                    null -> null
+                    else -> stringResource(R.string.blog_retry)
+                },
+                onAction = when (error) {
+                    CampusNoticeSyncError.NEED_LOGIN -> onLogin
+                    null -> null
+                    else -> ({ viewModel.refresh(campus) })
+                },
+            )
         }
         PullToRefreshBox(
             isRefreshing = refreshing,
@@ -255,12 +268,14 @@ private fun CampusNoticeScreen(
                         horizontalAlignment = Alignment.CenterHorizontally,
                         verticalArrangement = Arrangement.Center,
                     ) {
-                        Text(
-                            text = stringResource(R.string.campus_notice_empty),
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            fontFamily = lxgw,
-                            fontSize = 16.sp,
-                        )
+                        if (error == null) {
+                            Text(
+                                text = stringResource(R.string.campus_notice_empty),
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                fontFamily = lxgw,
+                                fontSize = 16.sp,
+                            )
+                        }
                         if (error == CampusNoticeSyncError.NEED_LOGIN) {
                             TextButton(onClick = onLogin) {
                                 Text(stringResource(R.string.campus_notice_login), fontFamily = lxgw)
@@ -294,18 +309,36 @@ private fun CampusNoticeScreen(
 }
 
 @Composable
-private fun SyncFailureCaption(text: String, fontFamily: FontFamily) {
-    Text(
-        text = text,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
-        fontFamily = fontFamily,
-        fontSize = 12.sp,
-        maxLines = 1,
-        overflow = TextOverflow.Ellipsis,
+private fun SyncFailureCaption(
+    text: String,
+    fontFamily: FontFamily,
+    actionLabel: String? = null,
+    onAction: (() -> Unit)? = null,
+) {
+    Row(
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = 16.dp, vertical = 2.dp),
-    )
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            text = text,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            fontFamily = fontFamily,
+            fontSize = 12.sp,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f),
+        )
+        if (actionLabel != null && onAction != null) {
+            TextButton(
+                onClick = onAction,
+                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
+            ) {
+                Text(actionLabel, fontFamily = fontFamily, fontSize = 12.sp, maxLines = 1)
+            }
+        }
+    }
 }
 
 @OptIn(ExperimentalFoundationApi::class)
@@ -393,6 +426,8 @@ private fun BlogScreen(
             SyncFailureCaption(
                 text = stringResource(R.string.blog_load_failed),
                 fontFamily = lxgw,
+                actionLabel = stringResource(R.string.blog_retry),
+                onAction = { viewModel.refresh() },
             )
         }
         PullToRefreshBox(
@@ -414,12 +449,14 @@ private fun BlogScreen(
                         horizontalAlignment = Alignment.CenterHorizontally,
                         verticalArrangement = Arrangement.Center,
                     ) {
-                        Text(
-                            text = stringResource(R.string.blog_empty),
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            fontFamily = lxgw,
-                            fontSize = 16.sp,
-                        )
+                        if (error == null) {
+                            Text(
+                                text = stringResource(R.string.blog_empty),
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                fontFamily = lxgw,
+                                fontSize = 16.sp,
+                            )
+                        }
                         TextButton(onClick = { viewModel.refresh() }) {
                             Text(stringResource(R.string.blog_retry), fontFamily = lxgw)
                         }

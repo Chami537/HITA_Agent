@@ -43,6 +43,9 @@ object WeihaiNoticeParser {
                 .replace(Regex("\\s+"), " ")
                 .trim()
             if (title.length < 4) continue
+            if (!raw.startsWith("/") || raw.startsWith("//") || raw.contains('@') || raw.contains('\\')) {
+                continue
+            }
             val id = "hitwh:$articleId"
             if (id in byId) continue
             val dateText = item.selectFirst("span.news-time2")?.text().orEmpty().trim()

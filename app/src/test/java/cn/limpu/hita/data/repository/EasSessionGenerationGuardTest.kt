@@ -88,6 +88,23 @@ class EasSessionGenerationGuardTest {
         )
     }
 
+    @Test
+    fun `different account blocks inheritance of the stored session`() {
+        val stored = loggedInToken("account-a", "session-a")
+        assertTrue(
+            EasSessionGenerationGuard.blocksStoredSessionInheritance(
+                stored,
+                loggedInToken("account-b", "session-b")
+            )
+        )
+        assertFalse(
+            EasSessionGenerationGuard.blocksStoredSessionInheritance(
+                stored,
+                loggedInToken("account-a", "session-b")
+            )
+        )
+    }
+
     private fun loggedInToken(account: String, session: String) = EASToken().apply {
         campus = EASToken.Campus.SHENZHEN
         username = account

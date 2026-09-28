@@ -28,6 +28,19 @@ internal object EasSessionGenerationGuard {
         }
     }
 
+    /**
+     * 两个已登录 token 都能确定账号且账号不同。此时不能继承旧会话的 cookie。
+     * 任一侧还没有账号标识时返回 false，刷新中的同一会话仍可补齐空字段。
+     */
+    fun blocksStoredSessionInheritance(stored: EASToken, incoming: EASToken): Boolean {
+        if (!stored.isLogin() || stored.campus != incoming.campus) return true
+        val storedAccount = stored.accountIdentity()
+        val incomingAccount = incoming.accountIdentity()
+        return storedAccount != null &&
+            incomingAccount != null &&
+            storedAccount != incomingAccount
+    }
+
     private fun representsSameAccountSession(stored: EASToken, incoming: EASToken): Boolean {
         if (!stored.isLogin() || !incoming.isLogin() || stored.campus != incoming.campus) return false
 

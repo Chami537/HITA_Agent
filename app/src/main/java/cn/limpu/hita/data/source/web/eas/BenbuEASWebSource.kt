@@ -231,7 +231,7 @@ class BenbuEASWebSource(
 
     override fun getStartDate(token: EASToken, term: TermItem): LiveData<DataState<Calendar>> {
         val result = MutableLiveData<DataState<Calendar>>()
-        result.value = DataState(DataState.STATE.NOTHING)
+        result.postValue(DataState(DataState.STATE.NOTHING))
 
         executor.execute {
             try {
@@ -296,7 +296,7 @@ class BenbuEASWebSource(
         token: EASToken
     ): LiveData<DataState<MutableList<TimePeriodInDay>>> {
         val result = MutableLiveData<DataState<MutableList<TimePeriodInDay>>>()
-        result.value = DataState(DataState.STATE.NOTHING)
+        result.postValue(DataState(DataState.STATE.NOTHING))
 
         executor.execute {
             try {

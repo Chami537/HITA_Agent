@@ -9,6 +9,8 @@ import android.webkit.WebResourceRequest
 import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import android.webkit.WebResourceResponse
+import java.io.ByteArrayInputStream
 import androidx.activity.compose.setContent
 import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.app.AppCompatDelegate
@@ -201,18 +203,33 @@ private fun BlogContentWebView(
                     javaScriptEnabled = false
                     loadWithOverviewMode = true
                     useWideViewPort = true
-                    mixedContentMode = WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE
+                    mixedContentMode = WebSettings.MIXED_CONTENT_NEVER_ALLOW
                     allowFileAccess = true
-                    allowContentAccess = true
+                    allowContentAccess = false
+                    @Suppress("DEPRECATION")
+                    allowFileAccessFromFileURLs = false
+                    @Suppress("DEPRECATION")
+                    allowUniversalAccessFromFileURLs = false
                     defaultTextEncodingName = "utf-8"
                 }
                 webViewClient = object : WebViewClient() {
+                    override fun shouldInterceptRequest(
+                        view: WebView?,
+                        request: WebResourceRequest?,
+                    ): WebResourceResponse? {
+                        val uri = request?.url ?: return null
+                        return if (isAllowedResource(uri)) {
+                            null
+                        } else {
+                            WebResourceResponse("text/plain", "utf-8", ByteArrayInputStream(ByteArray(0)))
+                        }
+                    }
+
                     override fun shouldOverrideUrlLoading(
                         view: WebView?,
                         request: WebResourceRequest?,
                     ): Boolean {
-                        val url = request?.url?.toString().orEmpty()
-                        return handleUrl(url)
+                        return handleUrl(request?.url?.toString().orEmpty())
                     }
 
                     @Deprecated("Deprecated in Java")
@@ -221,7 +238,7 @@ private fun BlogContentWebView(
                     }
 
                     private fun handleUrl(url: String): Boolean {
-                        if (url.isBlank() || url.startsWith("file://")) return false
+                        if (!url.startsWith("https://") && !url.startsWith("http://")) return true
                         val internal = findInternal(url)
                         if (internal != null) {
                             onOpenInternal(internal)
@@ -263,4 +280,10 @@ private fun rememberLxgwFontFamily(): FontFamily {
     return remember(context) {
         FontFamily(Typeface.createFromAsset(context.assets, "blog/lxgw-wenkai.ttf"))
     }
+}
+
+private fun isAllowedResource(uri: Uri): Boolean {
+    val scheme = uri.scheme?.lowercase() ?: return false
+    if (scheme == "https" || scheme == "http") return true
+    return scheme == "file" && uri.path?.startsWith("/android_asset/blog/") == true
 }

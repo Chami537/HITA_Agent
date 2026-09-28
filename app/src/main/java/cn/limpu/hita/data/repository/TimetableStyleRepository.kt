@@ -44,6 +44,7 @@ class TimetableStyleRepository @Inject constructor(application: Application) {
     )
     /** “还有更多课程”悬浮提示开关，默认开启。 */
     val eveningHintLiveData = timetableStyleSP.booleanLiveData(KEY_EVENING_HINT, true)
+    fun isEveningHintEnabled(): Boolean = timetableStyleSP.getBoolean(KEY_EVENING_HINT, true)
     /** 课表缩放：false=放大（默认，现状）/ true=缩小（整天压缩一屏）。 */
     val zoomCompressedLiveData = timetableStyleSP.booleanLiveData(KEY_ZOOM_COMPRESSED, false)
     val wallpaperDateColorLiveData = MutableLiveData(Color.WHITE)

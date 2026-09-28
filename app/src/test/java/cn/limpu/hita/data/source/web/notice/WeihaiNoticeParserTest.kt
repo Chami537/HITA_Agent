@@ -48,6 +48,19 @@ class WeihaiNoticeParserTest {
     }
 
     @Test
+    fun dropsHrefThatIsNotAPathOnTheNoticeHost() {
+        val html = """
+            <div class="list_list_wrap"><ul>
+              <li><a href="@evil.example/2026/0101/c1024a9/page.htm" title="坏链接标题足够长">坏链接标题足够长</a><span class="news-time2">2026-01-01</span></li>
+              <li><a href="/2026/0102/c1024a10/page.htm" title="正常通知标题足够">正常通知标题足够</a><span class="news-time2">2026-01-02</span></li>
+            </ul></div>
+        """.trimIndent()
+        val notices = WeihaiNoticeParser.parse(html)
+        assertEquals(1, notices.size)
+        assertEquals("http://today.hitwh.edu.cn/2026/0102/c1024a10/page.htm", notices[0].url)
+    }
+
+    @Test
     fun isPersistedNoticeChecksCampusAndUrl() {
         val ok = CampusNotice("WEIHAI", "hitwh:220789", "t", "http://today.hitwh.edu.cn/2026/0924/c1024a220789/page.htm", 0L)
         val wrongCampus = ok.copy(campus = "BENBU")

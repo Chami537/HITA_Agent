@@ -423,7 +423,7 @@ private fun TimetableScreen(
     val startTime by viewModel.startTimeLiveData.observeAsState(830)
     val periodLabel by viewModel.periodLabelLiveData.observeAsState(false)
     val wallpaperPath by viewModel.wallpaperPathLiveData.observeAsState("")
-    val eveningHintEnabled by viewModel.eveningHintLiveData.observeAsState(true)
+    val eveningHintEnabled by viewModel.eveningHintLiveData.observeAsState(viewModel.isEveningHintEnabled())
     val zoomCompressed by viewModel.zoomCompressedLiveData.observeAsState(false)
     val dateColorInt by viewModel.wallpaperDateColorLiveData.observeAsState(AndroidColor.WHITE)
     val labelColorInt by viewModel.wallpaperLabelColorLiveData.observeAsState(AndroidColor.WHITE)
