@@ -136,7 +136,7 @@ class WeihaiEASWebSource(
                 result.postValue(DataState(Pair(valid, token), DataState.STATE.SUCCESS))
             } catch (e: Exception) {
                 LogUtils.w("loginCheck: exception, message=${e.message}")
-                result.postValue(DataState(Pair(false, token), DataState.STATE.SUCCESS))
+                result.postValue(DataState(DataState.STATE.FETCH_FAILED, e.message))
             }
         }
 

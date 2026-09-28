@@ -85,6 +85,15 @@ class TimetablePanelViewModel @Inject constructor(
     /** 同步读取当前值，供 observeAsState 首帧使用，避免开关在 LiveData 发射前闪成「关」。 */
     fun isAutoReimportEnabled(): Boolean = easSettingsRepository.isAutoReimportEnabled()
     fun isEveningHintEnabled(): Boolean = timetableStyleRepository.isEveningHintEnabled()
+    fun currentStartTime(): Int = timetableStyleRepository.currentStartTime()
+    fun isDrawBgLineEnabled(): Boolean = timetableStyleRepository.isDrawBgLineEnabled()
+    fun isColorEnabled(): Boolean = timetableStyleRepository.isColorEnabled()
+    fun isFadeEnabled(): Boolean = timetableStyleRepository.isFadeEnabled()
+    fun isPeriodLabelEnabled(): Boolean = timetableStyleRepository.isPeriodLabelEnabled()
+    fun isZoomCompressed(): Boolean = timetableStyleRepository.isZoomCompressed()
+    fun scrimOpacity(): Int = timetableStyleRepository.scrimOpacity()
+    fun cardOpacity(): Int = timetableStyleRepository.cardOpacity()
+    fun courseBubbleStyleValue(): String = timetableStyleRepository.courseBubbleStyleValue()
 
     fun setScrimOpacity(opacity: Int) {
         timetableStyleRepository.putData(KEY_WALLPAPER_SCRIM, opacity)

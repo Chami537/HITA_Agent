@@ -40,6 +40,48 @@ object TimetableOverlapLayout {
         return positioned
     }
 
+    /**
+     * Groups events that are on screen at the same time into one conflict card.
+     *
+     * A chain where A overlaps B and B overlaps C, but A does not overlap C, must not
+     * become a single card: C would be hidden even though it does not conflict with A.
+     * Events that never share a moment stay ordinary cards, including a chain tail.
+     */
+    fun conflictCards(arranged: List<PositionedEvent>): List<Pair<PositionedEvent, List<EventItem>?>> {
+        val result = mutableListOf<Pair<PositionedEvent, List<EventItem>?>>()
+        var index = 0
+        while (index < arranged.size) {
+            val current = arranged[index]
+            if (current.overlapCount <= 1) {
+                result += current to null
+                index++
+                continue
+            }
+            val cluster = mutableListOf(current)
+            var nextIndex = index + 1
+            while (nextIndex < arranged.size) {
+                val next = arranged[nextIndex]
+                if (next.event.getDow() != current.event.getDow() || next.overlapCount <= 1) break
+                val overlapsEveryMember = cluster.all { member ->
+                    intervalsOverlap(member.event, next.event)
+                }
+                if (!overlapsEveryMember) break
+                cluster += next
+                nextIndex++
+            }
+            result += if (cluster.size == 1) {
+                current to null
+            } else {
+                current to cluster.map { it.event }
+            }
+            index = nextIndex
+        }
+        return result
+    }
+
+    private fun intervalsOverlap(left: EventItem, right: EventItem): Boolean =
+        left.from.time < right.to.time && right.from.time < left.to.time
+
     private fun splitIntoClusters(events: List<EventItem>): List<Cluster> {
         if (events.isEmpty()) {
             return emptyList()

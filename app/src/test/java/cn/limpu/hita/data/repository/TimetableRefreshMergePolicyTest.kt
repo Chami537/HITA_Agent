@@ -564,6 +564,25 @@ class TimetableRefreshMergePolicyTest {
         assertEquals("", protectedIncoming[1].place)
     }
 
+    @Test
+    fun plan_keepsParallelCoursesSeparateWhenOnlyTheNormalizedNameMatches() {
+        val local = listOf(
+            course("高等数学（A）", code = "MATH-A", lessons = 2, from = 1_000),
+            course("高等数学（B）", code = "MATH-B", lessons = 2, from = 5_000),
+        )
+        val incoming = listOf(
+            course("高等数学（A）", code = "MATH-A", lessons = 2, from = 1_000),
+            course("高等数学（B）", code = "MATH-B", lessons = 2, from = 5_000, place = "正心楼 202"),
+        )
+
+        val plan = TimetableRefreshMergePolicy.plan(local, incoming, emptyMap(), NOW)
+
+        assertFalse(plan.holdBatch)
+        assertTrue(plan.kept.isEmpty())
+        assertEquals(setOf("code:MATH-A", "code:MATH-B"), plan.matchedCourseKeys)
+        assertEquals(listOf("高等数学（B）"), plan.pendingUpdates.map { it.name })
+    }
+
     private fun course(
         name: String,
         code: String? = null,

@@ -407,8 +407,6 @@ class MainActivity : HiltBaseActivity<ComposeViewBinding>(),
         easRepository.observeEasToken().observe(this, easTokenObserver)
         maybeAutoReimportTimetable()
         maybeSyncBlog()
-        // 公告红点兜底刷新（fetch 完成/标记已读也会推送，这里覆盖冷启动与页面返回）
-        AppNoticeCenter.refreshUnseenState(this)
         try {
             val code = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
                 packageManager.getPackageInfo(packageName, 0).longVersionCode
@@ -452,18 +450,31 @@ class MainActivity : HiltBaseActivity<ComposeViewBinding>(),
         blogRepository.syncOnAppOpen()
     }
 
-    private var criticalNoticeHandled = false
+    private var noticePopupHandled = false
 
     private fun checkNotices() {
         AppNoticeCenter.fetch(this) { fetched ->
-            // fetch 回调已是「本地+远程」合并后的生效公告
+            if (noticePopupHandled || isFinishing || isDestroyed) return@fetch
+            val seen = AppNoticeCenter.seenNoticeIds(this)
+            val currentVersion = BuildConfig.VERSION_CODE.toLong()
             val critical = fetched.firstOrNull { it.isCritical }
-            if (critical != null && !criticalNoticeHandled) {
-                criticalNoticeHandled = true
+            if (critical != null) {
+                noticePopupHandled = true
                 showCriticalNotice(critical)
-            } else {
-                val version = fetched.firstOrNull { it.isVersionKind }
-                version?.let { maybeShowVersionNotice(it) }
+                return@fetch
+            }
+            val version = fetched.firstOrNull { notice ->
+                notice.isVersionKind && (notice.minAppVersion ?: Long.MIN_VALUE) > currentVersion
+            }
+            if (version != null) {
+                noticePopupHandled = true
+                maybeShowVersionNotice(version)
+                return@fetch
+            }
+            val popup = AppNoticeCenter.noticesToPopup(fetched, seen, currentVersion)
+            if (popup.isNotEmpty()) {
+                noticePopupHandled = true
+                showUnseenNoticePopup(popup)
             }
         }
     }
@@ -522,6 +533,38 @@ class MainActivity : HiltBaseActivity<ComposeViewBinding>(),
                 }
             }
             .setNegativeButton("稍后", null)
+            .show()
+    }
+
+    private fun showUnseenNoticePopup(notices: List<AppNotice>) {
+        val single = notices.singleOrNull()
+        UsageAnalyticsClient.record(
+            UsageAnalyticsEvent.NOTICE_SHOWN,
+            mapOf(
+                UsageAnalyticsDimensions.PRESENTATION to "open_popup",
+                UsageAnalyticsDimensions.KIND to (single?.kind ?: "batch"),
+            )
+        )
+        MaterialAlertDialogBuilder(this)
+            .setTitle(single?.title ?: getString(R.string.notice_popup_title))
+            .setMessage(
+                if (single != null) {
+                    single.body
+                } else {
+                    notices.joinToString("\n\n") { "${it.title}\n${it.body}" }
+                }
+            )
+            .setPositiveButton(R.string.notice_popup_ack, null)
+            .setOnDismissListener {
+                AppNoticeCenter.markNoticesSeen(this, notices.map { it.id })
+                UsageAnalyticsClient.record(
+                    UsageAnalyticsEvent.NOTICE_DISMISSED,
+                    mapOf(
+                        UsageAnalyticsDimensions.PRESENTATION to "open_popup",
+                        UsageAnalyticsDimensions.KIND to (single?.kind ?: "batch"),
+                    )
+                )
+            }
             .show()
     }
 
@@ -1015,13 +1058,10 @@ private fun MainScreen(
         }
 
 
-        // 公告未读 → 功能中心 tab 右上角红点（打开公告列表后标记已读，红点熄灭）
-        val noticeDotVisible by AppNoticeCenter.unseenLiveData.observeAsState(false)
         if (!imeVisible) {
             MainPillTabBar(
                 selectedTab = selectedTab,
                 visibleTabs = visibleTabs,
-                showNoticeDot = noticeDotVisible,
                 showBlogDot = showBlogDot,
                 alpha = if (showTimetableWallpaper) 0.72f else 1f,
                 themeStyle = themeStyle,
@@ -1566,7 +1606,6 @@ private fun Modifier.liquidGlassSurface(
 private fun MainPillTabBar(
     selectedTab: Int,
     visibleTabs: List<MainTab>,
-    showNoticeDot: Boolean,
     showBlogDot: Boolean,
     alpha: Float,
     themeStyle: ThemeTools.STYLE,
@@ -1737,10 +1776,8 @@ private fun MainPillTabBar(
                                 tint = tint,
                                 modifier = Modifier.size(CapsuleTabIconSize)
                             )
-                            // 公告未读红点：功能中心；资讯未读红点：资讯 tab
-                            if ((showNoticeDot && tab == MainTab.NAVIGATION) ||
-                                (showBlogDot && tab == MainTab.BLOG)
-                            ) {
+                            // 资讯未读红点只留在资讯 tab。公告改为一进应用弹一次，不再点「更多」。
+                            if (showBlogDot && tab == MainTab.BLOG) {
                                 Box(
                                     modifier = Modifier
                                         .align(Alignment.TopEnd)

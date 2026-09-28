@@ -17,6 +17,7 @@ import cn.limpu.hita.R
 import cn.limpu.hita.data.model.eas.CourseScoreItem
 import cn.limpu.hita.data.repository.EASRepository
 import cn.limpu.hita.data.repository.TimetableChangeStore
+import cn.limpu.hita.data.repository.TimetableMutationLock
 import cn.limpu.hita.data.source.preference.EasPreferenceSource
 import cn.limpu.hita.data.source.preference.EasCredentialStore
 import cn.limpu.hita.data.source.preference.ScoreReminderStore
@@ -38,7 +39,8 @@ class ScoreReminderWorker(appContext: Context, params: WorkerParameters) : Worke
             EasPreferenceSource(applicationContext),
             EasCredentialStore(applicationContext),
             TimetablePreferenceSource(applicationContext),
-            TimetableChangeStore(app)
+            TimetableChangeStore(app),
+            TimetableMutationLock()
         )
         val token = repository.getEasToken()
         if (!token.isLogin()) return Result.success()

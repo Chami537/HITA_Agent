@@ -231,13 +231,13 @@ object LlmChatService {
 
     internal data class ParsedStep(val thought: String, val action: String, val actionInput: String)
 
-    private fun parseLocalReActStep(text: String): ParsedStep {
+    internal fun parseLocalReActStep(text: String): ParsedStep {
         val cleanedText = text
             .replace(Regex("""<think>.*?</think>""", RegexOption.DOT_MATCHES_ALL), "")
             .trim()
 
         val thoughtRegex = Regex("(?is)思考[：:]\\s*(.+?)(?=\\n动作[：:]|\\n答案[：:]|$)")
-        val actionRegex = Regex("(?i)动作[：:]\\s*(\\S+)")
+        val actionRegex = Regex("(?im)^[ \\t]*动作[：:]\\s*(\\S+)")
         val actionInputRegex = Regex("(?is)动作输入[：:]\\s*(.+?)(?=\\n思考[：:]|\\n观察[：:]|$)")
         val answerRegex = Regex("(?is)答案[：:]\\s*(.+)")
 

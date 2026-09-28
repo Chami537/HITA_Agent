@@ -1,8 +1,6 @@
 package cn.limpu.hita.data.notice
 
 import android.content.Context
-import androidx.lifecycle.LiveData
-import androidx.lifecycle.MutableLiveData
 import cn.limpu.hita.BuildConfig
 import cn.limpu.hita.R
 import cn.limpu.hita.utils.LogUtils
@@ -47,7 +45,7 @@ object AppNoticeCenter {
     private const val PREFS_NAME = "app_notice"
     private const val SEEN_KEY = "seen_notice_ids_v1"
 
-    /** 本地内置公告 id（用户群）。换新公告时改 id，红点会重新亮起。 */
+    /** 本地内置公告 id（用户群）。换新公告时改 id，打开应用会再弹一次。 */
     const val LOCAL_GROUP_NOTICE_ID = "local_qq_group_1093659013"
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -78,7 +76,6 @@ object AppNoticeCenter {
                 cacheNotices(appContext, fetched)
             }
             val merged = mergedActiveNotices(appContext)
-            refreshUnseenState(appContext)
             withContext(Dispatchers.Main) {
                 onResult(merged)
             }
@@ -111,7 +108,7 @@ object AppNoticeCenter {
 
     /**
      * 本地内置公告（随包发布，不依赖后端）：用户群入口。
-     * kind = "group"，severity = "info"，只进公告列表，不弹窗。
+     * 未读时和其它普通公告一起，在打开应用时弹一次。
      */
     fun localNotices(context: Context): List<AppNotice> = listOf(
         AppNotice(
@@ -133,39 +130,35 @@ object AppNoticeCenter {
         return (localNotices(context) + remote).distinctBy { it.id }
     }
 
-    /** 已读公告 id 集合（用户查看过即写入，红点不再亮起）。 */
+    /** 已读公告 id。弹窗关闭或打开公告列表后写入，同一 id 不再弹。 */
     fun seenNoticeIds(context: Context): Set<String> =
         context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
             .getStringSet(SEEN_KEY, emptySet()).orEmpty()
 
-    /** 标记公告为已读（并刷新未读状态，红点随之熄灭）。 */
+    /** 标记公告为已读。 */
     fun markNoticesSeen(context: Context, ids: Collection<String>) {
         if (ids.isEmpty()) return
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         val merged = prefs.getStringSet(SEEN_KEY, emptySet()).orEmpty() + ids
         prefs.edit().putStringSet(SEEN_KEY, merged).apply()
-        refreshUnseenState(context)
     }
 
     /**
-     * 未读公告状态（驱动功能中心「公告」行与底部导航「功能中心」的红点）。
-     *
-     * 红点策略：存在「当前生效且 id 未读」的公告（本地内置 + 远程缓存）即亮；
-     * 打开公告列表会把当前合并列表全部标记已读 → 红点熄灭；
-     * 之后出现新 id（本地换新公告 / 远程新发）→ 重新亮起；
-     * 已全屏弹出的 critical / 版本公告在弹出时即标已读，不再点亮红点。
+     * 打开应用时合并弹出的未读公告。
+     * critical，以及确实要求升级的 version，各自有对话框，不进这个列表。
      */
-    private val _unseenLiveData = MutableLiveData<Boolean>()
-    val unseenLiveData: LiveData<Boolean> = _unseenLiveData
-
-    /** 重算并发布未读状态；任意线程可调用（主界面 onStart 兜底刷新）。 */
-    fun refreshUnseenState(context: Context) {
-        _unseenLiveData.postValue(hasUnseenNotice(context.applicationContext))
+    fun noticesToPopup(
+        notices: List<AppNotice>,
+        seenIds: Set<String>,
+        currentVersionCode: Long,
+    ): List<AppNotice> = notices.filter { notice ->
+        notice.id !in seenIds &&
+            !notice.isCritical &&
+            !notice.requiresVersionDialog(currentVersionCode)
     }
 
-    /** 是否有未读的生效公告（本地内置 + 远程缓存）。 */
-    fun hasUnseenNotice(context: Context): Boolean =
-        mergedActiveNotices(context).any { it.id !in seenNoticeIds(context) }
+    private fun AppNotice.requiresVersionDialog(currentVersionCode: Long): Boolean =
+        isVersionKind && minAppVersion != null && minAppVersion > currentVersionCode
 
     private fun requestNotices(context: Context): List<AppNotice>? {
         val endpoint = BuildConfig.AGENT_BACKEND_BASE_URL.trimEnd('/') +

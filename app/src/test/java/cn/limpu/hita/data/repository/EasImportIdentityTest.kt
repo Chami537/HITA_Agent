@@ -3,6 +3,7 @@ package cn.limpu.hita.data.repository
 import cn.limpu.hita.data.model.timetable.EventItem
 import cn.limpu.hita.utils.CourseNameUtils
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -33,6 +34,19 @@ class EasImportIdentityTest {
 
         assertTrue("name:计算机设计与实践" in keys)
         assertTrue("name:计算机设计与实践 1/E班" in keys)
+    }
+
+    @Test
+    fun subjectsMatch_doesNotGlueDifferentCodesThatShareANormalizedName() {
+        assertTrue(
+            EasImportIdentity.subjectsMatch("MATH-A", "高等数学（A）", "MATH-A", "高等数学A")
+        )
+        assertFalse(
+            EasImportIdentity.subjectsMatch("MATH-A", "高等数学（A）", "MATH-B", "高等数学（B）")
+        )
+        assertTrue(
+            EasImportIdentity.subjectsMatch(null, "计算机设计与实践 1/E班", "", "计算机设计与实践")
+        )
     }
 
     @Test

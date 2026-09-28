@@ -218,12 +218,7 @@ object TimetableRefreshMergePolicy {
         return if (normalized.isNotEmpty()) "name:$normalized" else "name:${name.trim()}"
     }
 
-    private fun identityKeys(course: MergeCourse): Set<String> =
-        EasImportIdentity.subjectLookupKeys(
-            code = course.code,
-            normalizedName = CourseNameUtils.normalize(course.name) ?: course.name,
-            rawName = course.name
-        )
+
 
     /**
      * 生成本次刷新的合并计划。
@@ -239,17 +234,21 @@ object TimetableRefreshMergePolicy {
         vetoes: Map<String, CourseVetoRecord>,
         nowMillis: Long
     ): TimetableMergePlan {
-        val incomingKeys = incoming.map { identityKeys(it) }
         val usedIncoming = BooleanArray(incoming.size)
         val replacedPairs = mutableListOf<Pair<MergeCourse, MergeCourse>>()
         val unmatchedLocal = mutableListOf<MergeCourse>()
 
         for (localCourse in local) {
-            val keys = identityKeys(localCourse)
             var matchIndex = -1
             for (index in incoming.indices) {
                 if (usedIncoming[index]) continue
-                if (incomingKeys[index].any { it in keys }) {
+                if (EasImportIdentity.subjectsMatch(
+                        localCourse.code,
+                        localCourse.name,
+                        incoming[index].code,
+                        incoming[index].name,
+                    )
+                ) {
                     matchIndex = index
                     break
                 }

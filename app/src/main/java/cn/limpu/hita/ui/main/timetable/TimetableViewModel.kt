@@ -54,6 +54,10 @@ class TimetableViewModel @Inject constructor(
     val eveningHintLiveData: LiveData<Boolean>
         get() = timetableStyleRepository.eveningHintLiveData
     fun isEveningHintEnabled(): Boolean = timetableStyleRepository.isEveningHintEnabled()
+    fun currentStartTime(): Int = timetableStyleRepository.currentStartTime()
+    fun isPeriodLabelEnabled(): Boolean = timetableStyleRepository.isPeriodLabelEnabled()
+    fun isZoomCompressed(): Boolean = timetableStyleRepository.isZoomCompressed()
+    fun wallpaperPath(): String = timetableStyleRepository.wallpaperPath()
     val zoomCompressedLiveData: LiveData<Boolean>
         get() = timetableStyleRepository.zoomCompressedLiveData
     val wallpaperPathLiveData: LiveData<String>

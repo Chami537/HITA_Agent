@@ -32,7 +32,14 @@ object TypeConverters {
     @JvmStatic
     @TypeConverter
     fun stringToEventType(name: String): EventItem.TYPE {
-        return EventItem.TYPE.values().find { it.name == name } ?: EventItem.TYPE.OTHER
+        return when (name) {
+            // Schema 6 stored the enum ordinal. Later versions persist the name.
+            "0" -> EventItem.TYPE.CLASS
+            "1" -> EventItem.TYPE.EXAM
+            "2" -> EventItem.TYPE.OTHER
+            "3" -> EventItem.TYPE.TAG
+            else -> EventItem.TYPE.values().find { it.name == name } ?: EventItem.TYPE.OTHER
+        }
     }
 
     @JvmStatic

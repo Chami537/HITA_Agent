@@ -29,7 +29,8 @@ import javax.inject.Singleton
 class TimetableSourceApplier @Inject constructor(
     application: Application,
     private val easPreferenceSource: EasPreferenceSource,
-    private val changeStore: TimetableChangeStore
+    private val changeStore: TimetableChangeStore,
+    private val timetableMutationLock: TimetableMutationLock
 ) {
     private val appContext = application.applicationContext
     private val eventItemDao = AppDatabase.getDatabase(application).eventItemDao()
@@ -39,35 +40,43 @@ class TimetableSourceApplier @Inject constructor(
 
     /** 采用某门待确认课程的源端版本（源端整门缺失时即删除本地该课）。 */
     fun adoptCourse(termId: String, courseKey: String) {
-        // 先落库再消费：落库失败时待确认项仍在，用户可以重试
-        val item = changeStore.currentState().decisions.firstOrNull {
-            it.termId == termId && it.courseKey == courseKey
-        } ?: error("待确认项不存在或已处理")
-        applyCourseDecision(item)
-        changeStore.consumeDecision(termId, courseKey)
+        timetableMutationLock.exclusive {
+            // 在锁内重读。刷新若已确认该课回归并清掉决策，这里必须放弃删除。
+            val item = changeStore.currentState().decisions.firstOrNull {
+                it.termId == termId && it.courseKey == courseKey
+            } ?: error("待确认项不存在或已处理")
+            applyCourseDecision(item)
+            changeStore.consumeDecision(termId, courseKey)
+        }
     }
 
     /** 继续保留某门待确认课程：保留本地，并重置观察窗口。 */
     fun dismissCourse(termId: String, courseKey: String) {
-        changeStore.consumeDecision(termId, courseKey)
-        changeStore.resetVeto(termId, courseKey)
+        timetableMutationLock.exclusive {
+            changeStore.consumeDecision(termId, courseKey)
+            changeStore.resetVeto(termId, courseKey)
+        }
     }
 
     /** 采用整批挂起的源端数据：全量替换当前课表。 */
     fun adoptHeldBatch() {
-        val batch = changeStore.currentState().heldBatch ?: error("没有待处理的课表源数据")
-        applyHeldBatch(batch)
-        changeStore.consumeHeldBatch()
+        timetableMutationLock.exclusive {
+            val batch = changeStore.currentState().heldBatch ?: error("没有待处理的课表源数据")
+            applyHeldBatch(batch)
+            changeStore.consumeHeldBatch()
+        }
     }
 
     /** 保留当前课表：丢弃整批挂起的源端数据，并为缺失课建立 veto 追踪避免反复询问。 */
     fun dismissHeldBatch() {
-        val batch = changeStore.consumeHeldBatch() ?: return
-        changeStore.trackHeldBatchMissing(
-            batch.termId,
-            batch.unmatchedLocal,
-            System.currentTimeMillis()
-        )
+        timetableMutationLock.exclusive {
+            val batch = changeStore.consumeHeldBatch() ?: return
+            changeStore.trackHeldBatchMissing(
+                batch.termId,
+                batch.unmatchedLocal,
+                System.currentTimeMillis()
+            )
+        }
     }
 
     /**
@@ -75,12 +84,14 @@ class TimetableSourceApplier @Inject constructor(
      * [adopted] 为勾选采纳的指纹；[remember] 为忽略且要求记住的指纹。
      */
     fun applyPendingConfirmations(adopted: Set<String>, remember: Collection<String>) {
-        changeStore.rememberIgnored(remember)
-        val updates = changeStore.consumePendingUpdates()
-        if (updates.isEmpty()) return
-        val byTimetable = updates.groupBy { it.timetableId }
-        for ((timetableId, group) in byTimetable) {
-            applyPendingGroup(timetableId, group, adopted)
+        timetableMutationLock.exclusive {
+            changeStore.rememberIgnored(remember)
+            val updates = changeStore.consumePendingUpdates()
+            if (updates.isEmpty()) return
+            val byTimetable = updates.groupBy { it.timetableId }
+            for ((timetableId, group) in byTimetable) {
+                applyPendingGroup(timetableId, group, adopted)
+            }
         }
     }
 

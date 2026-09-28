@@ -49,6 +49,21 @@ class TimetableOverlapLayoutTest {
         assertEquals(0, arranged.getValue(third.id).columnIndex)
     }
 
+    @Test
+    fun conflictCards_keepTheNonOverlappingTailOfAChainVisible() {
+        val first = event("first", day = 0, startHour = 9, startMinute = 0, endHour = 10, endMinute = 0)
+        val second = event("second", day = 0, startHour = 9, startMinute = 30, endHour = 10, endMinute = 30)
+        val third = event("third", day = 0, startHour = 10, startMinute = 0, endHour = 11, endMinute = 0)
+
+        val cards = TimetableOverlapLayout.conflictCards(
+            TimetableOverlapLayout.arrange(listOf(first, second, third))
+        )
+
+        assertEquals(listOf("first", "third"), cards.map { it.first.event.id })
+        assertEquals(listOf("first", "second"), cards.first().second?.map { it.id })
+        assertEquals(null, cards.last().second)
+    }
+
     private fun event(
         id: String,
         day: Int,

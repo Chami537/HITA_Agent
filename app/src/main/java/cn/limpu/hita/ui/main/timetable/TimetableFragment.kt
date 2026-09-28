@@ -420,11 +420,11 @@ private fun TimetableScreen(
         initial = viewModel.currentPageStartDate.value ?: mondayOf(System.currentTimeMillis())
     )
     val timetables by viewModel.timetableLiveData.observeAsState(emptyList())
-    val startTime by viewModel.startTimeLiveData.observeAsState(830)
-    val periodLabel by viewModel.periodLabelLiveData.observeAsState(false)
-    val wallpaperPath by viewModel.wallpaperPathLiveData.observeAsState("")
+    val startTime by viewModel.startTimeLiveData.observeAsState(viewModel.currentStartTime())
+    val periodLabel by viewModel.periodLabelLiveData.observeAsState(viewModel.isPeriodLabelEnabled())
+    val wallpaperPath by viewModel.wallpaperPathLiveData.observeAsState(viewModel.wallpaperPath())
     val eveningHintEnabled by viewModel.eveningHintLiveData.observeAsState(viewModel.isEveningHintEnabled())
-    val zoomCompressed by viewModel.zoomCompressedLiveData.observeAsState(false)
+    val zoomCompressed by viewModel.zoomCompressedLiveData.observeAsState(viewModel.isZoomCompressed())
     val dateColorInt by viewModel.wallpaperDateColorLiveData.observeAsState(AndroidColor.WHITE)
     val labelColorInt by viewModel.wallpaperLabelColorLiveData.observeAsState(AndroidColor.WHITE)
     val windowEvents by viewModel.windowEventsData[viewModel.startIndex].observeAsState()
@@ -1210,32 +1210,7 @@ private fun TimetableEventLayer(
     val distinctEvents = remember(events) { events.distinctBy { it.id } }
     val arranged = remember(distinctEvents) { TimetableOverlapLayout.arrange(distinctEvents) }
 
-    val renderList = remember(arranged) {
-        val result = mutableListOf<Pair<PositionedEvent, List<EventItem>?>>()
-        var i = 0
-        while (i < arranged.size) {
-            val pe = arranged[i]
-            if (pe.overlapCount > 1) {
-                val cluster = mutableListOf<PositionedEvent>()
-                var clusterEnd = Long.MIN_VALUE
-                while (i < arranged.size) {
-                    val next = arranged[i]
-                    if (next.overlapCount <= 1) break
-                    if (cluster.isNotEmpty() && next.event.from.time >= clusterEnd) break
-                    cluster.add(next)
-                    clusterEnd = maxOf(clusterEnd, next.event.to.time)
-                    i++
-                }
-                val clusterEvents = cluster.map { it.event }
-                // 冲突簇只渲染一张合并卡片，不再逐门课级联堆叠
-                result.add(cluster.first() to clusterEvents)
-            } else {
-                result.add(pe to null)
-                i++
-            }
-        }
-        result
-    }
+    val renderList = remember(arranged) { TimetableOverlapLayout.conflictCards(arranged) }
 
     var conflictCluster by remember { mutableStateOf<List<EventItem>?>(null) }
     val baseMinutes = startHour * 60

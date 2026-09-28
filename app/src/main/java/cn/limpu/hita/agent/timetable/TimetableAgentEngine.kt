@@ -38,11 +38,12 @@ class TimetableAgentEngine(
             return
         }
 
-        val policy = AgentToolExecutionPolicy(
-            timeoutMs = 5000L,
-            retryCount = 1,
-            retryDelayMs = 180L,
-        )
+        val policy = if (input.action == TimetableAgentInput.Action.ADD_TIMETABLE_ARRANGEMENT) {
+            // A timed-out insert may still commit. Retrying it creates a second event.
+            AgentToolExecutionPolicy(timeoutMs = 5000L, retryCount = 0)
+        } else {
+            AgentToolExecutionPolicy(timeoutMs = 5000L, retryCount = 1, retryDelayMs = 180L)
+        }
 
         toolExecutor.execute(
             tool = tool,

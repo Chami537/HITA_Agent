@@ -61,7 +61,6 @@ import cn.limpu.hita.R
 import cn.limpu.hita.data.analytics.UsageAnalyticsClient
 import cn.limpu.hita.data.analytics.UsageAnalyticsEvent
 import cn.limpu.hita.data.model.eas.EASToken
-import cn.limpu.hita.data.notice.AppNoticeCenter
 import cn.limpu.hita.data.repository.EASRepository
 import cn.limpu.hita.data.repository.TimetableRepository
 import cn.limpu.hita.data.source.preference.CourseReminderStore
@@ -110,7 +109,6 @@ class NavigationFragment : androidx.fragment.app.Fragment() {
     private var liveCourseEnabledState by mutableStateOf(false)
     private var liveCourseStrongReminderState by mutableStateOf(false)
     private var usageAnalyticsEnabledState by mutableStateOf(true)
-    private var noticeDotVisibleState by mutableStateOf(false)
     private var userStateVersion by mutableStateOf(0)
 
     private val pickAvatarLauncher = registerForActivityResult(
@@ -177,7 +175,6 @@ class NavigationFragment : androidx.fragment.app.Fragment() {
                         usageAnalyticsEnabled = usageAnalyticsEnabledState,
                         onToggleUsageAnalytics = { toggleUsageAnalytics() },
                         onOpenNotices = { openNotices() },
-                        showNoticeDot = noticeDotVisibleState,
                         onAvatarClick = { showAvatarPicker() },
                         onUserClick = { openUserCard() },
                         onTimetableManager = { ActivityUtils.startTimetableManager(requireContext()) },
@@ -214,13 +211,6 @@ class NavigationFragment : androidx.fragment.app.Fragment() {
             }
         }
     }
-    override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
-        super.onViewCreated(view, savedInstanceState)
-        // 红点实时同步：fetch 完成或公告被标记已读时立即刷新（覆盖远程新公告场景）
-        AppNoticeCenter.unseenLiveData.observe(viewLifecycleOwner) { unseen ->
-            noticeDotVisibleState = unseen
-        }
-    }
 
 
     @SuppressLint("SetTextI18n")
@@ -239,9 +229,6 @@ class NavigationFragment : androidx.fragment.app.Fragment() {
             startLiveCourseGuardIfEnabled()
         }
         usageAnalyticsEnabledState = UsageAnalyticsClient.isEnabled(requireContext())
-        // 公告红点：本地内置 + 远程缓存公告有未读即亮；打开公告列表后标记已读，回到此页同步消失
-        AppNoticeCenter.refreshUnseenState(requireContext())
-        noticeDotVisibleState = AppNoticeCenter.hasUnseenNotice(requireContext())
         viewModel.startRefresh()
     }
 
@@ -497,7 +484,6 @@ private fun NavigationScreen(
     onToggleLiveCourseStrongReminder: () -> Unit,
     onToggleUsageAnalytics: () -> Unit,
     onOpenNotices: () -> Unit,
-    showNoticeDot: Boolean = false,
 ) {
     val tokens = HitaTheme.tokens
     val recentTimetable by viewModel.recentTimetableLiveData.observeAsState()
@@ -631,7 +617,6 @@ private fun NavigationScreen(
                 title = "公告",
                 subtitle = "版本更新 · 服务与故障通知",
                 onClick = onOpenNotices,
-                showBadge = showNoticeDot,
                 trailing = {
                     Icon(
                         painter = painterResource(R.drawable.ic_baseline_keyboard_arrow_right_24),
@@ -845,7 +830,6 @@ private fun NavigationRow(
     subtitle: String = "",
     onClick: () -> Unit,
     trailing: @Composable (() -> Unit)? = null,
-    showBadge: Boolean = false,
 ) {
     val tokens = HitaTheme.tokens
     Row(
@@ -862,23 +846,13 @@ private fun NavigationRow(
                 .weight(1f)
                 .padding(start = tokens.spacing.md)
         ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    text = title,
-                    color = MaterialTheme.colorScheme.onSurface,
-                    fontSize = 14.sp,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-                if (showBadge) {
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Box(
-                        modifier = Modifier
-                            .size(8.dp)
-                            .background(MaterialTheme.colorScheme.error, CircleShape)
-                    )
-                }
-            }
+            Text(
+                text = title,
+                color = MaterialTheme.colorScheme.onSurface,
+                fontSize = 14.sp,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
             if (subtitle.isNotBlank()) {
                 Text(
                     text = subtitle,

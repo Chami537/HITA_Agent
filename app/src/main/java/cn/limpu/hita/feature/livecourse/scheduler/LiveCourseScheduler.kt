@@ -21,6 +21,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import java.time.Instant
+import java.util.concurrent.atomic.AtomicInteger
 
 /**
  * Keeps at most one course lifecycle active. It reads the current timetable every time it
@@ -32,7 +33,11 @@ class LiveCourseScheduler(context: Context) {
     private val settings = LiveCourseSettings(appContext)
     private val notificationManager = LiveCourseNotificationManager(appContext)
 
-    fun reconcile(nowMillis: Long = System.currentTimeMillis()) {
+    fun reconcile(
+        nowMillis: Long = System.currentTimeMillis(),
+        generation: Int = reconcileGeneration.get(),
+    ) {
+        if (generation != reconcileGeneration.get()) return
         if (!settings.isEnabled() || !notificationManager.canPostNotifications()) {
             cancel()
             return
@@ -48,13 +53,13 @@ class LiveCourseScheduler(context: Context) {
         )
             .asSequence()
             .filter { it.type == EventItem.TYPE.CLASS }
+            .filter { it.to.time > it.from.time }
             .filter { it.to.time > nowMillis }
             .map(::toLiveCourse)
-            // Current/in-window courses precede later ones; ties follow the existing final
-            // timetable display ordering, which is the V1 conflict resolution policy.
             .sortedWith(compareBy<LiveCourse> { it.startTime }.thenBy { it.courseId })
             .firstOrNull()
 
+        if (!canPublish(generation)) return
         if (candidate == null) {
             cancelTransition()
             notificationManager.cancel()
@@ -63,18 +68,23 @@ class LiveCourseScheduler(context: Context) {
 
         when (val state = LiveCourseStateResolver.resolve(candidate, now)) {
             is LiveCourseState.Inactive -> {
+                if (!canPublish(generation)) return
                 notificationManager.cancel()
                 scheduleAt(checkNotNull(nextLiveCourseTransition(state)))
             }
             is LiveCourseState.PreClass -> {
+                if (!canPublish(generation)) return
                 notificationManager.show(state)
+                if (!canPublish(generation)) return
                 scheduleAt(checkNotNull(nextLiveCourseTransition(state)))
             }
             is LiveCourseState.InClass -> {
+                if (!canPublish(generation)) return
                 notificationManager.show(state)
+                if (!canPublish(generation)) return
                 scheduleAt(checkNotNull(nextLiveCourseTransition(state)))
             }
-            is LiveCourseState.Ended -> reconcile(nowMillis + 1L)
+            is LiveCourseState.Ended -> reconcile(nowMillis + 1L, generation)
         }
     }
 
@@ -87,6 +97,15 @@ class LiveCourseScheduler(context: Context) {
         notificationManager.cancel()
     }
 
+    private fun canPublish(generation: Int): Boolean {
+        if (generation != reconcileGeneration.get()) return false
+        if (!settings.isEnabled() || !notificationManager.canPostNotifications()) {
+            cancel()
+            return false
+        }
+        return true
+    }
+
     private fun cancelTransition() {
         alarmPendingIntent(PendingIntent.FLAG_NO_CREATE)?.let { pendingIntent ->
             alarmManager?.cancel(pendingIntent)
@@ -94,6 +113,7 @@ class LiveCourseScheduler(context: Context) {
         }
         LiveCourseWork.cancelTransition(appContext)
     }
+
 
     private fun scheduleAt(triggerAtMillis: Long) {
         LiveCourseWork.scheduleTransition(appContext, triggerAtMillis)
@@ -167,18 +187,22 @@ class LiveCourseScheduler(context: Context) {
         fun autoSchedule(context: Context) {
             val scheduler = LiveCourseScheduler(context)
             if (!LiveCourseSettings(context).isEnabled()) {
+                reconcileGeneration.incrementAndGet()
                 scheduler.cancel()
                 return
             }
+            val generation = reconcileGeneration.incrementAndGet()
             // This entry point is also called directly by the Compose settings switch. The
             // timetable repository performs synchronous Room reads, so it must never run on UI.
             CoroutineScope(SupervisorJob() + Dispatchers.IO).launch {
                 try {
-                    scheduler.reconcile()
+                    scheduler.reconcile(generation = generation)
                 } catch (error: Exception) {
                     cn.limpu.hita.utils.LogUtils.e("Live course reconcile failed", error)
                 }
             }
         }
+
+        private val reconcileGeneration = AtomicInteger(0)
     }
 }

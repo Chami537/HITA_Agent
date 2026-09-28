@@ -45,6 +45,18 @@ class TimetableStyleRepository @Inject constructor(application: Application) {
     /** “还有更多课程”悬浮提示开关，默认开启。 */
     val eveningHintLiveData = timetableStyleSP.booleanLiveData(KEY_EVENING_HINT, true)
     fun isEveningHintEnabled(): Boolean = timetableStyleSP.getBoolean(KEY_EVENING_HINT, true)
+    fun currentStartTime(): Int = timetableStyleSP.getInt(KEY_START_DATE, 830)
+    fun isDrawBgLineEnabled(): Boolean = timetableStyleSP.getBoolean(KEY_DRAW_BG_LINE, true)
+    fun isColorEnabled(): Boolean = timetableStyleSP.getBoolean(KEY_COLOR_ENABLE, true)
+    fun isFadeEnabled(): Boolean = timetableStyleSP.getBoolean(KEY_FADE_ENABLE, true)
+    fun isPeriodLabelEnabled(): Boolean = timetableStyleSP.getBoolean(KEY_LABEL_PERIOD, false)
+    fun isZoomCompressed(): Boolean = timetableStyleSP.getBoolean(KEY_ZOOM_COMPRESSED, false)
+    fun wallpaperPath(): String = timetableStyleSP.getString(KEY_WALLPAPER_PATH, "").orEmpty()
+    fun scrimOpacity(): Int = timetableStyleSP.getInt(KEY_WALLPAPER_SCRIM, 30)
+    fun cardOpacity(): Int = timetableStyleSP.getInt(KEY_CARD_OPACITY, 85)
+    fun courseBubbleStyleValue(): String =
+        timetableStyleSP.getString(KEY_COURSE_BUBBLE_STYLE, CourseBubbleStyle.SOLID.storageValue)
+            ?: CourseBubbleStyle.SOLID.storageValue
     /** 课表缩放：false=放大（默认，现状）/ true=缩小（整天压缩一屏）。 */
     val zoomCompressedLiveData = timetableStyleSP.booleanLiveData(KEY_ZOOM_COMPRESSED, false)
     val wallpaperDateColorLiveData = MutableLiveData(Color.WHITE)
@@ -65,7 +77,14 @@ class TimetableStyleRepository @Inject constructor(application: Application) {
 
     fun getStyleSheetLiveData(): MediatorLiveData<TimetableStyleSheet> {
         val sheet = MediatorLiveData<TimetableStyleSheet>()
-        sheet.value = TimetableStyleSheet()
+        sheet.value = TimetableStyleSheet(
+            isColorEnabled = isColorEnabled(),
+            isFadeEnabled = isFadeEnabled(),
+            drawBGLine = isDrawBgLineEnabled(),
+            usePeriodLabel = isPeriodLabelEnabled(),
+            startTime = currentStartTime(),
+            courseBubbleStyle = CourseBubbleStyle.fromStorage(courseBubbleStyleValue()),
+        ).withCardOpacity(cardOpacity())
         sheet.addSource(startTimeLiveData) { start ->
             sheet.value = sheet.value?.copy(startTime = start)
         }

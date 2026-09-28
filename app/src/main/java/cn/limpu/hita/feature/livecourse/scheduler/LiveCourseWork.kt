@@ -51,6 +51,9 @@ class LiveCourseWorker(context: Context, parameters: WorkerParameters) : Worker(
     override fun doWork(): Result = try {
         LiveCourseScheduler(applicationContext).reconcile()
         Result.success()
+    } catch (error: IllegalArgumentException) {
+        LogUtils.e("Live Course work rejected a permanent timetable error", error)
+        Result.failure()
     } catch (error: Exception) {
         LogUtils.e("Live Course work reconciliation failed", error)
         Result.retry()

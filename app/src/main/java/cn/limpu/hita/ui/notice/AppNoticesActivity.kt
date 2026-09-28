@@ -49,12 +49,12 @@ class AppNoticesActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        // 打开公告列表即视为已读：红点消失且后续不再亮起（新公告 id 才会重新亮）
+        // 打开公告列表即视为已读：这些 id 之后打开应用不再弹出
         AppNoticeCenter.markNoticesSeen(this, AppNoticeCenter.mergedActiveNotices(this).map { it.id })
         notices = AppNoticeCenter.mergedActiveNotices(this)
         AppNoticeCenter.fetch(this) { fetched ->
             // fetch 回调已是「本地+远程」合并后的生效公告，直接展示；
-            // 列表正在展示它们，一并标记已读，避免返回主界面后红点误亮
+            // 列表正在展示它们，一并标记已读，返回后不再弹窗
             notices = fetched
             AppNoticeCenter.markNoticesSeen(this, fetched.map { it.id })
             fetched.forEach { notice ->

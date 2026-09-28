@@ -1340,6 +1340,8 @@
     <string name="notice_copy_group">复制群号：%1$s</string>
     <string name="notice_group_copied">已复制群号</string>
     <string name="notices_title">公告</string>
+    <string name="notice_popup_title">新公告</string>
+    <string name="notice_popup_ack">知道了</string>
     <string name="notices_empty">暂无公告</string>
     <string name="timetable_import_force_replace_title">全量导入课表？</string>
     <string name="timetable_import_force_replace_message">将按课表源全量替换当前课表，打开应用时自动刷新保留的课程也会被覆盖（之后可在“课表版本记录”中恢复）。</string>

@@ -98,7 +98,8 @@ class EASRepository @Inject constructor(
     private val easPreferenceSource: EasPreferenceSource,
     private val easCredentialStore: EasCredentialStore,
     private val timetablePreferenceSource: TimetablePreferenceSource,
-    private val timetableChangeStore: TimetableChangeStore
+    private val timetableChangeStore: TimetableChangeStore,
+    private val timetableMutationLock: TimetableMutationLock
 ) : ShenzhenCourseSelectionGateway {
     private val appContext = application.applicationContext
     private val tokenStateLock = Any()
@@ -864,9 +865,12 @@ class EASRepository @Inject constructor(
                                 val pendingSubjects = linkedMapOf<String, TermSubject>()
                                 val subjectsByKey = mutableMapOf<String, TermSubject>()
                                 subjectDao.getSubjectsSync(timetable.id).forEach { subject ->
-                                    EasImportIdentity.subjectLookupKeys(subject.code, subject.name, subject.name).forEach { key ->
-                                        subjectsByKey[key] = subject
-                                    }
+                                    EasImportIdentity.registerSubject(
+                                        subjectsByKey,
+                                        subject,
+                                        CourseNameUtils.normalize(subject.name) ?: subject.name,
+                                        subject.name,
+                                    )
                                 }
                                 val generatedClassKeys = mutableSetOf<String>()
 
@@ -905,8 +909,12 @@ class EASRepository @Inject constructor(
                                     }
 
                                     //添加科目
-                                    val lookupKeys = EasImportIdentity.subjectLookupKeys(code, normalizedName, rawName)
-                                    var subject = lookupKeys.firstNotNullOfOrNull { key -> subjectsByKey[key] }
+                                    var subject = EasImportIdentity.findReusableSubject(
+                                        subjectsByKey,
+                                        code,
+                                        normalizedName,
+                                        rawName,
+                                    )
                                     if (subject == null) {//不存在，新建
                                         subject = TermSubject()
                                         // 优先保存完整的原始名称
@@ -965,9 +973,12 @@ class EASRepository @Inject constructor(
                                             subject.nature = mappedNature
                                         }
                                     }
-                                    EasImportIdentity.subjectLookupKeys(subject.code, normalizedName, subject.name).forEach { key ->
-                                        subjectsByKey[key] = subject
-                                    }
+                                    EasImportIdentity.registerSubject(
+                                        subjectsByKey,
+                                        subject,
+                                        normalizedName,
+                                        subject.name,
+                                    )
                                     var itemHasEvent = false
 
                                     for (week in item.weeks) {
@@ -1140,7 +1151,7 @@ class EASRepository @Inject constructor(
         timetableName: String,
         startMillis: Long,
         schedule: List<TimePeriodInDay>
-    ) {
+    ) = timetableMutationLock.exclusive {
         val snapshotOwnerKey = FollowedTeachingSectionStore.ownerKey(easToken)
         val localEvents = eventItemDao.getImportedClassEventsOfTimetableSync(timetable.id)
         val localSubjectsById = subjectDao.getSubjectsSync(timetable.id).associateBy { it.id }
@@ -1980,13 +1991,16 @@ class EASRepository @Inject constructor(
             runCatching {
                 val token = easPreferenceSource.getEasToken()
                 val ownerKey = FollowedTeachingSectionStore.ownerKey(token)
-                val restored = timetableSnapshotStore.restore(ownerKey, snapshotId)
-                timetableChangeStore.pruneResolvedDecisions(
-                    restored.termId,
-                    restored.subjects.map {
-                        TimetableRefreshMergePolicy.courseKey(it.name, it.code)
-                    }.toSet()
-                )
+                val restored = timetableMutationLock.exclusive {
+                    val snapshot = timetableSnapshotStore.restore(ownerKey, snapshotId)
+                    timetableChangeStore.pruneResolvedDecisions(
+                        snapshot.termId,
+                        snapshot.subjects.map {
+                            TimetableRefreshMergePolicy.courseKey(it.name, it.code)
+                        }.toSet()
+                    )
+                    snapshot
+                }
                 restored
             }.onSuccess {
                 result.postValue(DataState(it, DataState.STATE.SUCCESS))

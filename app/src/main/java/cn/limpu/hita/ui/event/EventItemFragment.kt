@@ -44,6 +44,7 @@ import cn.limpu.hita.data.model.timetable.EventItem
 import cn.limpu.hita.data.model.timetable.TimeInDay
 import cn.limpu.hita.data.repository.EASRepository
 import cn.limpu.hita.data.repository.TimetableChangeStore
+import cn.limpu.hita.data.repository.TimetableMutationLock
 import cn.limpu.hita.data.source.preference.EasPreferenceSource
 import cn.limpu.hita.data.source.preference.EasCredentialStore
 import cn.limpu.hita.data.source.preference.TimetablePreferenceSource
@@ -76,7 +77,8 @@ class EventItemFragment : Fragment() {
             EasPreferenceSource(requireActivity().application.applicationContext),
             EasCredentialStore(requireActivity().application.applicationContext),
             TimetablePreferenceSource(requireActivity().application.applicationContext),
-            TimetableChangeStore(requireActivity().application)
+            TimetableChangeStore(requireActivity().application),
+            TimetableMutationLock()
         )
     }
     private val hoaCampus by lazy { easRepository.getHoaCampus() }

@@ -123,18 +123,18 @@ private fun TimetablePanelScreen(
     onColorPresetSelected: (ThemeTools.COLOR_PRESET) -> Unit,
     onPickStartTime: (Int) -> Unit,
 ) {
-    val startTime by viewModel.startDateLiveData.observeAsState(830)
-    val drawBgLines by viewModel.drawBGLinesLiveData.observeAsState(true)
-    val colorEnable by viewModel.colorEnableLiveData.observeAsState(true)
-    val fadeEnable by viewModel.fadeEnableLiveData.observeAsState(true)
-    val periodLabel by viewModel.periodLabelLiveData.observeAsState(false)
+    val startTime by viewModel.startDateLiveData.observeAsState(viewModel.currentStartTime())
+    val drawBgLines by viewModel.drawBGLinesLiveData.observeAsState(viewModel.isDrawBgLineEnabled())
+    val colorEnable by viewModel.colorEnableLiveData.observeAsState(viewModel.isColorEnabled())
+    val fadeEnable by viewModel.fadeEnableLiveData.observeAsState(viewModel.isFadeEnabled())
+    val periodLabel by viewModel.periodLabelLiveData.observeAsState(viewModel.isPeriodLabelEnabled())
     val eveningHint by viewModel.eveningHintLiveData.observeAsState(viewModel.isEveningHintEnabled())
-    val zoomCompressed by viewModel.zoomCompressedLiveData.observeAsState(false)
+    val zoomCompressed by viewModel.zoomCompressedLiveData.observeAsState(viewModel.isZoomCompressed())
     val autoReimport by viewModel.autoReimportLiveData.observeAsState(viewModel.isAutoReimportEnabled())
-    val scrimOpacity by viewModel.scrimOpacityLiveData.observeAsState(30)
-    val cardOpacity by viewModel.cardOpacityLiveData.observeAsState(85)
+    val scrimOpacity by viewModel.scrimOpacityLiveData.observeAsState(viewModel.scrimOpacity())
+    val cardOpacity by viewModel.cardOpacityLiveData.observeAsState(viewModel.cardOpacity())
     val bubbleStyleValue by viewModel.courseBubbleStyleLiveData.observeAsState(
-        CourseBubbleStyle.SOLID.storageValue
+        viewModel.courseBubbleStyleValue()
     )
     val bubbleStyle = CourseBubbleStyle.fromStorage(bubbleStyleValue)
     val isPersona = hitaIsPersona()

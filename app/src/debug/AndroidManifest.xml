@@ -4,7 +4,8 @@
         <!-- ADB-only diagnostic hook. This source set is excluded from release APKs. -->
         <receiver
             android:name=".feature.livecourse.debug.LiveCourseDebugReceiver"
-            android:exported="true">
+            android:exported="true"
+            android:permission="android.permission.DUMP">
             <intent-filter>
                 <action android:name="cn.limpu.hita.action.SHOW_LIVE_COURSE_DEBUG" />
                 <action android:name="cn.limpu.hita.action.SHOW_PRE_CLASS_DEBUG" />
