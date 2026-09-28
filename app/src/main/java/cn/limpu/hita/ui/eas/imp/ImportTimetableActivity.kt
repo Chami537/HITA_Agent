@@ -258,6 +258,7 @@ class ImportTimetableActivity :
             updateBenbuCalibrationVisibility()
             maybeShowBenbuCalibrationPrompt()
             maybeAutoImport()
+            recoverImportSessionIfNeeded(it)
         }
         viewModel.benbuCalibrationConfirmedLiveData.observe(this) {
             updateBenbuCalibrationVisibility()
@@ -267,6 +268,7 @@ class ImportTimetableActivity :
         viewModel.scheduleStructureLiveData.observe(this) {
             importEnabled = !it.data.isNullOrEmpty()
             maybeAutoImport()
+            recoverImportSessionIfNeeded(it)
         }
         viewModel.importTimetableResultLiveData.observe(this) {
             importing = false
@@ -310,6 +312,18 @@ class ImportTimetableActivity :
                 ).show()
                 else -> Unit
             }
+        }
+    }
+
+    private fun recoverImportSessionIfNeeded(state: DataState<*>) {
+        if (state.state != DataState.STATE.NOT_LOGGED_IN &&
+            state.state != DataState.STATE.TOKEN_INVALID
+        ) {
+            return
+        }
+        handleSessionExpired {
+            refresh()
+            true
         }
     }
 
