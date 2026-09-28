@@ -6,6 +6,7 @@ import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKeys
 import com.google.gson.Gson
 import cn.limpu.hita.data.model.eas.EASToken
+import cn.limpu.hita.utils.LogUtils
 
 /**
  * 层次：DataSource
@@ -23,15 +24,43 @@ private val LEGACY_TOKEN_STRING_KEYS = listOf(
     "grade", "className", "sfxsx", "email", "phone", "electronicExpToken"
 )
 
+private fun openEncryptedPrefs(context: Context, name: String): SharedPreferences {
+    fun create(): SharedPreferences = EncryptedSharedPreferences.create(
+        name,
+        MasterKeys.getOrCreate(MasterKeys.AES256_GCM_SPEC),
+        context.applicationContext,
+        EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
+        EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM,
+    )
+    try {
+        return create()
+    } catch (error: Exception) {
+        LogUtils.e("encrypted prefs $name failed, recreating file", error)
+        runCatching { context.deleteSharedPreferences(name) }
+    }
+    try {
+        return create()
+    } catch (error: Exception) {
+        LogUtils.e("encrypted prefs $name failed after recreate", error)
+        runCatching {
+            val keyStore = java.security.KeyStore.getInstance("AndroidKeyStore")
+            keyStore.load(null)
+            keyStore.deleteEntry("_androidx_security_master_key_")
+        }
+        runCatching { context.deleteSharedPreferences(name) }
+    }
+    return try {
+        create()
+    } catch (error: Exception) {
+        LogUtils.e("encrypted prefs $name unavailable, using private fallback", error)
+        context.getSharedPreferences("${name}_fallback", Context.MODE_PRIVATE)
+    }
+}
+
+
 class EasPreferenceSource(context: Context) {
     private val preference: SharedPreferences = synchronized(EasPreferenceSource::class.java) {
-        val encryptedPrefs = EncryptedSharedPreferences.create(
-            SP_NAME_EAS_TOKEN,
-            MasterKeys.getOrCreate(MasterKeys.AES256_GCM_SPEC),
-            context.applicationContext,
-            EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
-            EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
-        )
+        val encryptedPrefs = openEncryptedPrefs(context, SP_NAME_EAS_TOKEN)
         if (!encryptedPrefs.getBoolean(KEY_MIGRATION_COMPLETE, false)) {
             val rawLegacy = context.getSharedPreferences(LEGACY_SP_NAME_EAS_TOKEN, Context.MODE_PRIVATE).all
             val hasEncryptedLegacy = rawLegacy.keys.any { it.startsWith(ENCRYPTED_PREFS_KEY_PREFIX) }
@@ -39,28 +68,31 @@ class EasPreferenceSource(context: Context) {
                 it in LEGACY_TOKEN_STRING_KEYS || it == "sessionGeneration"
             }
             val encryptedData = if (hasEncryptedLegacy) {
-                val oldEncrypted = EncryptedSharedPreferences.create(
-                    LEGACY_SP_NAME_EAS_TOKEN,
-                    MasterKeys.getOrCreate(MasterKeys.AES256_GCM_SPEC),
-                    context.applicationContext,
-                    EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
-                    EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
-                )
-                runCatching { oldEncrypted.all }.getOrElse {
-                    // Earlier same-file migrations can leave plaintext keys beside encrypted ones.
-                    // Reading individual encrypted keys still recovers the newer session values.
-                    buildMap<String, Any> {
-                        LEGACY_TOKEN_STRING_KEYS.forEach { key ->
-                            if (oldEncrypted.contains(key)) {
-                                oldEncrypted.getString(key, null)?.let { put(key, it) }
+                runCatching {
+                    EncryptedSharedPreferences.create(
+                        LEGACY_SP_NAME_EAS_TOKEN,
+                        MasterKeys.getOrCreate(MasterKeys.AES256_GCM_SPEC),
+                        context.applicationContext,
+                        EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
+                        EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM,
+                    )
+                }.getOrNull()?.let { oldEncrypted ->
+                    runCatching { oldEncrypted.all }.getOrElse {
+                        buildMap<String, Any> {
+                            LEGACY_TOKEN_STRING_KEYS.forEach { key ->
+                                if (oldEncrypted.contains(key)) {
+                                    oldEncrypted.getString(key, null)?.let { put(key, it) }
+                                }
                             }
-                        }
-                        if (oldEncrypted.contains("sessionGeneration")) {
-                            put("sessionGeneration", oldEncrypted.getLong("sessionGeneration", 0L))
+                            if (oldEncrypted.contains("sessionGeneration")) {
+                                put("sessionGeneration", oldEncrypted.getLong("sessionGeneration", 0L))
+                            }
                         }
                     }
                 }
-            } else null
+            } else {
+                null
+            }
             val oldData = LegacyPreferenceMigration.preferredSource(plainData, encryptedData)
             val saved = LegacyPreferenceMigration.copyThenDelete(
                 oldData,
@@ -77,7 +109,7 @@ class EasPreferenceSource(context: Context) {
                                 @Suppress("UNCHECKED_CAST")
                                 editor.putStringSet(key, value as Set<String>)
                             }
-                            else -> error("Unsupported legacy preference type for $key")
+                            else -> LogUtils.e("Unsupported legacy preference type for $key")
                         }
                     }
                     editor.putBoolean(KEY_MIGRATION_COMPLETE, true).commit()
@@ -87,9 +119,8 @@ class EasPreferenceSource(context: Context) {
                         .getOrDefault(false)
                 }
             )
-            // A failed deletion leaves the persisted copy intact; retry cleanup on next launch.
             if (!saved && !encryptedPrefs.getBoolean(KEY_MIGRATION_COMPLETE, false)) {
-                error("Could not persist EAS session migration")
+                LogUtils.e("Could not persist EAS session migration")
             }
         } else {
             runCatching { context.deleteSharedPreferences(LEGACY_SP_NAME_EAS_TOKEN) }

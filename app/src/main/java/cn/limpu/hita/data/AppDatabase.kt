@@ -1,11 +1,13 @@
 package cn.limpu.hita.data
 
 import android.content.Context
+import android.database.sqlite.SQLiteException
 import androidx.room.Database
 import androidx.room.Room
 import androidx.room.RoomDatabase
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
+import cn.limpu.hita.utils.LogUtils
 import com.limpu.hitauser.data.model.UserProfile
 import cn.limpu.hita.data.model.chat.ChatMessageEntity
 import cn.limpu.hita.data.model.chat.ChatSession
@@ -49,21 +51,60 @@ abstract class AppDatabase : RoomDatabase() {
         @Volatile
         private var INSTANCE: AppDatabase? = null
 
+        private const val DB_NAME = "hita"
+
         @JvmStatic
         fun getDatabase(context: Context): AppDatabase {
-            if (INSTANCE == null) {
-                synchronized(AppDatabase::class.java) {
-                    if (INSTANCE == null) {
-                        INSTANCE = Room.databaseBuilder(
-                            context.applicationContext,
-                            AppDatabase::class.java, "hita"
-                        ).addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14)
-                            .fallbackToDestructiveMigration(true)
-                            .build()
-                    }
-                }
+            INSTANCE?.let { return it }
+            synchronized(AppDatabase::class.java) {
+                INSTANCE?.let { return it }
+                val opened = openOrRecreate(context.applicationContext)
+                INSTANCE = opened
+                return opened
             }
-            return INSTANCE!!
+        }
+
+        private fun openOrRecreate(context: Context): AppDatabase {
+            val first = build(context)
+            try {
+                first.openHelper.writableDatabase
+                return first
+            } catch (error: IllegalStateException) {
+                return recreate(context, first, error)
+            } catch (error: SQLiteException) {
+                return recreate(context, first, error)
+            }
+        }
+
+        private fun recreate(context: Context, failed: AppDatabase, error: Exception): AppDatabase {
+            LogUtils.e("Room database open failed, recreating", error)
+            runCatching { failed.close() }
+            context.deleteDatabase(DB_NAME)
+            val second = build(context)
+            second.openHelper.writableDatabase
+            return second
+        }
+
+        private fun build(context: Context): AppDatabase {
+            return Room.databaseBuilder(context, AppDatabase::class.java, DB_NAME)
+                .addMigrations(
+                    MIGRATION_1_2,
+                    MIGRATION_2_3,
+                    MIGRATION_3_4,
+                    MIGRATION_4_5,
+                    MIGRATION_5_6,
+                    MIGRATION_6_7,
+                    MIGRATION_7_8,
+                    MIGRATION_8_9,
+                    MIGRATION_9_10,
+                    MIGRATION_10_11,
+                    MIGRATION_11_12,
+                    MIGRATION_12_13,
+                    MIGRATION_13_14,
+                )
+                .fallbackToDestructiveMigration(true)
+                .fallbackToDestructiveMigrationOnDowngrade(true)
+                .build()
         }
 
         private val MIGRATION_1_2 = object : Migration(1, 2) {

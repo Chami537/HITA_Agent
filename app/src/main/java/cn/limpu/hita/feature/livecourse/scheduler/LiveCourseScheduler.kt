@@ -173,7 +173,11 @@ class LiveCourseScheduler(context: Context) {
             // This entry point is also called directly by the Compose settings switch. The
             // timetable repository performs synchronous Room reads, so it must never run on UI.
             CoroutineScope(SupervisorJob() + Dispatchers.IO).launch {
-                scheduler.reconcile()
+                try {
+                    scheduler.reconcile()
+                } catch (error: Exception) {
+                    cn.limpu.hita.utils.LogUtils.e("Live course reconcile failed", error)
+                }
             }
         }
     }
