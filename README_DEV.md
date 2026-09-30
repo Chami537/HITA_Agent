@@ -6,7 +6,8 @@ HITA Agent 是一款面向哈工大三校区的 Android 校园助手 App，集�
 ## 技术栈
 - **开发语言**：Kotlin
 - **最低 SDK**：26 (Android 8.0)
-- **目标 / 编译 SDK**：35 (Android 15)
+- **目标 SDK**：35 (Android 15)
+- **编译 SDK**：`app` 为 36 (Android 16)，`hitauser` / `component` / `style` 为 35
 - **构建工具**：Gradle 8.11.1, AGP 8.10.1, Kotlin 2.2.21
 - **JDK**：17（本地用 JDK 21 亦可构建通过）
 - **架构**：MVVM + Repository，Hilt 依赖注入，Room 数据库，WorkManager 定时任务
@@ -16,7 +17,7 @@ HITA Agent 是一款面向哈工大三校区的 Android 校园助手 App，集�
 ## 环境要求
 - Android Studio 2025.3.2 或更高
 - JDK 17
-- Android SDK Platform 35（应用最低支持 API 26）
+- Android SDK Platform 35 和 36（应用最低支持 API 26）
 
 ## 项目结构
 
@@ -30,6 +31,12 @@ HITA_Agent/
 ```
 
 详见 `CLAUDE.md` 了解完整架构。
+
+## Agent 调用路径
+
+- **聊天助手**：`LlmChatService.chat()` 调用 `localReAct()`，在 Android 端执行推理与工具调用循环；模型请求通过 `LlmClient` 发往配置的提供商。聊天工具实现 `ReActTool`，由 `ReActToolRegistry` 注册，接收 `ReActToolInput` 并返回文本观察结果。
+- **课表与课程资料智能体**：`TimetableAgentEngine` / `SubjectReadmeAgentEngine` 实现 `AgentEngine`，工具实现泛型 `AgentTool<I, O>`，由 `AgentToolRegistry` 注册；`AgentOrchestrator` 将调用委托给引擎，`AgentToolExecutor` 处理超时、重试和结果回调。这套接口与聊天用 `ReActTool` 不同。
+- **数据来源**：课表等本地能力使用 Android 数据层，教务查询使用 `EASRepository`；课程资源使用 `PrServerClient`，搜索、RAG 和网页抓取使用 `AgentBackendClient`。聊天入口当前未启用后端 ReAct 循环。
 
 ## 构建
 

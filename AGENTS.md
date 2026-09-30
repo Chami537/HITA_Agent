@@ -17,7 +17,7 @@ HITA Agent is an Android app for Harbin Institute of Technology (HIT) students a
 ./gradlew testClasses            # Alias for testDebugUnitTest
 ```
 
-**Environment**: JDK 17, Gradle 8.11.1, AGP 8.10.1, Kotlin 2.2.21; compile/target SDK 35 and minimum SDK 26. Set `JAVA_HOME` locally; do not commit a machine-specific JDK path. The maintained setup and build instructions are in [README_DEV.md](README_DEV.md).
+**Environment**: JDK 17, Gradle 8.11.1, AGP 8.10.1, Kotlin 2.2.21; target SDK 35 and minimum SDK 26. Compile SDK is 36 for `app` and 35 for `hitauser`, `component`, and `style`; install Android SDK Platforms 35 and 36. Set `JAVA_HOME` locally; do not commit a machine-specific JDK path. The maintained setup and build instructions are in [README_DEV.md](README_DEV.md).
 
 **Maven mirrors**: All repos use Chinese mirrors (Aliyun, Tencent, JitPack) — see `build.gradle`.
 
@@ -69,13 +69,17 @@ agent/
 ├── core/        # AgentEngine, AgentOrchestrator, AgentTool (interface), AgentToolRegistry
 ├── llm/         # LlmClient, LlmChatService, ReactPromptBuilder (configured model providers)
 ├── remote/      # AgentBackendClient (agent-backend HTTP), PrServerClient (course resource HTTP)
-├── tools/       # Concrete tools: WebSearch, RagSearch, CrawlPage, SearchCourse, etc.
+├── tools/       # Chat ReActTool interface, ReActToolRegistry, and concrete tools
 ├── subject/     # Subject README agent (course detail fetcher)
 ├── timetable/   # Timetable agent (local timetable queries + calendar add)
 └── document/    # File parsers: PDF, DOCX, XLSX, PPTX, TXT — Strategy pattern via FileParserDispatcher
 ```
 
-**Key design**: Tools implement `AgentTool` interface, registered in `ReActToolRegistry`. The `AgentOrchestrator` drives the ReAct loop (thought → action → observation). LLM calls go through `LlmClient` and the configured provider. Course resource queries hit `PrServerClient`; other tools route through `AgentBackendClient`.
+**Chat ReAct path**: `LlmChatService.chat()` calls `localReAct()` to run the reasoning/tool loop on Android. Chat tools implement `ReActTool`, are registered in `ReActToolRegistry`, receive `ReActToolInput`, and return textual observations. Model requests go through `LlmClient` and the configured provider. The chat entry point currently does not use the backend ReAct loop.
+
+**Typed agent path**: `TimetableAgentEngine` and `SubjectReadmeAgentEngine` implement `AgentEngine`. Their tools implement `AgentTool<I, O>` and are registered in `AgentToolRegistry`. `AgentOrchestrator` delegates execution to the engine; `AgentToolExecutor` handles timeouts, retries, and result callbacks. These interfaces are distinct from the chat `ReActTool` interface.
+
+**Tool data sources**: Local timetable capabilities use the Android data layer, and academic queries use `EASRepository`. Course resource queries use `PrServerClient`; search, RAG, and crawling use `AgentBackendClient`.
 
 ### Network Clients
 
