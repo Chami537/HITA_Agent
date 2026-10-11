@@ -143,6 +143,8 @@ dependencies {
     implementation 'androidx.compose.ui:ui-tooling-preview'
     implementation 'dev.chrisbanes.haze:haze:0.7.3'
     implementation 'io.github.kyant0:backdrop:1.0.0'
+    // 不在 Compose BOM 管理范围内，版本号须显式写；阿里云 google 镜像可解析。issue #19
+    implementation 'androidx.graphics:graphics-shapes:1.0.1'
     debugImplementation 'androidx.compose.ui:ui-tooling'
     implementation 'androidx.constraintlayout:constraintlayout:2.1.4'
     implementation 'androidx.viewpager:viewpager:1.0.0'

@@ -55,6 +55,11 @@ fun Modifier.hitaDeepSpaceCardModifier(
     shape: Shape,
     elevation: Dp = 10.dp,
     glowTint: Color? = null,
+    /**
+     * 阴影单独用的轮廓。默认与 [shape] 一致；传平台友好的圆角矩形可在
+     * API 26~28 上保住投影（系统 HWUI 不认通用路径轮廓）。issue #19
+     */
+    shadowShape: Shape? = null,
 ): Modifier {
     if (!hitaIsDeepSpace()) return this
     val isDark = HitaTheme.isDark
@@ -66,7 +71,7 @@ fun Modifier.hitaDeepSpaceCardModifier(
     return this
         .shadow(
             elevation = shadowElevation,
-            shape = shape,
+            shape = shadowShape ?: shape,
             clip = false,
             ambientColor = glow.copy(alpha = if (isDark) 0.10f else 0.06f),
             spotColor = glow.copy(alpha = if (isDark) 0.14f else 0.09f)
