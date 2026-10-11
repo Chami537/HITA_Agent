@@ -2,6 +2,7 @@ package cn.limpu.hita.agent.timetable
 
 import cn.limpu.hita.agent.core.AgentTool
 import cn.limpu.hita.agent.core.AgentToolResult
+import cn.limpu.hita.data.repository.DisplayScopeResolver
 import cn.limpu.hita.data.repository.ScheduleEventCreator
 import cn.limpu.hita.data.repository.TimetableRepository
 import cn.limpu.hita.utils.LogUtils
@@ -41,7 +42,14 @@ class AddTimetableArrangementTool : AgentTool<TimetableAgentInput, TimetableAgen
 
                 val timetable = input.timetableId
                     ?.let { repository.getTimetableByIdSync(it) }
-                    ?: repository.getRecentTimetableSync()
+                    ?: DisplayScopeResolver(input.application).currentSync()
+                        ?.let { scope ->
+                            // 显示目标内当前时间命中的课表;无命中取目标内最早一份。
+                            val now = System.currentTimeMillis()
+                            scope.timetables.filter { now in it.startTime.time..it.endTime.time }
+                                .minByOrNull { it.startTime.time }
+                                ?: scope.timetables.firstOrNull()
+                        }
                     ?: repository.ensureDefaultCustomTimetableSync()
                 LogUtils.d("[DEBUG] Got timetable: id=${timetable.id}, name=${timetable.name}")
 

@@ -6,6 +6,7 @@ import android.appwidget.AppWidgetProvider
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
+import cn.limpu.hita.data.repository.DisplayScopeResolver
 import cn.limpu.hita.data.repository.TimetableRepository
 import cn.limpu.hita.data.work.WidgetRefreshScheduler
 import cn.limpu.hita.ui.widgets.WidgetUtils
@@ -37,8 +38,11 @@ class TodayWidget : AppWidgetProvider() {
         goAsync{
             // 确保数据库操作在后台线程执行
             val (events, upcomingExams) = withContext(Dispatchers.IO) {
-                timetableRepo.getTodayEventsSync() to
-                        timetableRepo.getUpcomingExamsWithinReminderWindowSync(System.currentTimeMillis())
+                run {
+                    val scopeIds = DisplayScopeResolver(context.applicationContext as Application).currentSync()?.timetableIds.orEmpty()
+                    timetableRepo.getTodayEventsSync(scopeIds) to
+                            timetableRepo.getUpcomingExamsWithinReminderWindowSync(System.currentTimeMillis(), scopeIds)
+                }
             }
             for (appWidgetId in appWidgetIds) {
                 LogUtils.d("UPDATE:$appWidgetId")
@@ -73,8 +77,11 @@ class TodayWidget : AppWidgetProvider() {
                 goAsync {
                     // 确保数据库操作在后台线程执行
                     val (events, upcomingExams) = withContext(Dispatchers.IO) {
-                        timetableRepo.getTodayEventsSync() to
-                                timetableRepo.getUpcomingExamsWithinReminderWindowSync(System.currentTimeMillis())
+                        run {
+                    val scopeIds = DisplayScopeResolver(context.applicationContext as Application).currentSync()?.timetableIds.orEmpty()
+                    timetableRepo.getTodayEventsSync(scopeIds) to
+                            timetableRepo.getUpcomingExamsWithinReminderWindowSync(System.currentTimeMillis(), scopeIds)
+                }
                     }
                     for (appWidgetId in mgr.getAppWidgetIds(cn)) {
                         LogUtils.d("refressh$appWidgetId")

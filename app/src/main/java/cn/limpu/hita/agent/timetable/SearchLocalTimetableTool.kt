@@ -2,6 +2,7 @@ package cn.limpu.hita.agent.timetable
 
 import cn.limpu.hita.agent.core.AgentTool
 import cn.limpu.hita.agent.core.AgentToolResult
+import cn.limpu.hita.data.repository.DisplayScopeResolver
 import cn.limpu.hita.data.repository.TimetableRepository
 import cn.limpu.hita.utils.LogUtils
 import java.text.SimpleDateFormat
@@ -31,7 +32,9 @@ class SearchLocalTimetableTool : AgentTool<TimetableAgentInput, TimetableAgentOu
                 val repository = TimetableRepository(input.application)
                 LogUtils.d("Search timetable events by keyword: $keyword")
 
-                val events = repository.searchEventsByKeywordSync(keyword)
+                // 跟随主课表显示目标过滤。
+                val scope = DisplayScopeResolver(input.application).currentSync()
+                val events = repository.searchEventsByKeywordSync(keyword, scope?.timetableIds.orEmpty())
                     .sortedBy { it.from.time }
 
                 LogUtils.d("Found ${events.size} events matching '$keyword'")
@@ -41,7 +44,7 @@ class SearchLocalTimetableTool : AgentTool<TimetableAgentInput, TimetableAgentOu
                         TimetableAgentOutput(
                             action = input.action,
                             timetableId = events.firstOrNull()?.timetableId ?: "",
-                            timetableName = "全部课表",
+                            timetableName = scope?.name ?: "全部课表",
                             events = events.map {
                                 TimetableEventSnapshot(
                                     id = it.id,

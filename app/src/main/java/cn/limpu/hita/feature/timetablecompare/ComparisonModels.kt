@@ -11,10 +11,18 @@ data class ComparisonSchedule(
 )
 enum class PeriodStatus { FREE, OWN_ONLY, FRIEND_ONLY, CONFLICT, UNKNOWN }
 /** Index is zero-based in the full schedule structure, including filtered-out periods. */
-data class ComparedPeriod(val index: Int, val span: TimeSpan, val status: PeriodStatus)
+data class ComparedPeriod(
+    val index: Int,
+    val span: TimeSpan,
+    val status: PeriodStatus,
+    /** 该节有课的好友下标;一对一结果保持空列表,多人对比才填写。 */
+    val busyFriendIndexes: List<Int> = emptyList(),
+)
 data class ComparisonRequest(
     val mondayMillis: Long,
+    /** 展示视口起点（分钟），仅用于界面显示范围，不参与节次过滤。 */
     val startMinute: Int = 510,
+    /** 展示视口终点（分钟），仅用于界面显示范围，不参与节次过滤。 */
     val endMinute: Int = 1350,
 )
 data class ComparisonDay(val date: LocalDate, val slots: List<ComparedPeriod>) {

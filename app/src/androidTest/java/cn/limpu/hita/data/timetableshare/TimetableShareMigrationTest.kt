@@ -14,13 +14,13 @@ import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
 class TimetableShareMigrationTest {
-    private fun createV14Database(name: String): SupportSQLiteOpenHelper {
+    private fun createLegacyDatabase(name: String, version: Int = 14): SupportSQLiteOpenHelper {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val context = instrumentation.targetContext
         context.deleteDatabase(name)
-        val schema = instrumentation.context.assets.open("cn.limpu.hita.data.AppDatabase/14.json")
+        val schema = instrumentation.context.assets.open("cn.limpu.hita.data.AppDatabase/$version.json")
             .bufferedReader().use { JSONObject(it.readText()).getJSONObject("database") }
-        val callback = object : SupportSQLiteOpenHelper.Callback(14) {
+        val callback = object : SupportSQLiteOpenHelper.Callback(version) {
             override fun onCreate(db: SupportSQLiteDatabase) {
                 val entities = schema.getJSONArray("entities")
                 for (i in 0 until entities.length()) {
@@ -47,10 +47,10 @@ class TimetableShareMigrationTest {
         )
     }
 
-    @Test fun migrates14To15PreservingEveryPersonalColumn() {
+    @Test fun migrates14To16PreservingEveryPersonalColumn() {
         val name = "timetable-share-migration-test-v14"
         val context = InstrumentationRegistry.getInstrumentation().targetContext
-        val legacy = createV14Database(name)
+        val legacy = createLegacyDatabase(name)
         val before = try {
             val old = legacy.writableDatabase
             old.execSQL("INSERT INTO timetable(id,name,code,startTime,endTime,createdAt,scheduleStructure) VALUES('t','本人','2025-2026-2',1767225600000,1777593600000,123,'[]')")
@@ -58,19 +58,50 @@ class TimetableShareMigrationTest {
             old.execSQL("INSERT INTO events(id,type,source,name,place,teacher,subjectId,timetableId,`from`,`to`,fromNumber,lastNumber,created_at) VALUES('e','CLASS','EAS_IMPORT','数学','A101','老师','s','t',1767254400000,1767258000000,1,1,789)")
             personalRows(old)
         } finally { legacy.close() }
+        val expected = before.mapValues { (table, rows) ->
+            if (table == "timetable") rows.map { it + listOf<String?>(null) } else rows
+        }
         val migrated = Room.databaseBuilder(context, AppDatabase::class.java, name)
-            .addMigrations(AppDatabase.MIGRATION_14_15).build()
+            .addMigrations(AppDatabase.MIGRATION_14_15, AppDatabase.MIGRATION_15_16).build()
         try {
             val db = migrated.openHelper.writableDatabase
-            assertEquals(before, personalRows(db))
+            assertEquals(expected, personalRows(db))
             db.execSQL("INSERT INTO timetable_share_identity(timetableId,termKey,shareId) VALUES('t','2025-2026-2','share')")
             db.execSQL("INSERT INTO friend_timetable(shareId,nickname,remark,termName,startMillis,endMillis,mode,snapshotJson,contentDigest,importedAt,updatedAt) VALUES('friend','好友',NULL,'春季',1767225600000,1777593600000,'FULL','{}','digest',1,2)")
             db.query("SELECT shareId FROM timetable_share_identity").use { assertTrue(it.moveToFirst()); assertEquals("share", it.getString(0)) }
             db.query("SELECT nickname FROM friend_timetable").use { assertTrue(it.moveToFirst()); assertEquals("好友", it.getString(0)) }
-            assertEquals(before, personalRows(db))
+            assertEquals(expected, personalRows(db))
         } finally {
             migrated.close()
             context.deleteDatabase(name)
         }
+    }
+
+    @Test fun migrates15To16PreservingSharesAndAllowingGroups() {
+        val name = "timetable-group-migration-test-v15"
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val legacy = createLegacyDatabase(name, 15)
+        try {
+            legacy.writableDatabase.execSQL("INSERT INTO timetable_share_identity(timetableId,termKey,shareId) VALUES('t','term','share')")
+            legacy.writableDatabase.execSQL("INSERT INTO friend_timetable(shareId,nickname,remark,termName,startMillis,endMillis,mode,snapshotJson,contentDigest,importedAt,updatedAt) VALUES('friend','好友','备注','春季',1,2,'FULL','{}','digest',3,4)")
+        } finally { legacy.close() }
+        val migrated = Room.databaseBuilder(context, AppDatabase::class.java, name)
+            .addMigrations(AppDatabase.MIGRATION_15_16).build()
+        try {
+            val db = migrated.openHelper.writableDatabase
+            db.query("SELECT shareId FROM timetable_share_identity").use {
+                assertTrue(it.moveToFirst()); assertEquals("share", it.getString(0))
+            }
+            db.query("SELECT remark FROM friend_timetable").use {
+                assertTrue(it.moveToFirst()); assertEquals("备注", it.getString(0))
+            }
+            db.execSQL("INSERT INTO timetable_group(id,name,createdAt) VALUES('g','组合',1)")
+            db.execSQL("INSERT INTO timetable(id,name,code,startTime,endTime,createdAt,scheduleStructure,groupId) VALUES('t','我的',NULL,1,2,3,'[]','g')")
+            assertEquals("g", migrated.timetableDao().getTimetableByIdSync("t")?.groupId)
+            db.query("PRAGMA index_list(timetable)").use { cursor ->
+                val names = buildList { while (cursor.moveToNext()) add(cursor.getString(cursor.getColumnIndexOrThrow("name"))) }
+                assertTrue("index_timetable_groupId" in names)
+            }
+        } finally { migrated.close(); context.deleteDatabase(name) }
     }
 }

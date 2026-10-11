@@ -40,11 +40,27 @@ interface EventItemDao {
     @Query("SELECT * FROM events WHERE `from` < :toT AND `to` > :fromT")
     fun getEventsDuring(fromT: Long, toT: Long): LiveData<List<EventItem>>
 
+    /** 按显示目标过滤的周窗口查询：只取给定课表集合内与窗口相交的事件。 */
+    @Query("SELECT * FROM events WHERE `from` < :toT AND `to` > :fromT AND timetableId IN (:timetableIds)")
+    fun getEventsDuringForTimetables(fromT: Long, toT: Long, timetableIds: List<String>): LiveData<List<EventItem>>
+
+    @Query("SELECT * FROM events WHERE `from` < :toT AND `to` > :fromT AND timetableId IN (:timetableIds)")
+    fun getEventsDuringForTimetablesSync(fromT: Long, toT: Long, timetableIds: List<String>): List<EventItem>
+
     @Query("SELECT * FROM events WHERE `from` >= :fromT order by `from` asc LIMIT :limit")
     fun getEventsAfter(fromT: Long, limit: Int): LiveData<List<EventItem>>
 
     @Query("SELECT * FROM events WHERE `from` >= :fromT AND `from` < :toT AND type is 'EXAM' order by `from` asc")
     fun getExamsDuring(fromT: Long, toT: Long): LiveData<List<EventItem>>
+
+    @Query("SELECT * FROM events WHERE `from` >= :fromT AND `from` < :toT AND type is 'EXAM' AND timetableId IN (:timetableIds) order by `from` asc")
+    fun getExamsDuringForTimetables(fromT: Long, toT: Long, timetableIds: List<String>): LiveData<List<EventItem>>
+
+    @Query("SELECT * FROM events WHERE `from` >= :fromT AND `from` < :toT AND type is 'EXAM' AND timetableId IN (:timetableIds) order by `from` asc")
+    fun getExamsDuringForTimetablesSync(fromT: Long, toT: Long, timetableIds: List<String>): List<EventItem>
+
+    @Query("SELECT * FROM events WHERE `from` >= :fromT AND timetableId IN (:timetableIds) order by `from` asc LIMIT :limit")
+    fun getEventsAfterForTimetables(fromT: Long, limit: Int, timetableIds: List<String>): LiveData<List<EventItem>>
 
     @Query("SELECT * FROM events WHERE `from` < :toT AND `to` > :fromT")
     fun getEventsDuringSync(fromT: Long, toT: Long): List<EventItem>
@@ -123,6 +139,9 @@ interface EventItemDao {
     @Query("select * from events where `from` < :toMs and `to` > :fromMs order by `from` asc")
     fun getEventsOfAllTimetablesDuringSync(fromMs: Long, toMs: Long): List<EventItem>
 
+    @Query("select * from events where `from` < :toMs and `to` > :fromMs and timetableId in (:timetableIds) order by `from` asc")
+    fun getEventsOfTimetablesDuringSync(timetableIds: List<String>, fromMs: Long, toMs: Long): List<EventItem>
+
 
     @Query("SELECT * from events where type is 'CLASS' and timetableId is :timetableId and fromNumber is :fromNumber")
     fun getClassAtFromNumberSync(
@@ -164,6 +183,9 @@ interface EventItemDao {
 
     @Query("SELECT * FROM events WHERE name LIKE '%' || :keyword || '%' ORDER BY `from` DESC LIMIT 50")
     fun searchEventsByNameSync(keyword: String): List<EventItem>
+
+    @Query("SELECT * FROM events WHERE name LIKE '%' || :keyword || '%' AND timetableId IN (:timetableIds) ORDER BY `from` DESC LIMIT 50")
+    fun searchEventsByNameInTimetablesSync(keyword: String, timetableIds: List<String>): List<EventItem>
 
     @Query("delete from events")
     fun clear()

@@ -130,6 +130,7 @@ private fun TimetablePanelScreen(
     val periodLabel by viewModel.periodLabelLiveData.observeAsState(viewModel.isPeriodLabelEnabled())
     val eveningHint by viewModel.eveningHintLiveData.observeAsState(viewModel.isEveningHintEnabled())
     val zoomCompressed by viewModel.zoomCompressedLiveData.observeAsState(viewModel.isZoomCompressed())
+    val fontSizeLevel by viewModel.fontSizeLevelLiveData.observeAsState(viewModel.fontSizeLevel())
     val autoReimport by viewModel.autoReimportLiveData.observeAsState(viewModel.isAutoReimportEnabled())
     val scrimOpacity by viewModel.scrimOpacityLiveData.observeAsState(viewModel.scrimOpacity())
     val cardOpacity by viewModel.cardOpacityLiveData.observeAsState(viewModel.cardOpacity())
@@ -187,6 +188,11 @@ private fun TimetablePanelScreen(
         ZoomModeSelector(
             compressed = zoomCompressed,
             onSelect = viewModel::setZoomCompressed
+        )
+        SettingHint(stringResource(R.string.timetable_font_size) + "：作用于课程卡片与节次时间标签")
+        FontSizeSelector(
+            level = fontSizeLevel,
+            onSelect = viewModel::setFontSizeLevel
         )
 
         if (isClassic) {
@@ -476,6 +482,74 @@ private fun ZoomModeSelector(
                             if (value) R.string.timetable_zoom_compressed_desc
                             else R.string.timetable_zoom_expanded_desc
                         ),
+                        color = if (isSelected) {
+                            MaterialTheme.colorScheme.onPrimaryContainer
+                        } else {
+                            MaterialTheme.colorScheme.onSurfaceVariant
+                        },
+                        fontSize = 10.sp,
+                        modifier = Modifier.padding(top = 2.dp)
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun FontSizeSelector(
+    level: Int,
+    onSelect: (Int) -> Unit,
+) {
+    val options = listOf(
+        Triple(1, stringResource(R.string.timetable_font_size_small), stringResource(R.string.timetable_font_size_small_desc)),
+        Triple(0, stringResource(R.string.timetable_font_size_default), stringResource(R.string.timetable_font_size_default_desc)),
+        Triple(2, stringResource(R.string.timetable_font_size_large), stringResource(R.string.timetable_font_size_large_desc)),
+    )
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .horizontalScroll(rememberScrollState())
+            .padding(horizontal = HitaTheme.tokens.spacing.xl),
+        horizontalArrangement = Arrangement.spacedBy(HitaTheme.tokens.spacing.sm)
+    ) {
+        options.forEach { (value, label, desc) ->
+            val isSelected = level == value
+            val tint = MaterialTheme.colorScheme.primary
+            Card(
+                modifier = Modifier
+                    .width(92.dp)
+                    .clickable { onSelect(value) },
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(
+                    containerColor = if (isSelected) {
+                        MaterialTheme.colorScheme.primaryContainer
+                    } else {
+                        MaterialTheme.colorScheme.surfaceVariant
+                    }
+                ),
+                border = BorderStroke(
+                    if (isSelected) 2.dp else 1.dp,
+                    if (isSelected) tint else MaterialTheme.colorScheme.outlineVariant
+                ),
+                elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
+            ) {
+                Column(
+                    modifier = Modifier.padding(10.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Text(
+                        text = label,
+                        color = if (isSelected) {
+                            MaterialTheme.colorScheme.onPrimaryContainer
+                        } else {
+                            MaterialTheme.colorScheme.onSurface
+                        },
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Text(
+                        text = desc,
                         color = if (isSelected) {
                             MaterialTheme.colorScheme.onPrimaryContainer
                         } else {

@@ -49,14 +49,14 @@ import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.collectAsState
 import javax.inject.Inject
 import cn.limpu.hita.ui.main.timetable.compare.*
-import cn.limpu.hita.data.repository.FriendTimetableRepository
+import cn.limpu.hita.data.repository.ResolvedDisplayScope
 import cn.limpu.hita.ui.timetable.friend.FriendTimetableActivity
 import cn.limpu.hita.ui.timetable.share.TimetableShareActivity
 import android.content.Intent
@@ -118,6 +118,11 @@ import cn.limpu.hita.ui.design.HitaComposeTheme
 import cn.limpu.hita.ui.design.HitaCourseBubbleTreatment
 import cn.limpu.hita.ui.design.HitaTheme
 import cn.limpu.hita.ui.design.hitaCourseColor
+import cn.limpu.hita.ui.design.LocalCourseColorAssignments
+import cn.limpu.hita.ui.design.TimetableColorAssigner
+import cn.limpu.hita.ui.design.hitaColorToArgb
+import cn.limpu.hita.ui.design.hitaCoursePalette
+import com.limpu.style.ThemeTools
 import cn.limpu.hita.ui.design.hitaCourseCrystalGlassModifier
 import cn.limpu.hita.ui.design.hitaGlassCardModifier
 import cn.limpu.hita.ui.design.hitaIsAppleGlassSurface
@@ -158,16 +163,9 @@ import kotlin.math.roundToInt
 class TimetableFragment : HiltBaseFragment<ComposeViewBinding>() {
 
     protected val viewModel: TimetableViewModel by viewModels()
-    val comparisonViewModel: TimetableComparisonViewModel by viewModels()
-    private val comparisonChoices by lazy {
-        viewModel.timetableLiveData.map { tables -> tables.map(::comparisonPersonalChoice) }
-    }
-    @Inject lateinit var friendTimetableRepository: FriendTimetableRepository
     private var socialSheetOpen by mutableStateOf(false)
-    private var comparisonSheetOpen by mutableStateOf(false)
 
     fun openTimetableSocialSheet() { socialSheetOpen = true }
-    fun openComparisonConfigSheet() { socialSheetOpen = false; comparisonSheetOpen = true }
 
     private var mainPageController: MainPageController? = null
 
@@ -204,34 +202,21 @@ class TimetableFragment : HiltBaseFragment<ComposeViewBinding>() {
     override fun initViews(view: View) {
         (binding?.root as? ComposeView)?.setContent {
             HitaComposeTheme() {
-                val personalChoices by comparisonChoices.observeAsState(emptyList())
-                val friends by remember { friendTimetableRepository.observeFriends() }.observeAsState(emptyList())
-                val activeConfig by comparisonViewModel.config.collectAsState()
                 if (socialSheetOpen) TimetableSocialSheet(
                     onDismiss = { socialSheetOpen = false },
                     onShare = {
                         socialSheetOpen = false
-                        val shareIntent = Intent(requireContext(), TimetableShareActivity::class.java)
-                        (comparisonViewModel.state.value as? ComparisonUiState.Ready)?.config?.personalId?.let {
-                            shareIntent.putExtra(TimetableShareActivity.EXTRA_TIMETABLE_ID, it)
-                        }
-                        startActivity(shareIntent)
+                        startActivity(Intent(requireContext(), TimetableShareActivity::class.java))
                     },
                     onImport = { socialSheetOpen = false; startActivity(FriendTimetableActivity.intent(requireContext(), true)) },
                     onFriends = { socialSheetOpen = false; startActivity(FriendTimetableActivity.intent(requireContext())) },
-                    onCompare = ::openComparisonConfigSheet,
-                )
-                if (comparisonSheetOpen) ComparisonConfigSheet(personalChoices, friends, activeConfig,
-                    onDismiss = { comparisonSheetOpen = false },
-                    onConfirm = { comparisonViewModel.enable(it); comparisonSheetOpen = false },
-                    onManage = { comparisonSheetOpen = false; ActivityUtils.startTimetableManager(requireActivity()) },
-                    onImport = { comparisonSheetOpen = false; startActivity(FriendTimetableActivity.intent(requireContext(), true)) },
-                    onFriends = { comparisonSheetOpen = false; startActivity(FriendTimetableActivity.intent(requireContext())) },
+                    onCompare = {
+                        socialSheetOpen = false
+                        startActivity(TimetableComparisonActivity.intent(requireContext()))
+                    },
                 )
                 TimetableScreen(
                     viewModel = viewModel,
-                    comparisonViewModel = comparisonViewModel,
-                    onAdjustComparison = ::openComparisonConfigSheet,
                     onTitleState = ::applyTitleState,
                     onEventClick = { EventsUtils.showEventItem(requireActivity(), it) },
                     onEventLongClick = { event, position -> showEventMenu(event, position) },
@@ -268,33 +253,22 @@ class TimetableFragment : HiltBaseFragment<ComposeViewBinding>() {
             is TimetableTitleState.Week -> {
                 mainPageController?.setTitleText(state.title)
                 mainPageController?.setTimetableName(state.name)
-                mainPageController?.setTimetableOptions(state.timetableOptions)
             }
         }
     }
 
     private fun getCurrentTimetableAndWeek(): Pair<Timetable?, Int?> {
-        viewModel.timetableLiveData.value?.let { tts ->
-            viewModel.currentPageStartDate.value?.let {
-                val cdCalendar = Calendar.getInstance()
-                cdCalendar.timeInMillis = it
-                var minTT: Timetable? = null
-                var minWk = Int.MAX_VALUE
-                for (tt in tts) {
-                    val isEASTimetable = !tt.code.isNullOrEmpty()
-                    if (!isEASTimetable) continue
-
-                    val wk = tt.getWeekNumber(cdCalendar.timeInMillis)
-                    if (wk in 1 until minWk) {
-                        minWk = wk
-                        minTT = tt
-                    }
-                }
-                return Pair(minTT, minWk)
-            }
-        }
-        return Pair(null, null)
+        val scope = viewModel.resolvedScope.value ?: return Pair(null, null)
+        val pageStart = viewModel.currentPageStartDate.value ?: return Pair(null, null)
+        val hit = hitTimetable(scope, pageStart) ?: return Pair(null, null)
+        return Pair(hit, hit.getWeekNumber(pageStart))
     }
+
+    /** 显示目标内当前周命中的课表：落在学期内的取 startTime 最小者。 */
+    private fun hitTimetable(scope: ResolvedDisplayScope?, atMillis: Long): Timetable? =
+        scope?.timetables
+            ?.filter { atMillis in it.startTime.time..it.endTime.time }
+            ?.minByOrNull { it.startTime.time }
 
     private fun showAddEvent(dow: Int, period: TimePeriodInDay) {
         viewModel.timetableLiveData.value?.let {
@@ -439,20 +413,17 @@ class TimetableFragment : HiltBaseFragment<ComposeViewBinding>() {
         fun setTitleText(string: String)
         fun setTimetableName(String: String)
         fun setSingleTitle(string: String)
-        fun setTimetableOptions(options: List<Timetable>)
     }
 }
 
 private sealed interface TimetableTitleState {
     data class Single(val title: String) : TimetableTitleState
-    data class Week(val title: String, val name: String, val timetableOptions: List<Timetable> = emptyList()) : TimetableTitleState
+    data class Week(val title: String, val name: String) : TimetableTitleState
 }
 
 @Composable
 private fun TimetableScreen(
     viewModel: TimetableViewModel,
-    comparisonViewModel: TimetableComparisonViewModel,
-    onAdjustComparison: () -> Unit,
     onTitleState: (TimetableTitleState) -> Unit,
     onEventClick: (EventItem) -> Unit,
     onEventLongClick: (EventItem, IntOffset) -> Unit,
@@ -469,6 +440,7 @@ private fun TimetableScreen(
         initial = viewModel.currentPageStartDate.value ?: mondayOf(System.currentTimeMillis())
     )
     val timetables by viewModel.timetableLiveData.observeAsState(emptyList())
+    val resolvedScope by viewModel.resolvedScope.observeAsState()
     val startTime by viewModel.startTimeLiveData.observeAsState(viewModel.currentStartTime())
     val periodLabel by viewModel.periodLabelLiveData.observeAsState(viewModel.isPeriodLabelEnabled())
     val wallpaperPath by viewModel.wallpaperPathLiveData.observeAsState(viewModel.wallpaperPath())
@@ -481,30 +453,8 @@ private fun TimetableScreen(
     LaunchedEffect(currentPageStart) {
         viewModel.windowStartData[viewModel.startIndex].value = currentPageStart
     }
-    val comparisonState by comparisonViewModel.state.collectAsState()
-    val comparisonConfig by comparisonViewModel.config.collectAsState()
-    val comparisonActive = comparisonState != ComparisonUiState.Off
-    // The ordinary anchor remains in the system zone, including on exit and restoration.
-    var anchorMillis by rememberSaveable { mutableLongStateOf(currentPageStart) }
-    var anchorZoneId by rememberSaveable { mutableStateOf(ZoneId.systemDefault().id) }
-    val anchorZone = if (comparisonActive && anchorMillis == currentPageStart) ZoneId.of(anchorZoneId)
-        else ZoneId.systemDefault()
-    SideEffect { anchorMillis = currentPageStart; anchorZoneId = anchorZone.id }
-    val campusMonday = comparisonMonday(currentPageStart, anchorZone)
-    val displayedStart = if (comparisonActive) campusMonday else currentPageStart
-    LaunchedEffect(campusMonday, comparisonConfig != null) {
-        comparisonViewModel.changeWeek(campusMonday)
-    }
-    // Do not draw the previous week during the frame before changeWeek clears it.
-    val currentComparison = (comparisonState as? ComparisonUiState.Ready)?.takeIf {
-        it.result.days.firstOrNull()?.date == java.time.Instant.ofEpochMilli(campusMonday).atZone(CAMPUS_ZONE).toLocalDate()
-    }
-    val visibleComparisonState = if (comparisonState is ComparisonUiState.Ready && currentComparison == null)
-        ComparisonUiState.Loading else comparisonState
-    LaunchedEffect(currentPageStart, timetables, comparisonActive, campusMonday) {
-        onTitleState(if (comparisonActive) TimetableTitleState.Single(context.getString(
-            R.string.comparison_week_title, java.time.Instant.ofEpochMilli(campusMonday).atZone(CAMPUS_ZONE).toLocalDate().toString()))
-            else buildTitleState(context, currentPageStart, timetables))
+    LaunchedEffect(currentPageStart, resolvedScope) {
+        onTitleState(buildTitleState(context, currentPageStart, resolvedScope))
     }
 
     val style = remember(windowEvents, startTime, periodLabel) {
@@ -513,107 +463,70 @@ private fun TimetableScreen(
             usePeriodLabel = periodLabel,
         )
     }
-    val ordinaryEvents = windowEvents?.events.orEmpty()
-    val projectedCourses = remember(currentComparison, campusMonday, ordinaryEvents) {
-        currentComparison?.let {
-            // Existing aggregation contributes colors only, never course times or membership.
-            val colors = ordinaryEvents.filter { it.color != 0 && it.subjectId.isNotBlank() }
-                .associate { it.subjectId to it.color }
-            projectComparisonCourses(it.source.ownCourses, campusMonday, colors)
-        }.orEmpty()
-    }
-    val events = comparisonDisplayEvents(visibleComparisonState, ordinaryEvents) { projectedCourses.map { it.display } }
-    val originalByDisplayId = remember(projectedCourses) { projectedCourses.associate { it.display.id to it.original } }
-    val displayStyle = if (comparisonActive) {
-        val firstHour = (comparisonConfig?.startMinute ?: 510) / 60
-        val lastHour = ((comparisonConfig?.endMinute ?: 1350) + 59) / 60
-        val hours = TimetableDisplayTime.hourRange(events, minOf(style.startHour, firstHour),
-            maxOf(style.endHour, lastHour), CAMPUS_ZONE)
-        style.copy(startTime = hours.first * 100, endHour = hours.second)
-    } else style
-    var comparisonCourseDetail by remember { mutableStateOf<EventItem?>(null) }
-    var comparisonDetailsOpen by remember { mutableStateOf(false) }
-    var selectedComparisonSpan by remember { mutableStateOf<cn.limpu.hita.feature.timetablecompare.TimeSpan?>(null) }
-    LaunchedEffect(currentComparison) {
-        comparisonDetailsOpen = false; selectedComparisonSpan = null; comparisonCourseDetail = null
-    }
+    val events = windowEvents?.events.orEmpty()
 
-
-    val currentScheduleStructure = remember(timetables, currentPageStart) {
-        if (timetables.isEmpty()) {
-            Timetable().scheduleStructure
+    // 课程色分配：按显示目标全量课程稳定占槽,同屏课程两两不同色;P5/Sumi 的全同色是设计意图,跳过。
+    val scopeCourseColors by viewModel.scopeCourseColors.observeAsState(emptyMap())
+    val currentPaletteArgb = hitaCoursePalette().map(::hitaColorToArgb).toIntArray()
+    val colorAssignerEnabled = HitaTheme.preferenceStyle != ThemeTools.STYLE.P5 &&
+        HitaTheme.preferenceStyle != ThemeTools.STYLE.SUMI
+    val colorAssignments: Map<String, Int>? = remember(events, scopeCourseColors, currentPaletteArgb, colorAssignerEnabled) {
+        if (!colorAssignerEnabled) {
+            null
         } else {
-            val cdCalendar = Calendar.getInstance().apply { timeInMillis = currentPageStart }
-            var minTT: Timetable? = null
-            var minWk = Int.MAX_VALUE
-            for (tt in timetables) {
-                if (tt.code.isNullOrEmpty()) continue
-                val wk = tt.getWeekNumber(cdCalendar.timeInMillis)
-                if (wk in 1 until minWk) {
-                    minWk = wk
-                    minTT = tt
-                }
+            val keys = LinkedHashSet<String>()
+            val stored = HashMap<String, Int>()
+            scopeCourseColors.forEach { (id, color) -> keys += id; stored[id] = color }
+            events.filter { it.subjectId.isBlank() }.forEach {
+                keys += it.name
+                stored.putIfAbsent(it.name, it.color)
             }
-            minTT?.scheduleStructure ?: Timetable().scheduleStructure
+            TimetableColorAssigner.assign(keys, stored, currentPaletteArgb)
         }
     }
-    val showTodayFab = if (comparisonActive)
-        !TimetableDisplayTime.isInWeek(campusMonday, System.currentTimeMillis(), CAMPUS_ZONE)
-        else currentPageStart > System.currentTimeMillis() ||
+    val displayStyle = style
+    val currentScheduleStructure = remember(resolvedScope, currentPageStart) {
+        // 作息结构与周数同源:显示目标内当前周命中的课表;未命中用目标内最早课表,无课表用默认结构。
+        val scope = resolvedScope ?: return@remember Timetable().scheduleStructure
+        val hit = scope.timetables
+            .filter { currentPageStart in it.startTime.time..it.endTime.time }
+            .minByOrNull { it.startTime.time }
+            ?: scope.timetables.minByOrNull { it.startTime.time }
+        hit?.scheduleStructure ?: Timetable().scheduleStructure
+    }
+    val showTodayFab = currentPageStart > System.currentTimeMillis() ||
             System.currentTimeMillis() >= currentPageStart + TimetableFragment.WEEK_MILLS
 
     Box(modifier = Modifier.fillMaxSize()) {
         Column(Modifier.fillMaxSize()) {
-            if (comparisonActive) ComparisonStatusBar(visibleComparisonState,
-                outside = currentComparison?.let { hasOutOfStructureCourses(projectedCourses, it.source.own.periods) } == true,
-                onAdjust = onAdjustComparison, onExit = {
-                    viewModel.currentPageStartDate.value = ordinaryMonday(campusMonday, ZoneId.systemDefault())
-                    comparisonViewModel.disable()
-                },
-                onDetails = { comparisonDetailsOpen = true })
             Box(Modifier.weight(1f)) {
+                CompositionLocalProvider(LocalCourseColorAssignments provides colorAssignments) {
                 TimetableWeekContent(
-                    startDate = displayedStart,
+                    startDate = currentPageStart,
                     events = events,
                     style = displayStyle,
-                    scheduleStructure = currentComparison?.source?.ownTimetable?.scheduleStructure ?: currentScheduleStructure,
+                    scheduleStructure = currentScheduleStructure,
                     dateColor = if (wallpaperPath.isBlank()) MaterialTheme.colorScheme.onSurface else Color(dateColorInt),
                     labelColor = if (wallpaperPath.isBlank()) MaterialTheme.colorScheme.onSurfaceVariant else Color(labelColorInt),
                     onPrevWeek = {
-                        viewModel.currentPageStartDate.value = if (comparisonActive)
-                            ordinaryMonday(campusMonday - TimetableFragment.WEEK_MILLS, ZoneId.systemDefault())
-                        else currentPageStart - TimetableFragment.WEEK_MILLS
+                        viewModel.currentPageStartDate.value = currentPageStart - TimetableFragment.WEEK_MILLS
                     },
                     onNextWeek = {
-                        viewModel.currentPageStartDate.value = if (comparisonActive)
-                            ordinaryMonday(campusMonday + TimetableFragment.WEEK_MILLS, ZoneId.systemDefault())
-                        else currentPageStart + TimetableFragment.WEEK_MILLS
+                        viewModel.currentPageStartDate.value = currentPageStart + TimetableFragment.WEEK_MILLS
                     },
-                    onEventClick = {
-                        if (comparisonActive) comparisonCourseDetail = originalByDisplayId[it.id]
-                        else onEventClick(it)
-                    },
-                    onEventLongClick = { event, offset -> if (!comparisonActive) onEventLongClick(event, offset) },
-                    onAddClick = { day, period -> if (!comparisonActive) onAddClick(day, period) },
+                    onEventClick = onEventClick,
+                    onEventLongClick = onEventLongClick,
+                    onAddClick = onAddClick,
                     eveningHintEnabled = eveningHintEnabled,
                     compressed = zoomCompressed,
-                    displayTimeZone = if (comparisonActive) CAMPUS_ZONE else null,
-                    comparison = currentComparison,
-                    comparisonReadOnly = comparisonActive,
-                    onComparisonSelect = { span, _ -> selectedComparisonSpan = span; comparisonDetailsOpen = true },
                 )
+                }
             }
-        }
-        comparisonCourseDetail?.let { ComparisonOwnCourseDetails(it) { comparisonCourseDetail = null } }
-        if (comparisonDetailsOpen) currentComparison?.let {
-            ComparisonDetails(it, selectedComparisonSpan, onDismiss = { comparisonDetailsOpen = false })
         }
 
         if (showTodayFab) {
             FloatingActionButton(
-                onClick = { viewModel.currentPageStartDate.value = if (comparisonActive)
-                    ordinaryMonday(comparisonMonday(System.currentTimeMillis(), CAMPUS_ZONE), ZoneId.systemDefault())
-                else mondayOf(System.currentTimeMillis()) },
+                onClick = { viewModel.currentPageStartDate.value = mondayOf(System.currentTimeMillis()) },
                 containerColor = MaterialTheme.colorScheme.primary,
                 contentColor = Color.White,
                 modifier = Modifier
@@ -689,13 +602,14 @@ private fun TimetableScreen(
                     events = session.events,
                     timetable = session.timetable,
                     onDismiss = { viewModel.clearBatchSession() },
-                    onApply = { place, teacher, time ->
+                    onApply = { place, teacher, time, slotTimes ->
                         val (edited, skippedTime) = applySubjectBatchEdit(
                             events = session.events,
                             timetable = session.timetable,
                             place = place,
                             teacher = teacher,
                             time = time,
+                            slotTimes = slotTimes,
                         )
                         viewModel.updateEvents(edited)
                         WidgetUtils.sendRefreshToAll(context)
@@ -729,31 +643,21 @@ private fun TimetableScreen(
 private fun buildTitleState(
     context: Context,
     currentPageStart: Long,
-    timetables: List<Timetable>,
+    scope: ResolvedDisplayScope?,
 ): TimetableTitleState {
-    if (timetables.isEmpty()) {
+    if (scope == null) {
         return TimetableTitleState.Single(context.getString(R.string.no_timetable))
     }
-    val cdCalendar = Calendar.getInstance().apply { timeInMillis = currentPageStart }
-    var minTT: Timetable? = null
-    var minWk = Int.MAX_VALUE
-    for (tt in timetables) {
-        val isEASTimetable = !tt.code.isNullOrEmpty()
-        if (!isEASTimetable) continue
-
-        val wk = tt.getWeekNumber(cdCalendar.timeInMillis)
-        if (wk in 1 until minWk) {
-            minWk = wk
-            minTT = tt
-        }
-    }
-    return minTT?.let {
-        TimetableTitleState.Week(
-            title = context.getString(R.string.week_title, minWk),
-            name = it.name.orEmpty(),
-            timetableOptions = timetables.filter { tt -> !tt.code.isNullOrEmpty() }
-        )
-    } ?: TimetableTitleState.Single(context.getString(R.string.holiday))
+    // 当前周落在学期内的课表(含手动课表),多份命中取 startTime 最小;均未命中显示假期。
+    val hit = scope.timetables
+        .filter { currentPageStart in it.startTime.time..it.endTime.time }
+        .minByOrNull { it.startTime.time }
+    val wk = hit?.getWeekNumber(currentPageStart) ?: -1
+    return TimetableTitleState.Week(
+        title = if (wk > 0) context.getString(R.string.week_title, wk)
+            else context.getString(R.string.holiday),
+        name = scope.name,
+    )
 }
 
 @Composable
@@ -772,9 +676,6 @@ private fun TimetableWeekContent(
     eveningHintEnabled: Boolean = true,
     compressed: Boolean = false,
     displayTimeZone: ZoneId? = null,
-    comparison: ComparisonUiState.Ready? = null,
-    comparisonReadOnly: Boolean = false,
-    onComparisonSelect: (cn.limpu.hita.feature.timetablecompare.TimeSpan, Boolean) -> Unit = { _, _ -> },
 ) {
     val density = LocalDensity.current
     val scrollState = rememberScrollState()
@@ -928,10 +829,9 @@ private fun TimetableWeekContent(
                         .weight(1f)
                         .height(tableHeight)
                         .onSizeChanged { tableWidthPx = it.width }
-                        .pointerInput(startDate, style, tableWidthPx, startHour, endHour, scheduleStructure, dpPerMinute, comparisonReadOnly) {
+                        .pointerInput(startDate, style, tableWidthPx, startHour, endHour, scheduleStructure, dpPerMinute) {
                             detectTapGestures(
                                 onTap = { offset ->
-                                    if (comparisonReadOnly) return@detectTapGestures
                                     val width = tableWidthPx.takeIf { it > 0 } ?: return@detectTapGestures
                                     val dow = ((offset.x / (width / 7f)).toInt() + 1).coerceIn(1, 7)
                                     val period = pickPeriodFromOffsetDp(
@@ -961,16 +861,6 @@ private fun TimetableWeekContent(
                             displayTimeZone = displayTimeZone,
                         )
                     }
-                    comparison?.let { ready ->
-                        Row(Modifier.fillMaxSize()) {
-                            ready.result.days.forEach { day ->
-                                Box(Modifier.weight(1f).fillMaxHeight()) {
-                                    ComparisonOverlay(day, startHour, dpPerMinute, ready.config.showFree,
-                                        false, onComparisonSelect)
-                                }
-                            }
-                        }
-                    }
                     TimetableEventLayer(
                         events = events,
                         startDate = startDate,
@@ -981,19 +871,7 @@ private fun TimetableWeekContent(
                         onEventLongClick = onEventLongClick,
                         compressed = compressed,
                         displayTimeZone = displayTimeZone,
-                        preserveDuration = comparisonReadOnly,
-                        comparisonSession = comparison,
                     )
-                    comparison?.let { ready ->
-                        Row(Modifier.fillMaxSize()) {
-                            ready.result.days.forEach { day ->
-                                Box(Modifier.weight(1f).fillMaxHeight()) {
-                                    ComparisonOverlay(day, startHour, dpPerMinute, false,
-                                        ready.config.showConflicts, onComparisonSelect)
-                                }
-                            }
-                        }
-                    }
                 }
             }
             }
@@ -1239,7 +1117,7 @@ private fun TimetableLeftLabels(
 ) {
     val textColor = labelColor.copy(alpha = 0.91f)
     val baseMinutes = startHour * 60
-    val labelFontSize = if (compressed) 9.sp else 10.sp
+    val labelFontSize = ((if (compressed) 9f else 10f) * style.fontScale).sp
 
     Box(modifier = modifier) {
         if (style.usePeriodLabel) {
@@ -1259,8 +1137,8 @@ private fun TimetableLeftLabels(
                     Text(
                         text = "第${index + 1}节",
                         color = textColor,
-                        fontSize = if (compressed) 8.sp else 12.sp,
-                        lineHeight = if (compressed) 9.sp else 12.sp,
+                        fontSize = ((if (compressed) 8f else 12f) * style.fontScale).sp,
+                        lineHeight = ((if (compressed) 9f else 12f) * style.fontScale).sp,
                         textAlign = TextAlign.Center,
                         maxLines = 1,
                         softWrap = false,
@@ -1364,16 +1242,14 @@ private fun TimetableEventLayer(
     onEventLongClick: (EventItem, IntOffset) -> Unit,
     compressed: Boolean = false,
     displayTimeZone: ZoneId? = null,
-    preserveDuration: Boolean = false,
-    comparisonSession: ComparisonUiState.Ready? = null,
 ) {
     val distinctEvents = remember(events) { events.distinctBy { it.id } }
     val arranged = remember(distinctEvents, displayTimeZone) { TimetableOverlapLayout.arrange(distinctEvents) { TimetableDisplayTime.dayOfWeek(it.from.time, displayTimeZone) } }
 
     val renderList = remember(arranged, displayTimeZone) { TimetableOverlapLayout.conflictCards(arranged) { TimetableDisplayTime.dayOfWeek(it.from.time, displayTimeZone) } }
 
-    // A sheet belongs to this data/week/session; invalidate synchronously before rendering.
-    var conflictCluster by remember(events, startDate, displayTimeZone, preserveDuration, comparisonSession) {
+    // A sheet belongs to this data/week; invalidate synchronously before rendering.
+    var conflictCluster by remember(events, startDate, displayTimeZone) {
         mutableStateOf<List<EventItem>?>(null)
     }
     val baseMinutes = startHour * 60
@@ -1388,8 +1264,7 @@ private fun TimetableEventLayer(
                 val clusterMaxTo = clusterEvents.maxOf { it.to.time }
                 val clusterTop =
                     (eventMinutes(clusterMinFrom, displayTimeZone) - baseMinutes).coerceAtLeast(0).toFloat() * dpPerMinute
-                val clusterDuration = if (preserveDuration) (clusterMaxTo - clusterMinFrom) / 60000f
-                    else ((clusterMaxTo - clusterMinFrom) / 60000L).toInt().coerceAtLeast(15).toFloat()
+                val clusterDuration = ((clusterMaxTo - clusterMinFrom) / 60000L).toInt().coerceAtLeast(15).toFloat()
                 TimetableCardPlacement(
                     positioned = positioned,
                     clusterEvents = clusterEvents,
@@ -1400,8 +1275,7 @@ private fun TimetableEventLayer(
                 )
             } else {
                 val minutesFromBase = (eventMinutes(event.from.time, displayTimeZone) - baseMinutes).coerceAtLeast(0)
-                val duration = if (preserveDuration) event.getDurationInMills() / 60000f
-                    else event.getDurationInMinutes().coerceAtLeast(15).toFloat()
+                val duration = event.getDurationInMinutes().coerceAtLeast(15).toFloat()
                 TimetableCardPlacement(
                     positioned = positioned,
                     clusterEvents = null,
@@ -1418,14 +1292,16 @@ private fun TimetableEventLayer(
             val clusterEvents = placement.clusterEvents
             if (clusterEvents != null) {
                 key("conflict_" + clusterEvents.joinToString("_") { it.id }) {
-                    TimetableConflictCard(
-                        count = clusterEvents.size,
+                    ConflictCascadeStack(
+                        clusterEvents = clusterEvents,
+                        dayLeft = placement.xOffset - 2.dp,
+                        sectionWidth = sectionWidth,
+                        clusterTop = placement.yOffset,
+                        clusterHeight = placement.height,
                         style = style,
-                        modifier = Modifier
-                            .offset(x = placement.xOffset, y = placement.yOffset)
-                            .width(placement.width)
-                            .height(placement.height),
-                        cardHeight = placement.height,
+                        baseMinutes = baseMinutes,
+                        dpPerMinute = dpPerMinute,
+                        displayTimeZone = displayTimeZone,
                         onShowConflicts = { conflictCluster = clusterEvents },
                         compressed = compressed,
                     )
@@ -1536,9 +1412,69 @@ private fun ConflictEventRow(
 }
 
 /**
- * 冲突合并卡片：同一时段多门课冲突时，课表上只渲染这一张卡片，
- * 配色跟随主题（tint 取 colorScheme.primary，等同关闭课程颜色时的卡片观感），
- * 单击/长按都弹出冲突课程列表。
+ * 冲突叠层：有多少门课就叠多少层，每层使用该课的分配色并保持各自真实的时段与高度，
+ * 逐级向右下偏移 6dp（恢复级联堆叠的旧观感）；最上层卡片覆盖冲突时间并集并显示
+ * 「课程冲突/共N门」文字。小课叠在大课下面：层序按时长升序，顶层为时间最长的一门。
+ * 任意层单击/长按都弹出冲突课程列表。
+ */
+@Composable
+private fun ConflictCascadeStack(
+    clusterEvents: List<EventItem>,
+    dayLeft: Dp,
+    sectionWidth: Dp,
+    clusterTop: Dp,
+    clusterHeight: Dp,
+    style: TimetableStyleSheet,
+    baseMinutes: Int,
+    dpPerMinute: Dp,
+    displayTimeZone: ZoneId?,
+    onShowConflicts: () -> Unit,
+    compressed: Boolean,
+) {
+    // 时长升序：小课先画（底层），大课后画（顶层）；同级按开始时间、课名稳定排序。
+    val layers = remember(clusterEvents) {
+        clusterEvents.sortedWith(compareBy({ it.to.time - it.from.time }, { it.from.time }, { it.name }))
+    }
+    val cascade = 6.dp
+    val offsetTotal = layers.size - 1
+    val width = (sectionWidth - 4.dp - cascade * offsetTotal).coerceAtLeast(0.dp)
+    layers.forEachIndexed { index, event ->
+        val isTop = index == layers.lastIndex
+        val tint = if (style.isColorEnabled) {
+            hitaCourseColor(
+                courseKey = event.subjectId.ifBlank { event.name },
+                storedColor = event.color,
+            )
+        } else {
+            MaterialTheme.colorScheme.primary
+        }
+        val top = if (isTop) {
+            clusterTop + cascade * index
+        } else {
+            val topMinutes = (eventMinutes(event.from.time, displayTimeZone) - baseMinutes).coerceAtLeast(0)
+            topMinutes.toFloat() * dpPerMinute + cascade * index
+        }
+        val rawHeight = if (isTop) clusterHeight else event.getDurationInMinutes().coerceAtLeast(15).toFloat() * dpPerMinute
+        val height = (rawHeight - cascade * offsetTotal).coerceAtLeast(8.dp)
+        TimetableConflictCard(
+            count = layers.size,
+            style = style,
+            tint = tint,
+            showText = isTop,
+            modifier = Modifier
+                .offset(x = dayLeft + 2.dp + cascade * index, y = top)
+                .width(width)
+                .height(height),
+            cardHeight = height,
+            onShowConflicts = onShowConflicts,
+            compressed = compressed,
+        )
+    }
+}
+
+/**
+ * 冲突卡片：默认主题色（colorScheme.primary）的合并卡；叠层模式下每层传入对应课程的
+ * 分配色，仅最上层显示「课程冲突/共N门」文字，下层为纯色卡身。单击/长按都弹出冲突课程列表。
  */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -1547,6 +1483,8 @@ private fun TimetableConflictCard(
     style: TimetableStyleSheet,
     modifier: Modifier = Modifier,
     cardHeight: Dp,
+    tint: Color? = null,
+    showText: Boolean = true,
     onShowConflicts: () -> Unit,
     compressed: Boolean = false,
 ) {
@@ -1558,7 +1496,7 @@ private fun TimetableConflictCard(
     val isDeepSpace = hitaIsDeepSpace()
     val isSumi = hitaIsSumi()
     val usesIllustratedFill = isAppleGlass || isSoraCloud
-    val courseTint = MaterialTheme.colorScheme.primary
+    val courseTint = tint ?: MaterialTheme.colorScheme.primary
     val baseAlpha = (if (isSumi) 20 else style.cardOpacity).coerceIn(20, 100) / 100f
     val bubbleStyle = style.courseBubbleStyle
     val backgroundAlpha = if (isAppleGlass) {
@@ -1680,6 +1618,7 @@ private fun TimetableConflictCard(
                     )
             )
         }
+        if (showText) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -1691,8 +1630,8 @@ private fun TimetableConflictCard(
             Text(
                 text = stringResource(R.string.timetable_conflict_card_title),
                 color = titleColor,
-                fontSize = if (compressed) 8.sp else 12.sp,
-                lineHeight = if (compressed) 10.sp else 15.sp,
+                fontSize = ((if (compressed) 8f else 12f) * style.fontScale).sp,
+                lineHeight = ((if (compressed) 10f else 15f) * style.fontScale).sp,
                 fontWeight = if (style.isBoldText) FontWeight.Bold else FontWeight.Normal,
                 fontFamily = HitaTheme.fonts.display,
                 textAlign = TextAlign.Center,
@@ -1703,14 +1642,15 @@ private fun TimetableConflictCard(
                 Text(
                     text = stringResource(R.string.timetable_conflict_card_subtitle, count),
                     color = subtitleColor,
-                    fontSize = if (compressed) 6.5.sp else 9.sp,
-                    lineHeight = if (compressed) 8.sp else 12.sp,
+                    fontSize = ((if (compressed) 6.5f else 9f) * style.fontScale).sp,
+                    lineHeight = ((if (compressed) 8f else 12f) * style.fontScale).sp,
                     fontWeight = if (style.isBoldText) FontWeight.Bold else FontWeight.Normal,
                     textAlign = TextAlign.Center,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
             }
+        }
         }
     }
 }
@@ -1831,12 +1771,14 @@ private fun TimetableEventCard(
     // 压缩模式收紧内边距与字号：卡片更小，留白必须让位给文字
     val horizontalPadding = ((if (compressed) 3f else 5f) * marginScale).dp
     val verticalPadding = ((if (compressed) 1f else 3f) * marginScale).dp
-    val minTitleSize = if (compressed) 4.5f else 6f
+    // 字号下限随用户字体档位缩放,但保留 4.5sp 绝对可读底线。
+    val minTitleSize = ((if (compressed) 4.5f else 6f) * style.fontScale).coerceAtLeast(4.5f)
     val hasPlace = !event.place.isNullOrBlank()
     // 压缩模式下过矮的卡片（<20dp）不渲染地点行，避免文字被裁切
     val showPlace = hasPlace && (!compressed || cardHeight >= 20.dp)
     val nameLength = event.name.length
     val placeLength = event.place?.length ?: 0
+    val fontScale = style.fontScale
     val lengthScale = when {
         nameLength <= 4 -> 1.15f
         nameLength <= 6 -> 0.92f
@@ -1845,17 +1787,17 @@ private fun TimetableEventCard(
     }
     // 压缩模式按列宽反推字号（中文约 1em/字）：先保不省略号，再保层级
     val titleWidthCap = if (compressed && cardWidth.value > 0f) {
-        (cardWidth.value / nameLength.coerceAtLeast(3)).coerceIn(minTitleSize, 10f)
+        (cardWidth.value / nameLength.coerceAtLeast(3)).coerceIn(minTitleSize, 10f * fontScale)
     } else {
         null
     }
     val titleTarget = if (titleWidthCap != null) {
-        minOf(13f * textScale * lengthScale, titleWidthCap)
+        minOf(13f * textScale * lengthScale * fontScale, titleWidthCap)
     } else {
-        13f * textScale * lengthScale
+        13f * textScale * lengthScale * fontScale
     }
     val placeReserveDp = if (showPlace) {
-        if (compressed) 6.5f else 14f * textScale
+        if (compressed) 6.5f else 14f * textScale * fontScale
     } else {
         0f
     }
@@ -1863,14 +1805,14 @@ private fun TimetableEventCard(
         .minus(verticalPadding.value * 2f)
         .minus(placeReserveDp)
         .minus(if (style.cardIconEnabled) 10f * textScale else 0f)
-    val maxTitleFromSpace = (titleAvailableDp / 1.2f).coerceAtMost(16f)
+    val maxTitleFromSpace = (titleAvailableDp / 1.2f).coerceAtMost(16f * fontScale)
     val titleFontSize = titleTarget
         .coerceIn(minTitleSize, maxTitleFromSpace.coerceAtLeast(minTitleSize))
         .sp
     val subtitleFontSize = if (compressed && cardWidth.value > 0f && placeLength > 0) {
-        minOf(10f * textScale, (cardWidth.value / placeLength.coerceAtLeast(4)).coerceIn(4.5f, 8f)).sp
+        minOf(10f * textScale * fontScale, (cardWidth.value / placeLength.coerceAtLeast(4)).coerceIn(4.5f, 8f * fontScale)).sp
     } else {
-        (10f * textScale).sp
+        (10f * textScale * fontScale).sp
     }
     val maxTitleLines = when {
         compressed -> if (cardHeight < 26.dp) 1 else 2

@@ -18,6 +18,7 @@ import cn.limpu.hita.data.model.eas.ScoreTermCacheEntity
 import cn.limpu.hita.data.model.timetable.EventItem
 import cn.limpu.hita.data.model.timetable.TermSubject
 import cn.limpu.hita.data.model.timetable.Timetable
+import cn.limpu.hita.data.model.timetable.TimetableGroupEntity
 import cn.limpu.hita.data.model.timetable.share.ShareIdentityEntity
 import cn.limpu.hita.data.model.timetable.share.FriendTimetableEntity
 import cn.limpu.hita.data.source.dao.TimetableShareDao
@@ -31,18 +32,20 @@ import cn.limpu.hita.data.source.dao.EventItemDao
 import cn.limpu.hita.data.source.dao.ScoreCacheDao
 import cn.limpu.hita.data.source.dao.SubjectDao
 import cn.limpu.hita.data.source.dao.TimetableDao
+import cn.limpu.hita.data.source.dao.TimetableGroupDao
 import cn.limpu.hita.data.source.dao.BlogArticleDao
 import cn.limpu.hita.data.source.dao.CampusNoticeDao
 import com.limpu.hitauser.data.source.dao.UserProfileDao
 
 @Database(
-    entities = [EventItem::class, TermSubject::class, Timetable::class, ChatSession::class, ChatMessageEntity::class, ClassroomCacheEntity::class, ScoreCacheEntity::class, ScoreTermCacheEntity::class, ScoreDetailCacheEntity::class, BlogArticle::class, CampusNotice::class, ShareIdentityEntity::class, FriendTimetableEntity::class],
-    version = 15
+    entities = [EventItem::class, TermSubject::class, Timetable::class, ChatSession::class, ChatMessageEntity::class, ClassroomCacheEntity::class, ScoreCacheEntity::class, ScoreTermCacheEntity::class, ScoreDetailCacheEntity::class, BlogArticle::class, CampusNotice::class, ShareIdentityEntity::class, FriendTimetableEntity::class, TimetableGroupEntity::class],
+    version = 16
 )
 @androidx.room.TypeConverters(TypeConverters::class)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun timetableShareDao(): TimetableShareDao
     abstract fun friendTimetableDao(): FriendTimetableDao
+    abstract fun timetableGroupDao(): TimetableGroupDao
     abstract fun eventItemDao(): EventItemDao
     abstract fun subjectDao(): SubjectDao
     abstract fun timetableDao(): TimetableDao
@@ -83,6 +86,7 @@ abstract class AppDatabase : RoomDatabase() {
                     MIGRATION_12_13,
                     MIGRATION_13_14,
                     MIGRATION_14_15,
+                    MIGRATION_15_16,
                 ).fallbackToDestructiveMigration(true)
                     .build()
                 INSTANCE = opened
@@ -176,6 +180,14 @@ abstract class AppDatabase : RoomDatabase() {
                 db.execSQL("CREATE TABLE IF NOT EXISTS timetable_share_identity (timetableId TEXT NOT NULL, termKey TEXT NOT NULL, shareId TEXT NOT NULL, PRIMARY KEY(timetableId, termKey))")
                 db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS index_timetable_share_identity_shareId ON timetable_share_identity(shareId)")
                 db.execSQL("CREATE TABLE IF NOT EXISTS friend_timetable (shareId TEXT NOT NULL, nickname TEXT NOT NULL, remark TEXT, termName TEXT NOT NULL, startMillis INTEGER NOT NULL, endMillis INTEGER NOT NULL, mode TEXT NOT NULL, snapshotJson TEXT NOT NULL, contentDigest TEXT NOT NULL, importedAt INTEGER NOT NULL, updatedAt INTEGER NOT NULL, PRIMARY KEY(shareId))")
+            }
+        }
+
+        val MIGRATION_15_16 = object : Migration(15, 16) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("CREATE TABLE IF NOT EXISTS timetable_group (id TEXT NOT NULL PRIMARY KEY, name TEXT NOT NULL, createdAt INTEGER NOT NULL)")
+                db.execSQL("ALTER TABLE timetable ADD COLUMN groupId TEXT")
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_timetable_groupId ON timetable(groupId)")
             }
         }
 

@@ -45,9 +45,6 @@ class ComparisonStateTest {
         assertEquals(ComparisonUiState.Error(42), session.state.value)
         assertFalse(session.accept(old, ready()))
     }
-    @Test fun readyDisplayUsesOnlySelectedRecords() {
-        assertEquals(listOf(3), comparisonDisplayEvents(ready(), listOf(1, 2)) { listOf(3) })
-    }
     @Test fun disabledHandleIgnoresStaleConfiguration() {
         val saved = SavedStateHandle()
         saveComparisonConfig(saved, config)
@@ -72,25 +69,47 @@ class ComparisonStateTest {
         assertEquals(ComparisonUiState.Loading, session.state.value)
         assertEquals(600, session.config.value!!.startMinute)
     }
-    @Test fun primitiveSavedStateRoundTripsAndDisableDoesNotRestore() {
+    @Test fun viewportRangeFiltersAndGroupsPersistAndDisableDoesNotRestore() {
         val saved = SavedStateHandle()
-        val changed = config.copy(startMinute = 600, endMinute = 1000, showFree = false)
+        val changed = config.copy(startMinute = 600, endMinute = 1000, showFree = false,
+            rangeCustomized = true, personalGroupIds = listOf("group"),
+            excludedOwnCourses = mapOf("own" to setOf("math")),
+            excludedFriendCourses = mapOf("friend" to setOf(1, 3)),
+            excludedFriendCourseKeys = mapOf("friend" to setOf("0:math", "1:math")))
         saveComparisonConfig(saved, changed)
         assertEquals(changed, restoreComparisonConfig(saved))
         saveComparisonConfig(saved, null)
         assertNull(restoreComparisonConfig(saved))
     }
-    @Test fun invalidRestoredRangeAndBlankIdsAreRejected() {
+    @Test fun invalidRangeAndBlankIdsAreRejected() {
         assertFalse(config.copy(startMinute = 1000, endMinute = 900).isValid())
         assertFalse(config.copy(personalId = "").isValid())
+        // 旧版本保存的窄范围键被忽略：恢复结果使用整天默认窗口而不是过期范围。
         val saved = SavedStateHandle(mapOf("comparison.enabled" to true,
             "comparison.personal" to "own", "comparison.friend" to "friend",
             "comparison.start" to 1400, "comparison.end" to 500))
-        assertNull(restoreComparisonConfig(saved))
+        assertEquals(config, restoreComparisonConfig(saved))
     }
-    @Test fun displayNeverFallsBackToAggregateWhileEnabled() {
-        assertEquals(listOf(1, 2), comparisonDisplayEvents(ComparisonUiState.Off, listOf(1, 2)) { emptyList() })
-        assertTrue(comparisonDisplayEvents(ComparisonUiState.Loading, listOf(1, 2)) { emptyList() }.isEmpty())
-        assertTrue(comparisonDisplayEvents(ComparisonUiState.Error(1), listOf(1, 2)) { emptyList() }.isEmpty())
+    @Test fun groupOnlyConfigRestoresWithoutFreezingMemberIds() {
+        val saved = SavedStateHandle()
+        val grouped = ComparisonConfig("", "friend", personalGroupIds = listOf("group"))
+        assertTrue(grouped.isValid())
+        assertTrue(grouped.selectedPersonalIds.isEmpty())
+        saveComparisonConfig(saved, grouped)
+        assertEquals(grouped, restoreComparisonConfig(saved))
+    }
+    @Test fun selectionDelimiterKeepsMultipleUuidIdsIntact() {
+        val ids = listOf("d924c138-fc3e-475f-a7ee-43bd26a88ac6", "836c0051-129c-45ca-9f19-401a8ca0d5c4")
+        val raw = ids.joinToString(COMPARISON_SELECTION_SEPARATOR)
+        assertEquals(ids, raw.split(COMPARISON_SELECTION_SEPARATOR).filter { it.isNotBlank() })
+        assertEquals(emptyList<String>(), "".split(COMPARISON_SELECTION_SEPARATOR).filter { it.isNotBlank() })
+    }
+    @Test fun draftFilterSaverRoundTripsMultipleParticipants() {
+        val selections = mapOf("A" to setOf("course1", "course2"), "B" to emptySet())
+        assertEquals(selections, decodeComparisonSets(encodeComparisonSets(selections)))
+    }
+    @Test fun filterSaverEscapesSeparatorsAndPercentWithoutChangingCourseIdentity() {
+        val selections = mapOf("A" to setOf("0:math\u001dextra", "1:name\u001eextra", "0:%1D"))
+        assertEquals(selections, decodeComparisonSets(encodeComparisonSets(selections)))
     }
 }

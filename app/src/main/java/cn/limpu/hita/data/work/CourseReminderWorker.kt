@@ -11,6 +11,7 @@ import androidx.core.app.NotificationCompat
 import androidx.work.Worker
 import androidx.work.WorkerParameters
 import cn.limpu.hita.R
+import cn.limpu.hita.data.repository.DisplayScopeResolver
 import cn.limpu.hita.data.repository.TimetableRepository
 import cn.limpu.hita.data.source.preference.CourseReminderStore
 import cn.limpu.hita.ui.main.MainActivity
@@ -32,13 +33,15 @@ class CourseReminderWorker(appContext: Context, params: WorkerParameters) : Work
         val minutes = store.getReminderMinutes()
         val app = applicationContext as? Application ?: return Result.success()
         val timetableRepo = TimetableRepository(app)
+        // 跟随主课表显示目标:只提醒当前显示课表/组合内的课程。
+        val scopeIds = DisplayScopeResolver(app).currentSync()?.timetableIds.orEmpty()
 
         val now = System.currentTimeMillis()
         val windowEnd = now + minutes * 60 * 1000
 
         // doWork() 已在后台线程执行，无需 Dispatchers.IO
         val upcomingDayEvents = runBlocking {
-            timetableRepo.getUpcomingEventsSync(now, now + LOOKAHEAD_WINDOW_MS)
+            timetableRepo.getUpcomingEventsSync(now, now + LOOKAHEAD_WINDOW_MS, scopeIds)
         }
         val upcomingEvents = upcomingDayEvents.filter { event ->
             event.type == cn.limpu.hita.data.model.timetable.EventItem.TYPE.CLASS &&

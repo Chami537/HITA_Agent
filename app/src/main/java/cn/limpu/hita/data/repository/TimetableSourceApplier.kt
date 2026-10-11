@@ -26,17 +26,26 @@ import javax.inject.Singleton
  * 与自动刷新解耦：这里只处理用户在课表变更详情里显式确认过的数据。
  */
 @Singleton
-class TimetableSourceApplier @Inject constructor(
+class TimetableSourceApplier internal constructor(
     application: Application,
     private val easPreferenceSource: EasPreferenceSource,
     private val changeStore: TimetableChangeStore,
-    private val timetableMutationLock: TimetableMutationLock
+    private val timetableMutationLock: TimetableMutationLock,
+    private val database: AppDatabase,
 ) {
+    @Inject constructor(
+        application: Application,
+        easPreferenceSource: EasPreferenceSource,
+        changeStore: TimetableChangeStore,
+        timetableMutationLock: TimetableMutationLock,
+    ) : this(application, easPreferenceSource, changeStore, timetableMutationLock,
+        AppDatabase.getDatabase(application))
+
     private val appContext = application.applicationContext
-    private val eventItemDao = AppDatabase.getDatabase(application).eventItemDao()
-    private val timetableDao = AppDatabase.getDatabase(application).timetableDao()
-    private val subjectDao = AppDatabase.getDatabase(application).subjectDao()
-    private val snapshotStore = TimetableSnapshotStore(appContext)
+    private val eventItemDao = database.eventItemDao()
+    private val timetableDao = database.timetableDao()
+    private val subjectDao = database.subjectDao()
+    private val snapshotStore = TimetableSnapshotStore(appContext, database)
 
     /** 采用某门待确认课程的源端版本（源端整门缺失时即删除本地该课）。 */
     fun adoptCourse(termId: String, courseKey: String) {
@@ -45,7 +54,7 @@ class TimetableSourceApplier @Inject constructor(
             val item = changeStore.currentState().decisions.firstOrNull {
                 it.termId == termId && it.courseKey == courseKey
             } ?: error("待确认项不存在或已处理")
-            applyCourseDecision(item)
+            database.runInTransaction { applyCourseDecision(item) }
             changeStore.consumeDecision(termId, courseKey)
         }
     }
@@ -62,7 +71,7 @@ class TimetableSourceApplier @Inject constructor(
     fun adoptHeldBatch() {
         timetableMutationLock.exclusive {
             val batch = changeStore.currentState().heldBatch ?: error("没有待处理的课表源数据")
-            applyHeldBatch(batch)
+            database.runInTransaction { applyHeldBatch(batch) }
             changeStore.consumeHeldBatch()
         }
     }
@@ -90,7 +99,7 @@ class TimetableSourceApplier @Inject constructor(
             if (updates.isEmpty()) return
             val byTimetable = updates.groupBy { it.timetableId }
             for ((timetableId, group) in byTimetable) {
-                applyPendingGroup(timetableId, group, adopted)
+                database.runInTransaction { applyPendingGroup(timetableId, group, adopted) }
             }
         }
     }
@@ -199,7 +208,6 @@ class TimetableSourceApplier @Inject constructor(
         eventItemDao.deleteCourseFromTimetable(timetable.id)
         subjectDao.saveSubjectsSync(subjects)
         eventItemDao.saveEvents(events)
-        timetable.name = batch.timetableName
         timetable.code = batch.timetableCode
         timetable.startTime = Timestamp(batch.startMillis)
         timetable.scheduleStructure = batch.schedule

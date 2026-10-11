@@ -21,7 +21,7 @@ sealed interface FriendDetailState {
 
 @HiltViewModel
 class FriendTimetableDetailViewModel @Inject constructor(
-    repository: FriendTimetableRepository, savedStateHandle: SavedStateHandle
+    private val repository: FriendTimetableRepository, savedStateHandle: SavedStateHandle
 ) : ViewModel() {
     val friend = repository.observeFriend(savedStateHandle.get<String>(FriendTimetableDetailActivity.EXTRA_SHARE_ID).orEmpty())
     var state: FriendDetailState by mutableStateOf(FriendDetailState.Loading)
@@ -33,10 +33,8 @@ class FriendTimetableDetailViewModel @Inject constructor(
         request = viewModelScope.launch {
             state = FriendDetailState.Loading
             try {
-                val snapshot = withContext(Dispatchers.IO) { TimetableShareCodec().decodeJson(row.snapshotJson) }
-                if (snapshot.shareId != row.shareId || snapshot.mode.name != row.mode) {
-                    state = FriendDetailState.Error(R.string.friend_timetable_corrupt)
-                } else state = FriendDetailState.Ready(row, snapshot)
+                val snapshot = repository.readSnapshot(row)
+                state = FriendDetailState.Ready(row, snapshot)
             } catch (cancelled: CancellationException) { throw cancelled }
             catch (_: ShareFormatException) { state = FriendDetailState.Error(R.string.friend_timetable_corrupt) }
             catch (_: Exception) { state = FriendDetailState.Error(R.string.friend_timetable_load_failed) }

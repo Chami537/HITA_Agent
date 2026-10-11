@@ -1,6 +1,9 @@
 package cn.limpu.hita.data.repository
 
 import android.app.Application
+import android.os.Handler
+import android.os.Looper
+import android.widget.Toast
 import androidx.annotation.WorkerThread
 import javax.inject.Inject
 import androidx.core.content.ContextCompat
@@ -14,10 +17,12 @@ import cn.limpu.hita.data.AppDatabase
 import cn.limpu.hita.data.model.eas.TermItem
 import cn.limpu.hita.data.model.eas.EASToken
 import cn.limpu.hita.data.model.eas.ShenzhenCourseCatalogItem
+import cn.limpu.hita.data.model.timetable.DisplayScope
 import cn.limpu.hita.data.model.timetable.EventItem
 import cn.limpu.hita.data.model.timetable.SubjectColor
 import cn.limpu.hita.data.model.timetable.TimePeriodInDay
 import cn.limpu.hita.data.model.timetable.Timetable
+import cn.limpu.hita.data.model.timetable.TimetableGroupEntity
 import cn.limpu.hita.data.source.preference.EasPreferenceSource
 import cn.limpu.hita.ui.main.timetable.TimetableFragment.Companion.WEEK_MILLS
 import cn.limpu.hita.utils.TimeTools
@@ -46,7 +51,12 @@ import java.io.FileOutputStream
 import java.io.InputStream
 
 
-class TimetableRepository @Inject constructor(val application: Application) {
+class TimetableRepository internal constructor(
+    val application: Application,
+    private val database: AppDatabase,
+) {
+    @Inject constructor(application: Application) : this(application, AppDatabase.getDatabase(application))
+
     companion object {
         private const val EXAM_REMINDER_DAYS = 30
     }
@@ -55,9 +65,11 @@ class TimetableRepository @Inject constructor(val application: Application) {
         ContextCompat.getColor(application, R.color.subject8)
     }
     private val executor = Executors.newSingleThreadExecutor()
-    private val eventItemDao = AppDatabase.getDatabase(application).eventItemDao()
-    private val timetableDao = AppDatabase.getDatabase(application).timetableDao()
-    private val subjectDao = AppDatabase.getDatabase(application).subjectDao()
+    private val handler = Handler(Looper.getMainLooper())
+    private val eventItemDao = database.eventItemDao()
+    private val timetableDao = database.timetableDao()
+    private val timetableGroupDao = database.timetableGroupDao()
+    private val subjectDao = database.subjectDao()
     private val easPreferenceSource by lazy {
         EasPreferenceSource(application.applicationContext)
     }
@@ -75,6 +87,13 @@ class TimetableRepository @Inject constructor(val application: Application) {
         return MTransformations.map(eventItemDao.getEventsDuring(from, to), ::dedupeDisplayEvents)
     }
 
+    /** 显示目标过滤版：今日时间线使用。空集合返回空列表。 */
+    fun getEventsDuring(from: Long, to: Long, timetableIds: List<String>): LiveData<List<EventItem>> {
+        if (timetableIds.isEmpty()) return MutableLiveData(emptyList())
+        return MTransformations.map(
+            eventItemDao.getEventsDuringForTimetables(from, to, timetableIds), ::dedupeDisplayEvents)
+    }
+
     /**
      * 获取[from,...)内的至多limit个事件
      */
@@ -84,8 +103,29 @@ class TimetableRepository @Inject constructor(val application: Application) {
         }
     }
 
+    /** 显示目标过滤版：时间线「本周后续」使用。 */
+    fun getEventsAfter(from: Long, limit: Int, timetableIds: List<String>): LiveData<List<EventItem>> {
+        if (timetableIds.isEmpty()) return MutableLiveData(emptyList())
+        return MTransformations.map(eventItemDao.getEventsAfterForTimetables(from, limit * 3, timetableIds)) { events ->
+            dedupeDisplayEvents(events).sortedBy { it.from.time }.take(limit)
+        }
+    }
+
     fun getUpcomingExamsWithinReminderWindow(from: Long): LiveData<List<EventItem>> {
         return eventItemDao.getExamsDuring(from, from + EXAM_REMINDER_DAYS * 24L * 60L * 60L * 1000L)
+    }
+
+    fun getUpcomingExamsWithinReminderWindow(from: Long, timetableIds: List<String>): LiveData<List<EventItem>> {
+        if (timetableIds.isEmpty()) return MutableLiveData(emptyList())
+        return eventItemDao.getExamsDuringForTimetables(
+            from, from + EXAM_REMINDER_DAYS * 24L * 60L * 60L * 1000L, timetableIds)
+    }
+
+    @WorkerThread
+    fun getUpcomingExamsWithinReminderWindowSync(from: Long, timetableIds: List<String>): List<EventItem> {
+        if (timetableIds.isEmpty()) return emptyList()
+        return eventItemDao.getExamsDuringForTimetablesSync(
+            from, from + EXAM_REMINDER_DAYS * 24L * 60L * 60L * 1000L, timetableIds)
     }
 
     @WorkerThread
@@ -112,9 +152,31 @@ class TimetableRepository @Inject constructor(val application: Application) {
             .sortedBy { it.from.time }
     }
 
+    /** 显示目标过滤版今日事件：桌面小组件使用。 */
+    @WorkerThread
+    fun getTodayEventsSync(timetableIds: List<String>): List<EventItem> {
+        if (timetableIds.isEmpty()) return emptyList()
+        val now = Calendar.getInstance()
+        now.set(Calendar.HOUR_OF_DAY,0)
+        now.set(Calendar.MINUTE,0)
+        val from = now.timeInMillis
+        now.add(Calendar.DATE,1)
+        val to = now.timeInMillis
+        return dedupeDisplayEvents(eventItemDao.getEventsDuringForTimetablesSync(from, to, timetableIds))
+            .sortedBy { it.from.time }
+    }
+
     @WorkerThread
     fun getUpcomingEventsSync(from: Long, to: Long): List<EventItem> {
         return dedupeDisplayEvents(eventItemDao.getEventsDuringSync(from, to))
+            .sortedBy { it.from.time }
+    }
+
+    /** 显示目标过滤版：课程提醒 Worker 使用。 */
+    @WorkerThread
+    fun getUpcomingEventsSync(from: Long, to: Long, timetableIds: List<String>): List<EventItem> {
+        if (timetableIds.isEmpty()) return emptyList()
+        return dedupeDisplayEvents(eventItemDao.getEventsDuringForTimetablesSync(from, to, timetableIds))
             .sortedBy { it.from.time }
     }
 
@@ -138,35 +200,56 @@ class TimetableRepository @Inject constructor(val application: Application) {
      */
     fun getEventsDuringWithColor(from: Long, to: Long): LiveData<List<EventItem>> {
         return MTransformations.switchMap(eventItemDao.getEventsDuring(from, to)) { events ->
-            val displayEvents = dedupeDisplayEvents(events)
-            val subjects = mutableSetOf<String>()
-            for (e in displayEvents) {
-                if (e.subjectId.isNotBlank()) {
-                    subjects.add(e.subjectId)
-                }
+            attachSubjectColors(events)
+        }
+    }
+
+    /** 显示目标过滤版：只取目标课表集合内与窗口相交的事件，其余逻辑与全量版一致。 */
+    fun getEventsDuringWithColor(from: Long, to: Long, timetableIds: List<String>): LiveData<List<EventItem>> {
+        if (timetableIds.isEmpty()) return MutableLiveData(emptyList())
+        return MTransformations.switchMap(
+            eventItemDao.getEventsDuringForTimetables(from, to, timetableIds)
+        ) { events ->
+            attachSubjectColors(events)
+        }
+    }
+
+    private fun attachSubjectColors(events: List<EventItem>): LiveData<List<EventItem>> {
+        val displayEvents = dedupeDisplayEvents(events)
+        val subjects = mutableSetOf<String>()
+        for (e in displayEvents) {
+            if (e.subjectId.isNotBlank()) {
+                subjects.add(e.subjectId)
             }
-            val colorSource = subjectDao.getSubjectColorsWithId(subjects)
-            MTransformations.map(colorSource) { colors ->
-                val map = mutableMapOf<String, Int>()
-                for (color in colors) {
-                    map[color.id] = color.color
-                }
-                for (e in displayEvents) {
-                    map[e.subjectId]?.let {
-                        e.color = it
-                    } ?: run {
-                        if (e.subjectId.isBlank()) {
-                            e.color = manualEventFallbackColor
-                        }
+        }
+        val colorSource = subjectDao.getSubjectColorsWithId(subjects)
+        return MTransformations.map(colorSource) { colors ->
+            val map = mutableMapOf<String, Int>()
+            for (color in colors) {
+                map[color.id] = color.color
+            }
+            for (e in displayEvents) {
+                map[e.subjectId]?.let {
+                    e.color = it
+                } ?: run {
+                    if (e.subjectId.isBlank()) {
+                        e.color = manualEventFallbackColor
                     }
                 }
-                displayEvents
             }
+            displayEvents
         }
     }
 
     fun getClassesOfSubject(subjectId: String): LiveData<List<EventItem>> {
+
         return eventItemDao.getClassesOfSubject(subjectId)
+    }
+
+    /** 显示目标内全部课程的颜色（分配器输入）。 */
+    fun getSubjectColorsOfTimetables(timetableIds: List<String>): LiveData<List<SubjectColor>> {
+        if (timetableIds.isEmpty()) return MutableLiveData(emptyList())
+        return subjectDao.getSubjectColorsOfTimetables(timetableIds)
     }
 
     @WorkerThread
@@ -219,6 +302,16 @@ class TimetableRepository @Inject constructor(val application: Application) {
         return emptyList()
     }
 
+    /** 显示目标过滤版：Agent 课表查询使用。 */
+    @WorkerThread
+    fun getEventsOfTimetablesSync(timetableIds: List<String>, fromMs: Long?, toMs: Long?): List<EventItem> {
+        if (timetableIds.isEmpty()) return emptyList()
+        if (fromMs != null && toMs != null) {
+            return eventItemDao.getEventsOfTimetablesDuringSync(timetableIds, fromMs, toMs)
+        }
+        return emptyList()
+    }
+
     fun getTimetableByEasCode(code: String): LiveData<Timetable?> {
         return timetableDao.getTimetableByEASCode(code)
     }
@@ -263,17 +356,187 @@ class TimetableRepository @Inject constructor(val application: Application) {
         return eventItemDao.searchEventsByNameSync(keyword)
     }
 
+    /** 显示目标过滤版：Agent 课表搜索使用。 */
+    @WorkerThread
+    fun searchEventsByKeywordSync(keyword: String, timetableIds: List<String>): List<EventItem> {
+        if (timetableIds.isEmpty()) return emptyList()
+        return eventItemDao.searchEventsByNameInTimetablesSync(keyword, timetableIds)
+    }
+
     fun actionDeleteTimetables(timetables: List<Timetable>) {
-        val ids = mutableListOf<String>()
-        for (tt in timetables) {
-            ids.add(tt.id)
+        val ids = timetables.map { it.id }
+        executor.execute {
+            database.runInTransaction {
+                // Caller objects may predate a move; use current membership for cleanup.
+                val groups = timetableDao.getTimetablesInIdsSync(ids).mapNotNull { it.groupId }.distinct()
+                eventItemDao.deleteEventsFromTimetablesSync(ids)
+                subjectDao.deleteSubjectsFromTimetablesSync(ids)
+                timetableDao.deleteTimetablesInIdsSync(ids)
+                groups.forEach(::deleteGroupIfEmptySync)
+            }
+        }
+    }
+
+    // ---------- 组合课表 ----------
+
+    private val displayScopeResolver by lazy { DisplayScopeResolver(application, database) }
+
+    /**
+     * 教务/登录导入产生新课表后的自动同屏：
+     * 当前显示目标是组合 → 直接入组；是独立课表 → 新建组合课表(默认命名)含两者并切过去。
+     * 新课表已在组内、或当前无课表、或显示目标就是它自己时不动作。
+     */
+    @WorkerThread
+    fun autoGroupAfterEasImportSync(newTimetableId: String) {
+        var selected: DisplayScope? = null
+        var groupName: String? = null
+        database.runInTransaction {
+            val newTimetable = timetableDao.getTimetableByIdSync(newTimetableId) ?: return@runInTransaction
+            if (newTimetable.groupId != null) return@runInTransaction
+            val scope = displayScopeResolver.currentSync(defaultExcludedId = newTimetableId) ?: return@runInTransaction
+            when (val target = scope.scope) {
+                is DisplayScope.Group -> {
+                    if (newTimetableId in scope.timetableIds) return@runInTransaction
+                    timetableGroupDao.setTimetableGroupSync(newTimetableId, target.id)
+                    groupName = scope.name
+                }
+                is DisplayScope.Single -> {
+                    if (target.id == newTimetableId) return@runInTransaction
+                    val group = TimetableGroupEntity().apply { name = nextDefaultGroupNameSync() }
+                    timetableGroupDao.saveGroupSync(group)
+                    timetableGroupDao.setTimetableGroupSync(target.id, group.id)
+                    timetableGroupDao.setTimetableGroupSync(newTimetableId, group.id)
+                    selected = DisplayScope.Group(group.id)
+                    groupName = group.name
+                }
+            }
+        }
+        selected?.let(displayScopeResolver::select)
+        groupName?.let(::notifyGroupedInto)
+    }
+
+    private fun notifyGroupedInto(groupName: String) {
+        handler.post {
+            Toast.makeText(
+                application,
+                application.getString(R.string.timetable_grouped_into, groupName),
+                Toast.LENGTH_SHORT
+            ).show()
+        }
+    }
+
+    fun getGroups() = timetableGroupDao.getGroups()
+
+    @WorkerThread
+    fun getGroupsSync(): List<TimetableGroupEntity> = timetableGroupDao.getGroupsSync()
+
+    @WorkerThread
+    fun getGroupMembersSync(groupId: String): List<Timetable> = timetableGroupDao.getMembersSync(groupId)
+
+    /** 重命名我的课表（含教务/ICS/口令导入）。返回 null 表示非法名字。 */
+    fun actionRenameTimetable(timetableId: String, rawName: String, onResult: ((Boolean) -> Unit)? = null) {
+        val name = normalizeDisplayName(rawName)
+        if (name == null) {
+            handler.post { onResult?.invoke(false) }
+            return
         }
         executor.execute {
-            timetableDao.deleteTimetablesSync(timetables)
-            eventItemDao.deleteEventsFromTimetablesSync(ids)
-            subjectDao.deleteSubjectsFromTimetablesSync(ids)
+            val renamed = runCatching { timetableDao.renameTimetableSync(timetableId, name) == 1 }.getOrDefault(false)
+            handler.post { onResult?.invoke(renamed) }
         }
+    }
 
+    fun actionRenameGroup(groupId: String, rawName: String, onResult: ((Boolean) -> Unit)? = null) {
+        val name = normalizeDisplayName(rawName)
+        if (name == null) {
+            handler.post { onResult?.invoke(false) }
+            return
+        }
+        executor.execute {
+            val renamed = runCatching { timetableGroupDao.renameGroupSync(groupId, name) == 1 }.getOrDefault(false)
+            handler.post { onResult?.invoke(renamed) }
+        }
+    }
+
+    /** Returns null if a requested member disappeared or persistence failed. */
+    fun actionCreateGroupWithMembers(memberIds: List<String>, onResult: (String?) -> Unit) {
+        executor.execute {
+            val groupId = runCatching {
+                database.runInTransaction(java.util.concurrent.Callable {
+                    val ids = memberIds.distinct()
+                    if (ids.isEmpty()) return@Callable null
+                    val members = timetableDao.getTimetablesInIdsSync(ids)
+                    if (members.size != ids.size) return@Callable null
+                    val oldGroups = members.mapNotNull { it.groupId }.distinct()
+                    val group = TimetableGroupEntity().apply { name = nextDefaultGroupNameSync() }
+                    timetableGroupDao.saveGroupSync(group)
+                    ids.forEach { timetableGroupDao.setTimetableGroupSync(it, group.id) }
+                    oldGroups.forEach(::deleteGroupIfEmptySync)
+                    group.id
+                })
+            }.getOrNull()
+            handler.post { onResult(groupId) }
+        }
+    }
+
+    fun actionAddToGroup(timetableId: String, groupId: String, onResult: ((Boolean) -> Unit)? = null) {
+        executor.execute {
+            val added = runCatching {
+                database.runInTransaction(java.util.concurrent.Callable {
+                    val timetable = timetableDao.getTimetableByIdSync(timetableId) ?: return@Callable false
+                    if (timetableGroupDao.getGroupByIdSync(groupId) == null) return@Callable false
+                    timetableGroupDao.setTimetableGroupSync(timetableId, groupId)
+                    timetable.groupId?.takeIf { it != groupId }?.let(::deleteGroupIfEmptySync)
+                    true
+                })
+            }.getOrDefault(false)
+            handler.post { onResult?.invoke(added) }
+        }
+    }
+
+    /** 移出组合；组因此为空时自动删组。 */
+    fun actionRemoveFromGroup(timetableId: String) {
+        executor.execute {
+            database.runInTransaction {
+                val groupId = timetableDao.getTimetableByIdSync(timetableId)?.groupId ?: return@runInTransaction
+                timetableGroupDao.setTimetableGroupSync(timetableId, null)
+                deleteGroupIfEmptySync(groupId)
+            }
+        }
+    }
+
+    /** 解散组合：全部子课表变回独立课表，组删除。 */
+    fun actionDissolveGroup(groupId: String) {
+        executor.execute {
+            database.runInTransaction {
+                timetableGroupDao.clearGroupMembersSync(groupId)
+                timetableGroupDao.deleteGroupByIdSync(groupId)
+            }
+        }
+    }
+
+    @WorkerThread
+    private fun deleteGroupIfEmptySync(groupId: String) {
+        if (timetableGroupDao.countMembersSync(groupId) == 0) {
+            timetableGroupDao.deleteGroupByIdSync(groupId)
+        }
+    }
+
+    @WorkerThread
+    private fun nextDefaultGroupNameSync(): String {
+        val prefix = application.getString(R.string.default_timetable_group_name)
+        var max = 0
+        for (name in timetableGroupDao.getGroupNamesWithPrefixSync(prefix)) {
+            val i = name.removePrefix(prefix).trim().toIntOrNull()
+            if (i != null && i > max) max = i
+        }
+        return "$prefix ${max + 1}"
+    }
+
+    private fun normalizeDisplayName(rawName: String): String? {
+        val name = rawName.trim()
+        if (name.isEmpty() || name.codePointCount(0, name.length) > 40) return null
+        return name
     }
 
     fun actionDeleteEvents(courses: Collection<EventItem>) {
@@ -738,9 +1001,13 @@ class TimetableRepository @Inject constructor(val application: Application) {
         if (deleteIds.isEmpty()) return
 
         LogUtils.d("cleanupDefaultDuplicateTimetables: deleting defaults=$deleteIds")
-        timetableDao.deleteTimetablesInIdsSync(deleteIds)
-        eventItemDao.deleteEventsFromTimetablesSync(deleteIds)
-        subjectDao.deleteSubjectsFromTimetablesSync(deleteIds)
+        database.runInTransaction {
+            val groups = timetableDao.getTimetablesInIdsSync(deleteIds).mapNotNull { it.groupId }.distinct()
+            eventItemDao.deleteEventsFromTimetablesSync(deleteIds)
+            subjectDao.deleteSubjectsFromTimetablesSync(deleteIds)
+            timetableDao.deleteTimetablesInIdsSync(deleteIds)
+            groups.forEach(::deleteGroupIfEmptySync)
+        }
     }
 
     @WorkerThread
@@ -844,64 +1111,14 @@ class TimetableRepository @Inject constructor(val application: Application) {
         val res = MutableLiveData<DataState<String>>();
         executor.execute {
             val filename = "HITSZ助手：$timetableName.ics"
-            val path = application.getExternalFilesDir("ics").toString() + "/" + filename
             try {
-                val calendar = net.fortuna.ical4j.model.Calendar()
-                calendar.properties.add(ProdId("-//StupidTree//HITA//EN"))
-                calendar.properties.add(Version.VERSION_2_0)
-                calendar.properties.add(CalScale.GREGORIAN)
                 val timetable = timetableDao.getTimetableByIdSync(timetableId)
-                for (ei in eventItemDao.getEventsOfTimetableSync(timetableId)) {
-                    val start = DateTime(ei.from)
-                    start.isUtc = true
-                    val end = DateTime(ei.to)
-                    end.isUtc = true
-                    val event = VEvent(start, end, ei.name)
-
-                    val place = ei.place?.trim().orEmpty()
-                    if (place.isNotEmpty()) {
-                        event.properties.add(Location(place))
-                    }
-
-                    val weekNumber = timetable?.getWeekNumber(ei.from.time) ?: -1
-                    val weekText = if (weekNumber > 0) "第${weekNumber}周" else "未知周次"
-                    val description = buildString {
-                        if (!ei.teacher.isNullOrBlank()) appendLine("教师：${ei.teacher}")
-                        appendLine("周次：$weekText")
-                        appendLine("来源：HITA Android")
-                    }.trim()
-                    event.properties.add(Description(description))
-
-                    event.properties.add(XProperty("X-HITA-SCHEMA", "1.0"))
-                    event.properties.add(XProperty("X-HITA-SOURCE", "android"))
-                    event.properties.add(XProperty("X-HITA-COURSE-NAME", ei.name))
-                    if (!ei.teacher.isNullOrBlank()) {
-                        event.properties.add(XProperty("X-HITA-TEACHER", ei.teacher))
-                    }
-                    if (place.isNotEmpty()) {
-                        event.properties.add(XProperty("X-HITA-CLASSROOM", place))
-                    }
-                    if (weekNumber > 0) {
-                        event.properties.add(XProperty("X-HITA-WEEKS", weekNumber.toString()))
-                    }
-                    event.properties.add(XProperty("X-HITA-TYPE", ei.type.name.lowercase()))
-
-                    event.properties.add(Uid(UidGenerator("hita").generateUid().value))
-
-                    val valarm = VAlarm(Dur(0, 0, -10, 0))
-                    val isCourseLike = ei.type == EventItem.TYPE.CLASS || ei.type == EventItem.TYPE.EXAM
-                    valarm.properties.add(Summary(if (isCourseLike) "课程提醒" else "事件提醒"))
-                    valarm.properties.add(Action.DISPLAY)
-                    valarm.properties.add(Description(ei.name + if (isCourseLike) "马上就要开始啦！" else "马上开始啦！"))
-                    event.alarms.add(valarm)
-                    calendar.components.add(event)
-
+                val events = eventItemDao.getEventsOfTimetableSync(timetableId).map { ei ->
+                    IcsExportEvent(ei.name, ei.from.time, ei.to.time, ei.place, ei.teacher,
+                        timetable?.getWeekNumber(ei.from.time) ?: -1, ei.type.name.lowercase())
                 }
-                calendar.validate()
-
-                val fos = FileOutputStream(path)
-                val outputter = CalendarOutputter()
-                outputter.output(calendar, fos)
+                val dir = application.getExternalFilesDir("ics") ?: application.filesDir
+                val path = TimetableIcsWriter.write(dir, filename, events).absolutePath
                 res.postValue(DataState(path))
             } catch (e: Exception) {
                 LogUtils.e("Failed to export timetable to ICS", e)
@@ -953,9 +1170,11 @@ class TimetableRepository @Inject constructor(val application: Application) {
                     events = calendar.components.filterIsInstance<VEvent>(),
                     sourceName = sourceName
                 )
-                timetableDao.saveTimetableSync(bundle.timetable)
-                subjectDao.saveSubjectsSync(bundle.subjects)
-                eventItemDao.saveEvents(bundle.events)
+                database.runInTransaction {
+                    timetableDao.saveTimetableSync(bundle.timetable)
+                    subjectDao.saveSubjectsSync(bundle.subjects)
+                    eventItemDao.saveEvents(bundle.events)
+                }
 
                 res.postValue(
                     DataState(
@@ -975,11 +1194,42 @@ class TimetableRepository @Inject constructor(val application: Application) {
         return res
     }
 
+    /** 课表口令(FULL 快照)导入为我的课表。BUSY 模式由 UI 层拦截,这里防御性报错。 */
+    fun importShareSnapshotAsTimetable(snapshot: cn.limpu.hita.feature.timetableshare.protocol.SharedTimetable): LiveData<DataState<IcsImportResult>> {
+        val res = MutableLiveData<DataState<IcsImportResult>>()
+        executor.execute {
+            try {
+                val bundle = SharedTimetableImporter.buildBundleFromShare(snapshot)
+                database.runInTransaction {
+                    timetableDao.saveTimetableSync(bundle.timetable)
+                    subjectDao.saveSubjectsSync(bundle.subjects)
+                    eventItemDao.saveEvents(bundle.events)
+                }
+                res.postValue(
+                    DataState(
+                        IcsImportResult(
+                            timetableId = bundle.timetable.id,
+                            timetableName = bundle.timetable.name ?: application.getString(R.string.default_timetable_name),
+                            importedCount = bundle.events.size
+                        )
+                    )
+                )
+            } catch (e: Exception) {
+                LogUtils.e("Failed to import shared timetable", e)
+                res.postValue(DataState(DataState.STATE.FETCH_FAILED, e.message))
+            }
+        }
+        return res
+    }
+
     fun actionClearData() {
         executor.execute {
-            eventItemDao.clear()
-            subjectDao.clear()
-            timetableDao.clear()
+            database.runInTransaction {
+                eventItemDao.clear()
+                subjectDao.clear()
+                timetableDao.clear()
+                timetableGroupDao.getGroupsSync().forEach { timetableGroupDao.deleteGroupByIdSync(it.id) }
+            }
         }
     }
 

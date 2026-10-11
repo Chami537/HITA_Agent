@@ -93,4 +93,22 @@ class StrictShareJsonTest {
         invalid(FULL_JSON.replace("小林", "\\ud800"))
         invalid(FULL_JSON.replace("小林", "\\udc00"))
     }
+    @Test fun rejectsLiteralControlCharactersAndLegacyOnlyEscapesInStrings() {
+        for (code in 0 until 0x20) {
+            invalid(FULL_JSON.replace("小林", "小${code.toChar()}林"))
+        }
+        invalid(FULL_JSON.replace("小林", "小\\'林"))
+        invalid(FULL_JSON.replace("小林", "小\\\n林"))
+        invalid(FULL_JSON.replace("小林", "小\\u12xz林"))
+        invalid(FULL_JSON.replace("\"n\"", "\"n\\'\""))
+    }
+    @Test fun legalJsonEscapesRoundTripWithoutChangingUnicodeText() {
+        val snapshot = fullFixture().copy(nickname = "小\"林\\朋友/😀",
+            occurrences = listOf(fullFixture().occurrences.single().copy(place = "\t教室\nA\r\b")))
+        assertEquals(snapshot, codec.decodeJson(codec.canonicalJson(snapshot)))
+        assertEquals("小林", codec.decodeJson(FULL_JSON.replace("小林", "\\u5c0f\\u6797")).nickname)
+    }
+    @Test fun oversizedStoredJsonUsesProtocolLimitBeforeParsing() {
+        invalid(" ".repeat(ShareLimits.JSON_BYTES + 1), ShareError.DECOMPRESSED_TOO_LARGE)
+    }
 }

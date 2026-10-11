@@ -88,7 +88,7 @@ HITA_Agent/
 
 ## 文档与构建产物
 
-完整架构与开发约定见 `CLAUDE.md`（Codex 适配副本为 `AGENTS.md`，内容一致）。使用统计契约和验证范围见 [统计 v2](docs/analytics-v2.md)。设计说明保留在 `docs/superpowers/specs/`；已完成的用户反馈实施清单已从当前树移除，未实施的字体计划保留。
+完整架构与开发约定见 `CLAUDE.md`（Codex 适配副本为 `AGENTS.md`，内容一致）。使用统计契约和验证范围见 [统计 v2](docs/analytics-v2.md)。课表分享、双人对比与课表管理重构的交付说明见 [docs/timetable-sharing.md](docs/timetable-sharing.md)、[docs/timetable-comparison.md](docs/timetable-comparison.md) 和 [docs/timetable-display-management.md](docs/timetable-display-management.md)。设计说明保留在 `docs/superpowers/specs/`；已完成的用户反馈实施清单已从当前树移除，未实施的字体计划保留。
 
 APK 和构建元信息从 CI / Release 获取；源码树不保存旧 `app/debug/` 安装包。`app/schemas/` 和 `hitauser/schemas/` 是 Room 数据库历史结构，供迁移验证使用，不能作为旧生成数据删除。
 

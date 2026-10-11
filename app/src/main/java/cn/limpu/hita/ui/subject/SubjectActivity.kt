@@ -1266,13 +1266,14 @@ private fun SubjectScreen(
                     events = targets,
                     timetable = timetable,
                     onDismiss = { editScope = null },
-                    onApply = { place, teacher, time ->
+                    onApply = { place, teacher, time, slotTimes ->
                         val (edited, skippedTime) = applySubjectBatchEdit(
                             events = targets,
                             timetable = timetable,
                             place = place,
                             teacher = teacher,
                             time = time,
+                            slotTimes = slotTimes,
                         )
                         viewModel.updateCourses(edited)
                         Toast.makeText(

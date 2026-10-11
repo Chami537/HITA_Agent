@@ -21,8 +21,9 @@ class HitaCoursePaletteTest {
             isDark = false,
         )
 
-        assertEquals(6, classic.size)
-        assertEquals(6, fresh.size)
+        // 经典预设色板现为 16 色(色相环均匀分布,同屏去重)。
+        assertEquals(16, classic.size)
+        assertEquals(16, fresh.size)
         assertNotEquals(classic, fresh)
     }
 

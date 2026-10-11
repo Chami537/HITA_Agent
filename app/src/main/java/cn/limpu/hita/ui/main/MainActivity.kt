@@ -118,6 +118,7 @@ import com.limpu.component.data.DataState
 import cn.limpu.hita.R
 import cn.limpu.hita.data.repository.EASRepository
 import cn.limpu.hita.data.repository.BlogRepository
+import cn.limpu.hita.data.repository.DisplayScopeResolver
 import cn.limpu.hita.data.repository.EasSettingsRepository
 import cn.limpu.hita.data.repository.KEY_WALLPAPER_PATH
 import cn.limpu.hita.data.repository.TimetableStyleRepository
@@ -160,6 +161,7 @@ import cn.limpu.hita.ui.main.agent.AgentChatFragment
 import cn.limpu.hita.ui.main.blog.BlogFragment
 import cn.limpu.hita.ui.main.navigation.NavigationFragment
 import cn.limpu.hita.ui.main.timeline.FragmentTimeLine
+import cn.limpu.hita.data.model.timetable.DisplayScope
 import cn.limpu.hita.data.model.timetable.Timetable
 import cn.limpu.hita.ui.main.timetable.TimetableFragment
 import cn.limpu.hita.ui.main.timetable.panel.FragmentTimetablePanel
@@ -202,6 +204,7 @@ class MainActivity : HiltBaseActivity<ComposeViewBinding>(),
     @Inject lateinit var easRepository: EASRepository
     @Inject lateinit var timetableStyleRepository: TimetableStyleRepository
     @Inject lateinit var blogRepository: BlogRepository
+    @Inject lateinit var scopeResolver: DisplayScopeResolver
 
     protected val viewModel: MainViewModel by viewModels()
 
@@ -221,7 +224,8 @@ class MainActivity : HiltBaseActivity<ComposeViewBinding>(),
     private var timetableTitle by mutableStateOf("")
     private var timetableDisplayName by mutableStateOf("")
     private var showTimetableName by mutableStateOf(false)
-    private var timetableOptionList by mutableStateOf<List<Timetable>>(emptyList())
+    private var scopeOptionList by mutableStateOf<List<DisplayScopeResolver.ScopeOption>>(emptyList())
+    private var currentScope by mutableStateOf<DisplayScope?>(null)
     private var wallpaperBitmap by mutableStateOf<Bitmap?>(null)
     private var wallpaperVisible by mutableStateOf(false)
     private var wallpaperScrimOpacity by mutableIntStateOf(0)
@@ -299,6 +303,8 @@ class MainActivity : HiltBaseActivity<ComposeViewBinding>(),
                 if (idx >= 0) selectedTab = idx
             }
         }
+        scopeResolver.options.observe(this) { scopeOptionList = it }
+        scopeResolver.resolved.observe(this) { currentScope = it?.scope }
         (binding.root as ComposeView).setContent {
             HitaComposeTheme {
                 val activeThemeStyle = HitaTheme.preferenceStyle
@@ -316,8 +322,9 @@ class MainActivity : HiltBaseActivity<ComposeViewBinding>(),
                     timetableTitle = timetableTitle,
                     timetableName = timetableDisplayName,
                     showTimetableName = showTimetableName,
-                    timetableOptions = timetableOptionList,
-                    onTimetableSelected = ::onSemesterSelected,
+                    timetableOptions = scopeOptionList,
+                    currentScope = currentScope,
+                    onTimetableSelected = ::onScopeSelected,
                     themeIcon = activeThemeIcon,
                     wallpaperBitmap = wallpaperBitmap,
                     wallpaperVisible = wallpaperVisible,
@@ -364,6 +371,7 @@ class MainActivity : HiltBaseActivity<ComposeViewBinding>(),
                     onGitHubProject = { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/LiPu-jpg"))) },
                     onGitHubMingyu = { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/orgs/HIT-A/people/SpeechlessPanda"))) },
                     onGitHubRuannuo = { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/orgs/HIT-A/people/StrayRN"))) },
+                    onGitHubJixing = { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/purple3899"))) },
                     fragmentFactory = { tab ->
                         when (tab) {
                             MainTab.TIMELINE -> FragmentTimeLine()
@@ -838,19 +846,17 @@ class MainActivity : HiltBaseActivity<ComposeViewBinding>(),
         showTimetableName = false
     }
 
-    override fun setTimetableOptions(options: List<Timetable>) {
-        timetableOptionList = options
-    }
-
-    private fun onSemesterSelected(index: Int) {
-        val tt = timetableOptionList.getOrNull(index) ?: return
+    private fun onScopeSelected(index: Int) {
+        val option = scopeOptionList.getOrNull(index) ?: return
+        scopeResolver.select(option.scope)
+        // 切到该目标的当前周;目标学期不含今天时跳到第一周周一。
         val now = System.currentTimeMillis()
         val weekMills = 7L * 24 * 3600 * 1000
-        val targetMonday = if (now in tt.startTime.time..tt.endTime.time) {
-            val weekOffset = ((now - tt.startTime.time) / weekMills).toInt()
-            tt.startTime.time + weekOffset * weekMills
+        val targetMonday = if (now in option.startMillis..option.endMillis) {
+            val weekOffset = ((now - option.startMillis) / weekMills).coerceAtLeast(0)
+            option.startMillis + weekOffset * weekMills
         } else {
-            tt.startTime.time
+            option.startMillis
         }
         val fragment = supportFragmentManager.findFragmentByTag("main_tab_${MainTab.TIMETABLE.name}") as? TimetableFragment
         fragment?.navigateToWeek(targetMonday)
@@ -891,7 +897,8 @@ private fun MainScreen(
     timetableTitle: String,
     timetableName: String,
     showTimetableName: Boolean,
-    timetableOptions: List<Timetable>,
+    timetableOptions: List<DisplayScopeResolver.ScopeOption>,
+    currentScope: DisplayScope?,
     onTimetableSelected: (Int) -> Unit,
     themeIcon: Int,
     wallpaperBitmap: Bitmap?,
@@ -920,6 +927,7 @@ private fun MainScreen(
     onGitHubProject: () -> Unit,
     onGitHubMingyu: () -> Unit,
     onGitHubRuannuo: () -> Unit,
+    onGitHubJixing: () -> Unit,
     fragmentFactory: (MainTab) -> Fragment,
 ) {
     val density = LocalDensity.current
@@ -1039,6 +1047,7 @@ private fun MainScreen(
                     timetableName = timetableName,
                     showTimetableName = showTimetableName,
                     timetableOptions = timetableOptions,
+                    currentScope = currentScope,
                     onTimetableSelected = onTimetableSelected,
                     themeIcon = themeIcon,
                     wallpaperAlpha = wallpaperAlpha,
@@ -1138,6 +1147,7 @@ private fun MainScreen(
             onGitHubProject = onGitHubProject,
             onGitHubMingyu = onGitHubMingyu,
             onGitHubRuannuo = onGitHubRuannuo,
+            onGitHubJixing = onGitHubJixing,
             onRewardCode = { showRewardCode = true },
             modifier = Modifier
                 .align(Alignment.CenterEnd)
@@ -1253,7 +1263,8 @@ private fun MainTopBar(
     timetableTitle: String,
     timetableName: String,
     showTimetableName: Boolean,
-    timetableOptions: List<Timetable>,
+    timetableOptions: List<DisplayScopeResolver.ScopeOption>,
+    currentScope: DisplayScope?,
     onTimetableSelected: (Int) -> Unit,
     themeIcon: Int,
     wallpaperAlpha: Float,
@@ -1312,6 +1323,7 @@ private fun MainTopBar(
                 name = timetableName,
                 showName = showTimetableName,
                 timetableOptions = timetableOptions,
+                currentScope = currentScope,
                 onTimetableSelected = onTimetableSelected,
                 titleColor = titleColor,
                 onWallpaper = onWallpaper,
@@ -1357,7 +1369,8 @@ private fun TimetableToolbarTitle(
     title: String,
     name: String,
     showName: Boolean,
-    timetableOptions: List<Timetable>,
+    timetableOptions: List<DisplayScopeResolver.ScopeOption>,
+    currentScope: DisplayScope?,
     onTimetableSelected: (Int) -> Unit,
     titleColor: Color = MaterialTheme.colorScheme.onSurface,
     onWallpaper: () -> Unit,
@@ -1440,9 +1453,30 @@ private fun TimetableToolbarTitle(
                     expanded = nameMenuExpanded && timetableOptions.isNotEmpty(),
                     onDismissRequest = { nameMenuExpanded = false }
                 ) {
-                    timetableOptions.forEachIndexed { i, tt ->
+                    timetableOptions.forEachIndexed { i, option ->
+                        val isCurrent = option.scope == currentScope
                         DropdownMenuItem(
-                            text = { Text(tt.name.orEmpty()) },
+                            text = {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text(
+                                        option.name,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                        fontWeight = if (isCurrent) FontWeight.Bold else FontWeight.Normal,
+                                        color = if (isCurrent) MaterialTheme.colorScheme.primary
+                                            else MaterialTheme.colorScheme.onSurface,
+                                        modifier = Modifier.weight(1f, fill = false)
+                                    )
+                                    if (option.memberCount > 1) {
+                                        Spacer(Modifier.width(6.dp))
+                                        Text(
+                                            stringResource(R.string.timetable_group_member_count, option.memberCount),
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+                                }
+                            },
                             onClick = {
                                 nameMenuExpanded = false
                                 onTimetableSelected(i)
@@ -1888,6 +1922,7 @@ private fun MainDrawer(
     onGitHubProject: () -> Unit,
     onGitHubMingyu: () -> Unit,
     onGitHubRuannuo: () -> Unit,
+    onGitHubJixing: () -> Unit,
     onRewardCode: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -2093,6 +2128,17 @@ private fun MainDrawer(
                         color = MaterialTheme.colorScheme.primary,
                         fontSize = 13.sp,
                         modifier = Modifier.clickable(onClick = onGitHubRuannuo)
+                    )
+                    Text(
+                        text = " | ",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.3f),
+                        fontSize = 13.sp
+                    )
+                    Text(
+                        text = stringResource(R.string.main_drawer_developer_jixing),
+                        color = MaterialTheme.colorScheme.primary,
+                        fontSize = 13.sp,
+                        modifier = Modifier.clickable(onClick = onGitHubJixing)
                     )
                 }
                 Spacer(Modifier.height(10.dp))

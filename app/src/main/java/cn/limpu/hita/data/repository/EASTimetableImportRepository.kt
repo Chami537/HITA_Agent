@@ -50,6 +50,8 @@ internal class EASTimetableImportRepository(
     private val authEpoch: AtomicLong,
     private val autoImportInProgress: AtomicBoolean,
 ) {
+    private val database by lazy { cn.limpu.hita.data.AppDatabase.getDatabase(appContext) }
+
     private var timetableWebLiveData: LiveData<DataState<List<CourseItem>>>? = null
     fun startImportTimetableOfTerm(
         term: TermItem,
@@ -123,6 +125,7 @@ internal class EASTimetableImportRepository(
                                     timetableCode,
                                     legacyTimetableCode
                                 )
+                                val isNewTimetable = timetable == null
                                 if (timetable == null) {
                                     timetable = Timetable()
                                 }
@@ -343,23 +346,34 @@ internal class EASTimetableImportRepository(
                                         timetable,
                                         TimetableSnapshotKind.BEFORE_REFRESH
                                     )
-                                    eventItemDao.deleteCourseFromTimetable(timetable.id)
-                                    subjectDao.saveSubjectsSync(pendingSubjects.values.toList())
-                                    eventItemDao.saveEvents(events)
+                                    database.runInTransaction {
+                                        eventItemDao.deleteCourseFromTimetable(timetable.id)
+                                        subjectDao.saveSubjectsSync(pendingSubjects.values.toList())
+                                        eventItemDao.saveEvents(events)
 
-                                    //更新timetable对象
-                                    timetable.name = buildTimetableName(term, easToken.campus)
-                                    timetable.startTime = Timestamp(startDate.timeInMillis)
-                                    timetable.endTime = Timestamp(maxTs)
-                                    timetable.code = timetableCode
-                                    timetable.scheduleStructure = safeSchedule
-                                    timetableDao.saveTimetableSync(timetable)
+                                        // Preserve concurrently edited local display metadata.
+                                        val current = timetableDao.getTimetableByIdSync(timetable.id)
+                                        timetable.name = current?.name ?: buildTimetableName(term, easToken.campus)
+                                        timetable.groupId = current?.groupId
+                                        timetable.startTime = Timestamp(startDate.timeInMillis)
+                                        timetable.endTime = Timestamp(maxTs)
+                                        timetable.code = timetableCode
+                                        timetable.scheduleStructure = safeSchedule
+                                        timetableDao.saveTimetableSync(timetable)
+                                    }
                                     timetableSnapshotStore.capture(
                                         snapshotOwnerKey,
                                         term,
                                         timetable,
                                         TimetableSnapshotKind.IMPORTED
                                     )
+                                }
+                                // New tables can be created by either REPLACE or MERGE.
+                                if (isNewTimetable) {
+                                    runCatching {
+                                        TimetableRepository(appContext.applicationContext as android.app.Application)
+                                            .autoGroupAfterEasImportSync(timetable.id)
+                                    }.onFailure { LogUtils.e("import: auto-group failed", it) }
                                 }
                                 cleanupDefaultDuplicateTimetablesAfterImport(timetable.id)
 
@@ -518,34 +532,40 @@ internal class EASTimetableImportRepository(
             )
         }
 
-        val replacedSubjectIds = plan.replacedLocal.mapTo(HashSet()) { it.subjectId }
-        if (replacedSubjectIds.isNotEmpty()) {
-            eventItemDao.deleteEventsFromSubjectsSync(replacedSubjectIds.toList())
+        database.runInTransaction {
+            val replacedSubjectIds = plan.replacedLocal.mapTo(HashSet()) { it.subjectId }
+            if (replacedSubjectIds.isNotEmpty()) {
+                eventItemDao.deleteEventsFromSubjectsSync(replacedSubjectIds.toList())
+            }
+            if (plan.adopt.isNotEmpty()) {
+                val adoptSubjectIds = plan.adopt.mapTo(HashSet()) { it.subjectId }
+                subjectDao.saveSubjectsSync(plan.adopt.mapNotNull { pendingSubjects[it.subjectId] })
+                val adoptEvents = events.filter { it.subjectId in adoptSubjectIds }
+                val keptEvents = mutableListOf<EventItem>()
+                plan.partialMerges.forEach { partial ->
+                    localEvents
+                        .filter { it.subjectId == partial.subjectId }
+                        .filterTo(keptEvents) {
+                            TimetableRefreshMergePolicy.slotKeyOf(it) !in partial.incomingSlotKeys
+                        }
+                }
+                eventItemDao.saveEvents(adoptEvents + keptEvents)
+
+                val current = timetableDao.getTimetableByIdSync(timetable.id)
+                timetable.name = current?.name ?: timetableName
+                timetable.groupId = current?.groupId
+                timetable.startTime = Timestamp(startMillis)
+                timetable.code = timetableCode
+                timetable.scheduleStructure = schedule
+                val keptMax = localEvents
+                    .filterNot { it.subjectId in replacedSubjectIds }
+                    .maxOfOrNull { it.to.time }
+                    ?: 0L
+                timetable.endTime = Timestamp(maxOf(maxTs, keptMax))
+                timetableDao.saveTimetableSync(timetable)
+            }
         }
         if (plan.adopt.isNotEmpty()) {
-            val adoptSubjectIds = plan.adopt.mapTo(HashSet()) { it.subjectId }
-            subjectDao.saveSubjectsSync(plan.adopt.mapNotNull { pendingSubjects[it.subjectId] })
-            val adoptEvents = events.filter { it.subjectId in adoptSubjectIds }
-            val keptEvents = mutableListOf<EventItem>()
-            plan.partialMerges.forEach { partial ->
-                localEvents
-                    .filter { it.subjectId == partial.subjectId }
-                    .filterTo(keptEvents) {
-                        TimetableRefreshMergePolicy.slotKeyOf(it) !in partial.incomingSlotKeys
-                    }
-            }
-            eventItemDao.saveEvents(adoptEvents + keptEvents)
-
-            timetable.name = timetableName
-            timetable.startTime = Timestamp(startMillis)
-            timetable.code = timetableCode
-            timetable.scheduleStructure = schedule
-            val keptMax = localEvents
-                .filterNot { it.subjectId in replacedSubjectIds }
-                .maxOfOrNull { it.to.time }
-                ?: 0L
-            timetable.endTime = Timestamp(maxOf(maxTs, keptMax))
-            timetableDao.saveTimetableSync(timetable)
             timetableSnapshotStore.capture(
                 snapshotOwnerKey,
                 term,
@@ -622,9 +642,16 @@ internal class EASTimetableImportRepository(
         if (deleteIds.isEmpty()) return
 
         LogUtils.d("import: cleanup duplicate default timetables=$deleteIds")
-        timetableDao.deleteTimetablesInIdsSync(deleteIds)
-        eventItemDao.deleteEventsFromTimetablesSync(deleteIds)
-        subjectDao.deleteSubjectsFromTimetablesSync(deleteIds)
+        database.runInTransaction {
+            val groups = timetableDao.getTimetablesInIdsSync(deleteIds).mapNotNull { it.groupId }.distinct()
+            eventItemDao.deleteEventsFromTimetablesSync(deleteIds)
+            subjectDao.deleteSubjectsFromTimetablesSync(deleteIds)
+            timetableDao.deleteTimetablesInIdsSync(deleteIds)
+            val groupDao = database.timetableGroupDao()
+            groups.forEach { id ->
+                if (groupDao.countMembersSync(id) == 0) groupDao.deleteGroupByIdSync(id)
+            }
+        }
     }
 
     private fun importedClassEventIdentityKey(event: EventItem): String {

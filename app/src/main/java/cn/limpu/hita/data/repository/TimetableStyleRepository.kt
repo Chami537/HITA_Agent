@@ -26,6 +26,7 @@ const val KEY_CARD_OPACITY = "card_opacity"
 const val KEY_COURSE_BUBBLE_STYLE = "course_bubble_style"
 const val KEY_EVENING_HINT = "evening_hint"
 const val KEY_ZOOM_COMPRESSED = "zoom_compressed"
+const val KEY_FONT_SIZE_LEVEL = "font_size_level"
 
 @Singleton
 class TimetableStyleRepository @Inject constructor(application: Application) {
@@ -59,6 +60,9 @@ class TimetableStyleRepository @Inject constructor(application: Application) {
             ?: CourseBubbleStyle.SOLID.storageValue
     /** 课表缩放：false=放大（默认，现状）/ true=缩小（整天压缩一屏）。 */
     val zoomCompressedLiveData = timetableStyleSP.booleanLiveData(KEY_ZOOM_COMPRESSED, false)
+    /** 课程文字档位：0=默认 / 1=小字 / 2=大字。 */
+    val fontSizeLevelLiveData = timetableStyleSP.intLiveData(KEY_FONT_SIZE_LEVEL, 0)
+    fun fontSizeLevel(): Int = timetableStyleSP.getInt(KEY_FONT_SIZE_LEVEL, 0).coerceIn(0, 2)
     val wallpaperDateColorLiveData = MutableLiveData(Color.WHITE)
     val wallpaperLabelColorLiveData = MutableLiveData(Color.WHITE)
 
@@ -84,6 +88,7 @@ class TimetableStyleRepository @Inject constructor(application: Application) {
             usePeriodLabel = isPeriodLabelEnabled(),
             startTime = currentStartTime(),
             courseBubbleStyle = CourseBubbleStyle.fromStorage(courseBubbleStyleValue()),
+            fontSizeLevel = fontSizeLevel(),
         ).withCardOpacity(cardOpacity())
         sheet.addSource(startTimeLiveData) { start ->
             sheet.value = sheet.value?.copy(startTime = start)
@@ -107,6 +112,9 @@ class TimetableStyleRepository @Inject constructor(application: Application) {
             sheet.value = sheet.value?.copy(
                 courseBubbleStyle = CourseBubbleStyle.fromStorage(bubbleStyle)
             )
+        }
+        sheet.addSource(fontSizeLevelLiveData) { level ->
+            sheet.value = sheet.value?.copy(fontSizeLevel = level)
         }
         return sheet
     }

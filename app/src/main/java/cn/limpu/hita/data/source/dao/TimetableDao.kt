@@ -91,6 +91,9 @@ interface TimetableDao {
     @Query("SELECT * FROM timetable WHERE id is :id")
     fun getTimetableByIdSync(id: String): Timetable?
 
+    @Query("UPDATE timetable SET name = :name WHERE id = :id")
+    fun renameTimetableSync(id: String, name: String): Int
+
     /**
      *  获取所有使用默认名字的课表名字
      */

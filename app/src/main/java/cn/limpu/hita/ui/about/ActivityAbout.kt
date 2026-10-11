@@ -317,6 +317,19 @@ private fun AboutScreen(
                                 context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/orgs/HIT-A/people/StrayRN")))
                             }
                         )
+                        Text(
+                            text = " | ",
+                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.3f),
+                            fontSize = 13.sp
+                        )
+                        Text(
+                            text = stringResource(R.string.main_drawer_developer_jixing),
+                            color = MaterialTheme.colorScheme.primary,
+                            fontSize = 13.sp,
+                            modifier = Modifier.clickable {
+                                context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/purple3899")))
+                            }
+                        )
                     }
                     Spacer(Modifier.height(14.dp))
                     Text(

@@ -1,8 +1,10 @@
 # 离线课表分享交付说明
 
+> 2026-10-10 起课表管理与导入流程重构（口令可导入为我的课表、组合课表同屏），见 [timetable-display-management.md](timetable-display-management.md)。
+
 ## 入口与操作
 
-个人课表详情中的分享入口打开分享页。选择个人课表、填写昵称并选择完整或忙闲模式，生成后复制口令或通过系统分享发送。完整模式显示课程数和安排数；忙闲模式只显示合并后的占用时段数，切换模式会重新读取对应统计。修改表单会使旧结果失效，需要重新生成。分享的是生成时的快照，之后个人课表变化不会自动同步。
+个人课表详情中的分享入口打开分享页。选择个人课表、填写昵称并选择完整或忙闲模式，生成后复制口令或通过系统分享发送。完整模式显示课程数和安排数；忙闲模式只显示合并后的占用时段数，切换模式会重新读取对应统计。修改表单会使旧结果失效，需要重新生成。分享的是生成时的快照，之后个人课表变化不会自动同步。一次经系统分享发送多个口令时，若合并文本过长会自动改为发送 .txt 附件，避免超出系统 IPC 上限。
 
 课表管理页的好友课表入口提供导入、列表、备注和删除。粘贴包含一个口令的整段聊天文本，先检查昵称、学期、模式与安排预览，再确认导入。相同分享身份且内容相同直接打开已有快照；内容变化需确认替换，保留本地备注。如果预览后数据库状态已变化，重新显示确认预览。清空备注恢复昵称。删除只删除好友快照。好友详情只读，按 Asia/Shanghai 显示日期、周次和课程时间。
 
@@ -25,11 +27,11 @@ JSON 使用固定键和数组位置：
 
 FULL 保留实际出现的每条安排，不按周次推断。BUSY 去除课程和地点，并合并开始日期属于同一校园日、合并后不超过 24 小时的重叠及相邻时间段；因此 BUSY 的安排数可能少于 FULL。App 生成的 BUSY 快照将原课表名替换为固定“忙闲课表”；仍含昵称、学期信息、作息和时间，不是匿名数据。协议 t[0] 仍为课表名称字段，解码器保留合法输入值。字典与安排规范排序后生成 SHA-256 内容摘要，用于判断重复和更新。
 
-AppDatabase 从 14 升至 15，新增 `timetable_share_identity`（课表与学期联合主键、shareId 唯一索引）及 `friend_timetable`（shareId 主键、昵称、本地备注、学期范围、模式、快照 JSON、摘要和导入/更新时间）。保留历史 Room schema 和迁移链。分享 Repository 仅读取个人课表/安排，并写入独立身份表；好友 Repository 只访问好友表。编解码、数据库和快照构建使用 IO 协程。现有个人课表、提醒和编辑数据不通过好友导入写入。
+AppDatabase 从 14 升至 15，新增 `timetable_share_identity`（课表与学期联合主键、shareId 唯一索引）及 `friend_timetable`（shareId 主键、昵称、本地备注、学期范围、模式、快照 JSON、摘要和导入/更新时间）。保留历史 Room schema 和迁移链。（此后 15→16 新增组合课表 `timetable_group` 表与 `timetable.groupId` 索引，当前库版本为 16，见 [timetable-display-management.md](timetable-display-management.md)。）分享 Repository 仅读取个人课表/安排，并写入独立身份表；好友 Repository 只访问好友表。编解码、数据库和快照构建使用 IO 协程。现有个人课表、提醒和编辑数据不通过好友导入写入。
 
 ## 限制
 
-整段文本最多 131072 字符，单口令最多 65536 字符（含前缀），解压 JSON 最多 1048576 字节，JSON 深度最多 8。课程字典最多 512 项，安排最多 4096 项，作息最多 48 项；空课表不可生成。昵称为 1–40 个 Unicode 码点，课表名/学期名最多 80，课程名/地点最多 120。作息分钟范围 0–1440，开始小于结束、有序且不重叠。时间范围为校园时区 2000-01-01 至 2100-01-01（不含），学期不超过 370 天，单次安排不超过 24 小时。
+整段文本最多 131072 字符，单口令最多 65536 字符（含前缀），解压 JSON 最多 1048576 字节，JSON 深度最多 8。字符串在解析前做有界词法校验，拒绝字面量控制字符与非法转义。好友 ICS 导入按 8 MiB 上限流式读取，超限拒绝并提示文件过大。课程字典最多 512 项，安排最多 4096 项，作息最多 48 项；空课表不可生成。昵称为 1–40 个 Unicode 码点，课表名/学期名最多 80，课程名/地点最多 120。作息分钟范围 0–1440，开始小于结束、有序且不重叠。时间范围为校园时区 2000-01-01 至 2100-01-01（不含），学期不超过 370 天，单次安排不超过 24 小时。
 
 ## 合成长度测量（2026-10-09）
 
@@ -60,8 +62,19 @@ Debug APK 相对仓库路径：`app/build/outputs/apk/debug/app-debug.apk`。本
 
 Python `scripts/check_repository.py`、Git Bash `project_health_check.sh` 均退出 0。静态搜索新 feature/UI/两个分享 Repository 未发现口令日志、网络调用、GlobalScope 或 EventsUtils；个人 DAO 读取限定于分享 Repository，好友写入限定于好友 DAO。新增界面中文使用字符串资源。`git diff --check` 及新增文本的尾部空白检查通过；Git 的 CRLF 提示是行尾转换提示。
 
+## 2026-10-11 审查修复轮
+
+对协议、好友仓库、导出与确认链路做了系统性审查，确认并修复：
+
+- 内容相同（SAME）的预览统一走好友仓库事务确认；预览后快照被更新或删除会要求重新确认，不再直接打开过期内容。
+- 存储行经 `matchesSnapshot` 全量校验身份/昵称/模式/学期/摘要；损坏行拒绝详情读取与令牌/ICS 导出，重新导入视为修复更新并保留本地备注与导入时间。
+- 好友导入事务在写入前后检查协程取消，取消时整体回滚。
+- 好友 ICS 导入的 8 MiB 上限异常会被 ical4j 包装成通用解析错误，已解包还原为「文件过大」提示。
+
+验证：`testDebugUnitTest`、`assembleDebug`、`assembleDebugAndroidTest` 通过（新增 StrictShareJsonTest、FriendSnapshotValidationTest、SharedTimetableImporterTest 等 JVM 回归）；`:app:lintDebug` 仅剩 2 个 main 分支既有错误（livecourse 通知权限与 SubjectActivity 换行常量，与本分支无关）。新增插桩回归（FriendImportConfirmationInstrumentedTest、FriendTimetableInstrumentedTest 新用例、TimetableShareMigrationTest 14→15→16 链）已编译，未在设备执行。
+
 ## 尚未验证的验收项目
 
-本次 `adb devices` 列表为空，无设备或模拟器，未运行 connectedDebugAndroidTest、未安装 APK。Room 14→15 迁移和个人数据隔离已有设备测试源码并已编译，运行结果尚未验证。没有真实课表来源，深圳/本部/威海及手动课表的真实 FULL/BUSY 课程数、安排数、JSON/GZIP 字节和口令长度均尚未测量。
+2026-10-10 已在 OP5D0DL1（Android 37）跑通 FriendTimetableInstrumentedTest 6/6 与 TimetableShareMigrationTest（见 [timetable-comparison.md](timetable-comparison.md) 验证节）；2026-10-11 审查轮新增的插桩回归仅完成编译，尚未在设备执行。没有真实课表来源，深圳/本部/威海及手动课表的真实 FULL/BUSY 课程数、安排数、JSON/GZIP 字节和口令长度均尚未测量。
 
-仍需在授权测试设备上验收：两台设备通过微信发送整段消息、断网导入、更新确认、备注保留、重复导入和删除隔离；系统时区改为 New York 后仍按校园时间展示；旋转后的状态保留、导航、滚动、密集课表布局和长文案。构建与 JVM 测试不能代替上述设备验收。未发布 release，全部变更保留未提交供审阅。
+仍需在授权测试设备上验收：两台设备通过微信发送整段消息、断网导入、更新确认、备注保留、重复导入和删除隔离；系统时区改为 New York 后仍按校园时间展示；旋转后的状态保留、导航、滚动、密集课表布局和长文案。构建与 JVM 测试不能代替上述设备验收。

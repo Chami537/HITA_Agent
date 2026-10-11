@@ -10,6 +10,7 @@ import android.widget.RemoteViews
 import android.widget.RemoteViewsService
 import cn.limpu.hita.R
 import cn.limpu.hita.data.model.timetable.EventItem
+import cn.limpu.hita.data.repository.DisplayScopeResolver
 import cn.limpu.hita.data.repository.TimetableRepository
 import cn.limpu.hita.ui.widgets.WidgetThemeUtils
 import cn.limpu.hita.ui.widgets.today.slim.TodayWidgetSlim.Companion.EVENT_EXTRA2
@@ -76,11 +77,12 @@ internal class ListRemoteViewsSlimFactory(val mContext: Context, intent: Intent)
     }
 
     override fun onDataSetChanged() {
-        val timetableRepo =
-            TimetableRepository(mContext.applicationContext as Application)
-        // 确保数据库操作在后台线程执行
+        val app = mContext.applicationContext as Application
+        val timetableRepo = TimetableRepository(app)
+        // 确保数据库操作在后台线程执行；跟随主课表显示目标过滤。
         val events = runBlocking(Dispatchers.IO) {
-            timetableRepo.getTodayEventsSync()
+            val scopeIds = DisplayScopeResolver(app).currentSync()?.timetableIds.orEmpty()
+            timetableRepo.getTodayEventsSync(scopeIds)
         }
         mBeans.clear()
         mBeans.addAll(events.sortedBy { it.from.time })

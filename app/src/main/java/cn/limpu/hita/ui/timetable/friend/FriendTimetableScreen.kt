@@ -13,13 +13,17 @@ import cn.limpu.hita.ui.design.HitaTheme
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun FriendTimetableScreen(viewModel: FriendTimetableViewModel, onBack: () -> Unit) {
+fun FriendTimetableScreen(viewModel: FriendTimetableViewModel, onBack: () -> Unit,
+    onCompare: (cn.limpu.hita.data.model.timetable.share.FriendTimetableEntity) -> Unit) {
     val spacing = HitaTheme.tokens.spacing
     Scaffold(
         topBar = {
             TopAppBar(title = { Text(stringResource(R.string.friend_timetable_title)) },
                 navigationIcon = { TextButton(onClick = onBack) { Text(stringResource(R.string.friend_timetable_back)) } },
-                actions = { TextButton(onClick = viewModel::showImport) { Text(stringResource(R.string.friend_import_title)) } })
+                actions = {
+                    TextButton(onClick = viewModel::showExport) { Text(stringResource(R.string.export)) }
+                    TextButton(onClick = viewModel::showImport) { Text(stringResource(R.string.friend_import_title)) }
+                })
         }
     ) { padding ->
         LazyColumn(Modifier.fillMaxSize().padding(padding), contentPadding = PaddingValues(spacing.lg),
@@ -40,6 +44,7 @@ fun FriendTimetableScreen(viewModel: FriendTimetableViewModel, onBack: () -> Uni
                         Text(row.termName)
                         Text(stringResource(R.string.friend_list_updated, friendDate(row.updatedAt)))
                         Row {
+                            TextButton(onClick = { onCompare(row) }) { Text(stringResource(R.string.friend_compare_action)) }
                             TextButton(onClick = { viewModel.showRename(row) }) { Text(stringResource(R.string.friend_remark_title)) }
                             TextButton(onClick = { viewModel.showDelete(row) }) { Text(stringResource(R.string.friend_delete_title)) }
                         }

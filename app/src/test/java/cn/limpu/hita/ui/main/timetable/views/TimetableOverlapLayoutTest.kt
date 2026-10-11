@@ -50,7 +50,7 @@ class TimetableOverlapLayoutTest {
     }
 
     @Test
-    fun conflictCards_keepTheNonOverlappingTailOfAChainVisible() {
+    fun conflictCards_mergeOverlappingChainsIntoOneCard() {
         val first = event("first", day = 0, startHour = 9, startMinute = 0, endHour = 10, endMinute = 0)
         val second = event("second", day = 0, startHour = 9, startMinute = 30, endHour = 10, endMinute = 30)
         val third = event("third", day = 0, startHour = 10, startMinute = 0, endHour = 11, endMinute = 0)
@@ -59,9 +59,24 @@ class TimetableOverlapLayoutTest {
             TimetableOverlapLayout.arrange(listOf(first, second, third))
         )
 
-        assertEquals(listOf("first", "third"), cards.map { it.first.event.id })
-        assertEquals(listOf("first", "second"), cards.first().second?.map { it.id })
-        assertEquals(null, cards.last().second)
+        // 链式重叠传递合并为一张冲突卡，避免尾课与冲突卡互相压盖。
+        assertEquals(1, cards.size)
+        assertEquals(listOf("first", "second", "third"), cards.first().second?.map { it.id })
+    }
+
+    @Test fun conflictCardsKeepNestedChainsButSeparateTouchingTailAndNextDay() {
+        val outer = event("outer", 0, 8, 0, 12, 0)
+        val nested = event("nested", 0, 9, 0, 10, 0)
+        val tail = event("tail", 0, 11, 0, 13, 0)
+        val touching = event("touching", 0, 13, 0, 14, 0)
+        val nextDay = event("nextDay", 1, 9, 0, 10, 0)
+        val cards = TimetableOverlapLayout.conflictCards(
+            TimetableOverlapLayout.arrange(listOf(nextDay, touching, tail, nested, outer)))
+        assertEquals(3, cards.size)
+        assertEquals(listOf("outer", "nested", "tail"), cards[0].second?.map { it.id })
+        assertEquals("touching", cards[1].first.event.id)
+        assertEquals(null, cards[1].second)
+        assertEquals("nextDay", cards[2].first.event.id)
     }
 
     private fun event(

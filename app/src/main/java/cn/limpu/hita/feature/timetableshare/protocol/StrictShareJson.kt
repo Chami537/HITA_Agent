@@ -13,7 +13,8 @@ import java.time.temporal.ChronoUnit
 /** Token reading preserves duplicate-key and numeric-type checks before any tree mapping. */
 internal object StrictShareJson {
     fun decode(json: String): SharedTimetable {
-        if (json.toByteArray(Charsets.UTF_8).size > ShareLimits.JSON_BYTES) throw ShareFormatException(ShareError.DECOMPRESSED_TOO_LARGE)
+        if (json.length > ShareLimits.JSON_BYTES || json.toByteArray(Charsets.UTF_8).size > ShareLimits.JSON_BYTES) throw ShareFormatException(ShareError.DECOMPRESSED_TOO_LARGE)
+        validateStringSyntax(json)
         val root = try {
             JsonReader(StringReader(json)).use { reader ->
                 reader.isLenient = false
@@ -21,7 +22,7 @@ internal object StrictShareJson {
                 if (reader.peek() != JsonToken.END_DOCUMENT) invalidFields()
                 value
             }
-        } catch (e: ShareFormatException) { throw e } catch (_: java.io.IOException) { invalidFields() } catch (_: IllegalStateException) { invalidFields() }
+        } catch (e: ShareFormatException) { throw e } catch (_: java.io.IOException) { invalidFields() } catch (_: IllegalStateException) { invalidFields() } catch (_: NumberFormatException) { invalidFields() }
         if (!root.isJsonObject) invalidFields()
         val obj = root.asJsonObject
         val mode = when (string(obj.get("m"))) { "full" -> ShareMode.FULL; "busy" -> ShareMode.BUSY; else -> invalidFields() }
@@ -44,6 +45,37 @@ internal object StrictShareJson {
         }
         return validate(SharedTimetable(string(obj.get("id")), string(obj.get("n")), mode,
             SharedTerm(string(term[0]), string(term[1]), number(term[2]), number(term[3]), string(term[4])), periods, courses, occurrences))
+    }
+
+    // JsonReader's non-lenient legacy mode still accepts raw control characters,
+    // escaped apostrophes and backslash-newline inside quoted strings.
+    private fun validateStringSyntax(json: String) {
+        var quoted = false
+        var i = 0
+        while (i < json.length) {
+            val c = json[i++]
+            if (!quoted) {
+                if (c == '"') quoted = true
+            } else when {
+                c == '"' -> quoted = false
+                c.code < 0x20 -> invalidFields()
+                c == '\\' -> {
+                    if (i == json.length) invalidFields()
+                    when (json[i++]) {
+                        '"', '\\', '/', 'b', 'f', 'n', 'r', 't' -> Unit
+                        'u' -> {
+                            if (json.length - i < 4) invalidFields()
+                            repeat(4) {
+                                val hex = json[i++]
+                                if (hex !in '0'..'9' && hex !in 'a'..'f' && hex !in 'A'..'F') invalidFields()
+                            }
+                        }
+                        else -> invalidFields()
+                    }
+                }
+            }
+        }
+        if (quoted) invalidFields()
     }
 
     private fun read(reader: JsonReader, depth: Int): JsonElement {

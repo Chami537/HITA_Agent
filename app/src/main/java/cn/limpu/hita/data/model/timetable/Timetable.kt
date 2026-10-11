@@ -1,12 +1,13 @@
 package cn.limpu.hita.data.model.timetable
 
 import androidx.room.Entity
+import androidx.room.Index
 import androidx.room.PrimaryKey
 import cn.limpu.hita.ui.main.timetable.TimetableFragment.Companion.WEEK_MILLS
 import java.sql.Timestamp
 import java.util.*
 
-@Entity(tableName = "timetable")
+@Entity(tableName = "timetable", indices = [Index(value = ["groupId"])])
 class Timetable {
     @PrimaryKey
     var id: String = UUID.randomUUID().toString()
@@ -20,6 +21,8 @@ class Timetable {
             : Timestamp = Timestamp(0)
     var createdAt //创建时间
             : Timestamp = Timestamp(System.currentTimeMillis())
+    var groupId //所属组合课表;null = 独立课表
+            : String? = null
     var scheduleStructure: List<TimePeriodInDay> = getDefaultTimeStructure()//时间表结构
 
 

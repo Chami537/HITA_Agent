@@ -2,6 +2,7 @@ package cn.limpu.hita.agent.timetable
 
 import cn.limpu.hita.agent.core.AgentTool
 import cn.limpu.hita.agent.core.AgentToolResult
+import cn.limpu.hita.data.repository.DisplayScopeResolver
 import cn.limpu.hita.data.repository.TimetableRepository
 import cn.limpu.hita.utils.LogUtils
 import java.text.SimpleDateFormat
@@ -24,6 +25,7 @@ class GetLocalTimetableTool : AgentTool<TimetableAgentInput, TimetableAgentOutpu
             try {
                 val repository = TimetableRepository(input.application)
                 val sdf = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.CHINA)
+                var scopeName: String? = null
                 LogUtils.d("Query range: from=${sdf.format(input.fromMs ?: 0)}, to=${sdf.format(input.toMs ?: 0)}, timetableId=${input.timetableId}")
 
                 val events = if (input.timetableId != null) {
@@ -35,8 +37,11 @@ class GetLocalTimetableTool : AgentTool<TimetableAgentInput, TimetableAgentOutpu
                     LogUtils.d("Single timetable: ${timetable.name}")
                     repository.getEventsOfTimetableSync(timetable.id, input.fromMs, input.toMs)
                 } else {
-                    LogUtils.d("No timetableId, querying ALL timetables")
-                    repository.getEventsOfAllTimetablesSync(input.fromMs, input.toMs)
+                    // 跟随主课表显示目标(独立课表或组合课表),不再查全部课表。
+                    val scope = DisplayScopeResolver(input.application).currentSync()
+                    LogUtils.d("No timetableId, querying display scope: ${scope?.name}")
+                    scopeName = scope?.name
+                    repository.getEventsOfTimetablesSync(scope?.timetableIds.orEmpty(), input.fromMs, input.toMs)
                 }.sortedBy { it.from.time }
 
                 LogUtils.d("Found ${events.size} events")
@@ -49,7 +54,7 @@ class GetLocalTimetableTool : AgentTool<TimetableAgentInput, TimetableAgentOutpu
                         TimetableAgentOutput(
                             action = input.action,
                             timetableId = events.firstOrNull()?.timetableId ?: "",
-                            timetableName = "全部课表",
+                            timetableName = scopeName ?: "全部课表",
                             events = events.map {
                                 TimetableEventSnapshot(
                                     id = it.id,

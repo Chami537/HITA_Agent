@@ -43,9 +43,9 @@ object TimetableOverlapLayout {
     /**
      * Groups events that are on screen at the same time into one conflict card.
      *
-     * A chain where A overlaps B and B overlaps C, but A does not overlap C, must not
-     * become a single card: C would be hidden even though it does not conflict with A.
-     * Events that never share a moment stay ordinary cards, including a chain tail.
+     * 传递合并：凡与簇的并集区间相交的课程都并入同一冲突卡。链式重叠
+     * （A叠B、B叠C、A不叠C）也合成一张卡——否则 C 会与冲突卡的并集区间重叠绘制，
+     * 两张卡互相压盖。卡内课程点击列表全部可见，不会真正隐藏任何一门。
      */
     fun conflictCards(arranged: List<PositionedEvent>, dayOfWeek: (EventItem) -> Int = { it.getDow() }): List<Pair<PositionedEvent, List<EventItem>?>> {
         val result = mutableListOf<Pair<PositionedEvent, List<EventItem>?>>()
@@ -58,15 +58,14 @@ object TimetableOverlapLayout {
                 continue
             }
             val cluster = mutableListOf(current)
+            val dow = dayOfWeek(current.event)
+            var unionEnd = current.event.to.time
             var nextIndex = index + 1
             while (nextIndex < arranged.size) {
                 val next = arranged[nextIndex]
-                if (dayOfWeek(next.event) != dayOfWeek(current.event) || next.overlapCount <= 1) break
-                val overlapsEveryMember = cluster.all { member ->
-                    intervalsOverlap(member.event, next.event)
-                }
-                if (!overlapsEveryMember) break
+                if (dayOfWeek(next.event) != dow || next.event.from.time >= unionEnd) break
                 cluster += next
+                unionEnd = maxOf(unionEnd, next.event.to.time)
                 nextIndex++
             }
             result += if (cluster.size == 1) {
@@ -78,9 +77,6 @@ object TimetableOverlapLayout {
         }
         return result
     }
-
-    private fun intervalsOverlap(left: EventItem, right: EventItem): Boolean =
-        left.from.time < right.to.time && right.from.time < left.to.time
 
     private fun splitIntoClusters(events: List<EventItem>): List<Cluster> {
         if (events.isEmpty()) {

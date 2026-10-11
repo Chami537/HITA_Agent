@@ -63,6 +63,9 @@ class TimetableComparisonViewModel @Inject constructor(
 
     fun retry() { (config.value ?: restored)?.let { enable(it) } }
 
+    fun ownCourseChoices(timetableId: String): kotlinx.coroutines.flow.Flow<List<cn.limpu.hita.feature.timetablecompare.ComparisonCourseChoice>> =
+        repository.ownCourseChoices(timetableId)
+
     private fun disableWithError(resource: Int) {
         disable()
         session.disable(ComparisonUiState.Error(resource))
@@ -73,7 +76,14 @@ class TimetableComparisonViewModel @Inject constructor(
         val request = session.reload(config, week)
         job = viewModelScope.launch {
             try {
-                repository.observe(config.personalId, config.friendId).collectLatest { source ->
+                repository.observe(
+                    config.selectedPersonalIds,
+                    config.selectedFriendIds,
+                    config.excludedOwnCourses,
+                    config.excludedFriendCourses,
+                    config.personalGroupIds,
+                    config.excludedFriendCourseKeys,
+                ).collectLatest { source ->
                     // A continuous emission replaces the prior result even while computing.
                     if (!session.accept(request, ComparisonUiState.Loading)) return@collectLatest
                     when (source) {
@@ -87,9 +97,13 @@ class TimetableComparisonViewModel @Inject constructor(
                         ComparisonSourceState.Incompatible -> session.accept(request,
                             ComparisonUiState.Error(R.string.comparison_incompatible_periods))
                         is ComparisonSourceState.Ready -> {
+                            val ready = source.source
                             val result = withContext(Dispatchers.Default) {
-                                engine.compare(source.source.own, source.source.friend,
-                                    ComparisonRequest(week, config.startMinute, config.endMinute))
+                                engine.compareAll(
+                                    ready.own,
+                                    ready.participatingFriends().map { it.schedule },
+                                    ComparisonRequest(week, config.startMinute, config.endMinute),
+                                )
                             }
                             val next = when {
                                 result.days.all { it.slots.isEmpty() } ->

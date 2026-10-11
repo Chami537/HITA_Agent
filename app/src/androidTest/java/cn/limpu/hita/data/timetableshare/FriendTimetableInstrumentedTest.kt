@@ -174,4 +174,120 @@ class FriendTimetableInstrumentedTest {
             }
         } finally { db.close() }
     }
+    @Test fun localSnapshotUpdatesRequireExplicitConfirmationAndKeepRemark() = runBlocking {
+        val db = database()
+        try {
+            val repo = FriendTimetableRepository(db)
+            val first = fullFixture()
+            assertTrue(repo.importSnapshot(first) is FriendSaveResult.Saved)
+            repo.rename(first.shareId, "本地备注")
+            val original = db.friendTimetableDao().getSync(first.shareId)!!
+            assertTrue(repo.importSnapshot(first.copy(shareId = first.shareId.uppercase())) is FriendSaveResult.Unchanged)
+            val replacement = first.copy(nickname = "新文件内容")
+            val pending = repo.importSnapshot(replacement) as FriendSaveResult.NeedsConfirmation
+            assertEquals(ImportKind.UPDATE, pending.preview.kind)
+            assertEquals(original, db.friendTimetableDao().getSync(first.shareId))
+            assertTrue(repo.confirm(pending.preview) is FriendSaveResult.Saved)
+            val updated = db.friendTimetableDao().getSync(first.shareId)!!
+            assertEquals(replacement.nickname, updated.nickname)
+            assertEquals(original.remark, updated.remark)
+            assertEquals(original.importedAt, updated.importedAt)
+        } finally { db.close() }
+    }
+
+    @Test fun corruptedStoredMetadataCannotBeReadOrExportedAndValidImportRepairsIt() = runBlocking {
+        val db = database()
+        try {
+            val repo = FriendTimetableRepository(db)
+            val exports = TimetableExportRepository(db, ApplicationProvider.getApplicationContext())
+            val codec = TimetableShareCodec()
+            val snapshot = fullFixture()
+            val token = codec.encode(snapshot)
+            repo.confirm(repo.preview(token))
+            repo.rename(snapshot.shareId, "保留备注")
+            val valid = db.friendTimetableDao().getSync(snapshot.shareId)!!
+            val corruptions = listOf(
+                valid.copy(mode = ShareMode.BUSY.name),
+                valid.copy(nickname = "另一个人"),
+                valid.copy(termName = "另一个学期"),
+                valid.copy(startMillis = valid.startMillis + 1),
+                valid.copy(endMillis = valid.endMillis - 1),
+                valid.copy(contentDigest = "0".repeat(64)),
+                valid.copy(snapshotJson = codec.canonicalJson(snapshot.copy(shareId = UUID.randomUUID().toString()))),
+                valid.copy(snapshotJson = "{broken"),
+            )
+            for (corrupt in corruptions) {
+                db.friendTimetableDao().updateSync(corrupt)
+                try { repo.readSnapshot(corrupt); fail("must reject stored corruption") }
+                catch (e: ShareFormatException) { assertEquals(ShareError.INVALID_FIELDS, e.error) }
+                try { repo.exportTokens(listOf(snapshot.shareId)); fail("must not export corrupt friend") }
+                catch (_: ShareFormatException) { }
+                try { exports.friendIcs(listOf(snapshot.shareId)); fail("must not export corrupt friend as ICS") }
+                catch (_: ShareFormatException) { }
+                val repair = repo.preview(token)
+                assertEquals(ImportKind.UPDATE, repair.kind)
+                assertEquals(valid.remark, repair.existingRemark)
+                assertTrue(repo.confirm(repair) is FriendSaveResult.Saved)
+                val repaired = db.friendTimetableDao().getSync(snapshot.shareId)!!
+                assertEquals(snapshot, repo.readSnapshot(repaired))
+                assertEquals(valid.remark, repaired.remark)
+                assertEquals(valid.importedAt, repaired.importedAt)
+            }
+        } finally { db.close() }
+    }
+
+    @Test fun samePreviewCannotSilentlyOverwriteCorruptionIntroducedAfterPreview() = runBlocking {
+        val db = database()
+        try {
+            val repo = FriendTimetableRepository(db)
+            val token = TimetableShareCodec().encode(fullFixture())
+            repo.confirm(repo.preview(token))
+            val preview = repo.preview(token)
+            assertEquals(ImportKind.SAME, preview.kind)
+            val row = db.friendTimetableDao().getSync(preview.snapshot.shareId)!!
+            val corrupt = row.copy(mode = ShareMode.BUSY.name)
+            db.friendTimetableDao().updateSync(corrupt)
+            val pending = repo.confirm(preview) as FriendSaveResult.NeedsConfirmation
+            assertEquals(ImportKind.UPDATE, pending.preview.kind)
+            assertEquals(corrupt, db.friendTimetableDao().getSync(row.shareId))
+            assertTrue(repo.confirm(pending.preview) is FriendSaveResult.Saved)
+            assertEquals(fullFixture(), repo.readSnapshot(db.friendTimetableDao().getSync(row.shareId)!!))
+        } finally { db.close() }
+    }
+
+    @Test fun cancellationDuringDatabaseReadDoesNotCommitImport() = runBlocking {
+        val entered = java.util.concurrent.CountDownLatch(1)
+        val release = java.util.concurrent.CountDownLatch(1)
+        val intercept = java.util.concurrent.atomic.AtomicBoolean(false)
+        val db = Room.inMemoryDatabaseBuilder(
+            ApplicationProvider.getApplicationContext<Context>(), AppDatabase::class.java)
+            .setQueryCallback(object : androidx.room.RoomDatabase.QueryCallback {
+                override fun onQuery(sqlQuery: String, bindArgs: List<Any?>) {
+                    if (sqlQuery.startsWith("SELECT * FROM friend_timetable WHERE") && intercept.compareAndSet(true, false)) {
+                        entered.countDown()
+                        check(release.await(10, java.util.concurrent.TimeUnit.SECONDS))
+                    }
+                }
+            }, java.util.concurrent.Executor { it.run() })
+            .build()
+        var pending: kotlinx.coroutines.Deferred<FriendSaveResult>? = null
+        try {
+            val repo = FriendTimetableRepository(db)
+            val preview = repo.preview(TimetableShareCodec().encode(fullFixture()))
+            intercept.set(true)
+            pending = async(kotlinx.coroutines.Dispatchers.IO) { repo.confirm(preview) }
+            assertTrue(entered.await(10, java.util.concurrent.TimeUnit.SECONDS))
+            pending.cancel()
+            release.countDown()
+            try { pending.await(); fail("must propagate cancellation") }
+            catch (_: kotlinx.coroutines.CancellationException) { }
+            pending.join()
+            assertNull(db.friendTimetableDao().getSync(preview.snapshot.shareId))
+        } finally {
+            release.countDown()
+            pending?.cancel()
+            pending?.join()
+            db.close()
+        }
+    }
 }

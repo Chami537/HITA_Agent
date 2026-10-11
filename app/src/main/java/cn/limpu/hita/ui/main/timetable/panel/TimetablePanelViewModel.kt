@@ -18,6 +18,7 @@ import cn.limpu.hita.data.repository.KEY_WALLPAPER_SCRIM
 import cn.limpu.hita.data.repository.KEY_COURSE_BUBBLE_STYLE
 import cn.limpu.hita.data.repository.KEY_EVENING_HINT
 import cn.limpu.hita.data.repository.KEY_ZOOM_COMPRESSED
+import cn.limpu.hita.data.repository.KEY_FONT_SIZE_LEVEL
 import cn.limpu.hita.ui.main.timetable.CourseBubbleStyle
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
@@ -46,6 +47,12 @@ class TimetablePanelViewModel @Inject constructor(
         get() = timetableStyleRepository.eveningHintLiveData
     val zoomCompressedLiveData: SharedPreferenceBooleanLiveData
         get() = timetableStyleRepository.zoomCompressedLiveData
+    val fontSizeLevelLiveData: SharedPreferenceIntLiveData
+        get() = timetableStyleRepository.fontSizeLevelLiveData
+    fun fontSizeLevel(): Int = timetableStyleRepository.fontSizeLevel()
+    fun setFontSizeLevel(level: Int) {
+        timetableStyleRepository.putData(KEY_FONT_SIZE_LEVEL, level.coerceIn(0, 2))
+    }
     val autoReimportLiveData: SharedPreferenceBooleanLiveData
         get() = easSettingsRepository.autoReimportLiveData
     val scrimOpacityLiveData: SharedPreferenceIntLiveData

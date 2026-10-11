@@ -163,6 +163,7 @@ class EventItem :Serializable,Comparable<EventItem>{
         const val SOURCE_MANUAL = "MANUAL"
         const val SOURCE_AGENT = "AGENT"
         const val SOURCE_ICS_IMPORT = "ICS_IMPORT"
+        const val SOURCE_SHARE_IMPORT = "SHARE_IMPORT"
         const val SOURCE_FOLLOWED_SCHOOL = "FOLLOWED_SCHOOL"
         const val SOURCE_COURSE_PLAN = "COURSE_PLAN"
 

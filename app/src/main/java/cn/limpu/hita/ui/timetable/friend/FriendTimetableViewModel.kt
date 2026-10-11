@@ -14,7 +14,10 @@ import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 @HiltViewModel
-class FriendTimetableViewModel @Inject constructor(private val repository: FriendTimetableRepository) : ViewModel() {
+class FriendTimetableViewModel @Inject constructor(
+    private val repository: FriendTimetableRepository,
+    private val exportRepository: cn.limpu.hita.data.repository.TimetableExportRepository,
+) : ViewModel() {
     var friends by mutableStateOf<List<FriendTimetableEntity>>(emptyList()); private set
     var listLoading by mutableStateOf(true); private set
     var listError by mutableStateOf(false); private set
@@ -26,6 +29,46 @@ class FriendTimetableViewModel @Inject constructor(private val repository: Frien
     var deleteRow by mutableStateOf<FriendTimetableEntity?>(null); private set
     var managing by mutableStateOf(false); private set
     var managementError by mutableStateOf(false); private set
+
+    // 导出：面板勾选 → 口令弹层 / ICS 文件分享。
+    var exportOpen by mutableStateOf(false); private set
+    var exportBusy by mutableStateOf(false); private set
+    var exportedTokens by mutableStateOf<List<Pair<String, String>>?>(null); private set
+    var exportedIcs by mutableStateOf<List<java.io.File>?>(null); private set
+    var exportFailed by mutableStateOf(false); private set
+
+    fun showExport() { exportOpen = true; exportFailed = false }
+    fun dismissExport() { if (!exportBusy) exportOpen = false }
+    fun dismissExportedTokens() { exportedTokens = null }
+    fun dismissExportFailed() { exportFailed = false }
+
+    fun exportTokens(shareIds: List<String>) {
+        if (exportBusy || shareIds.isEmpty()) return
+        exportBusy = true
+        viewModelScope.launch {
+            try {
+                exportedTokens = repository.exportTokens(shareIds)
+                exportOpen = false
+            } catch (e: CancellationException) { throw e
+            } catch (e: Exception) { exportFailed = true
+            } finally { exportBusy = false }
+        }
+    }
+
+    fun exportIcs(shareIds: List<String>) {
+        if (exportBusy || shareIds.isEmpty()) return
+        exportBusy = true
+        viewModelScope.launch {
+            try {
+                exportedIcs = exportRepository.friendIcs(shareIds)
+                exportOpen = false
+            } catch (e: CancellationException) { throw e
+            } catch (e: Exception) { exportFailed = true
+            } finally { exportBusy = false }
+        }
+    }
+
+    fun consumeExportedIcs(): List<java.io.File>? = exportedIcs.also { exportedIcs = null }
     private var parsing: Job? = null
     private var observing: Job? = null
     init { retryList() }
@@ -53,7 +96,6 @@ class FriendTimetableViewModel @Inject constructor(private val repository: Frien
     fun confirm() {
         if (!form.canConfirm) return
         val current = form; val preview = current.preview ?: return
-        if (preview.kind == ImportKind.SAME) { openShareId = preview.snapshot.shareId; importOpen = false; return }
         form = current.beginSave()
         viewModelScope.launch {
             try {

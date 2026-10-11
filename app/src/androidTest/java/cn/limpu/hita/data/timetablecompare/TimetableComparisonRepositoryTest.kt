@@ -174,4 +174,109 @@ class TimetableComparisonRepositoryTest {
             assertEquals(ComparisonSourceState.Invalid, read(db))
         } finally { db.close() }
     }
+
+    @Test fun invalidExcludedLocalClassStillCannotBecomeFree() = runBlocking {
+        val db = database()
+        try {
+            seed(db)
+            db.eventItemDao().updateEventSync(event("a", "A").apply {
+                subjectId = "excluded"; to = from
+            })
+            val state = withTimeout(5000) {
+                TimetableComparisonRepository(db).observe(listOf("A"), listOf(friendId),
+                    mapOf("A" to setOf("excluded")), emptyMap()).first()
+            }
+            assertEquals(ComparisonSourceState.Invalid, state)
+        } finally { db.close() }
+    }
+
+    @Test fun groupMembershipAndNewMemberCoursesRemainReactive(): Unit = runBlocking {
+        val db = database()
+        try {
+            seed(db)
+            db.timetableGroupDao().saveGroupSync(TimetableGroupEntity().apply { id = "group"; name = "group"; createdAt = 1 })
+            db.timetableGroupDao().setTimetableGroupSync("A", "group")
+            val updates = Channel<ComparisonSourceState>(Channel.UNLIMITED)
+            val job = launch {
+                TimetableComparisonRepository(db).observe(emptyList(), listOf(friendId),
+                    emptyMap(), emptyMap(), listOf("group")).collect { updates.send(it) }
+            }
+            suspend fun awaitState(predicate: (ComparisonSourceState) -> Boolean): ComparisonSourceState = withTimeout(5000) {
+                var state = updates.receive()
+                while (!predicate(state)) state = updates.receive()
+                state
+            }
+            try {
+                awaitState { it is ComparisonSourceState.Ready && it.source.ownCourses.map { e -> e.id } == listOf("a") }
+                db.timetableGroupDao().setTimetableGroupSync("B", "group")
+                awaitState { it is ComparisonSourceState.Ready && it.source.ownCourses.size == 2 }
+                val changed = event("b", "B").apply { to = Timestamp(monday + 11 * 3600000L) }
+                db.eventItemDao().updateEventSync(changed)
+                awaitState { it is ComparisonSourceState.Ready && it.source.ownCourses.any { e -> e.id == "b" && e.to == changed.to } }
+                db.timetableGroupDao().setTimetableGroupSync("A", null)
+                awaitState { it is ComparisonSourceState.Ready && it.source.ownCourses.map { e -> e.id } == listOf("b") }
+                db.timetableGroupDao().deleteGroupByIdSync("group")
+                awaitState { it == ComparisonSourceState.MissingOwn }
+            } finally { job.cancelAndJoin(); updates.close() }
+        } finally { db.close() }
+    }
+
+    @Test fun multiTableUnionKeepsExactIntersectionValidityAndIndependentFilters() = runBlocking {
+        val db = database()
+        try {
+            seed(db)
+            db.timetableDao().saveTimetableSync(table("B").apply { startTime = Timestamp(monday + 9 * 3600000L) })
+            db.eventItemDao().updateEventSync(event("a", "A").apply { subjectId = "math" })
+            db.eventItemDao().updateEventSync(event("b", "B").apply { subjectId = "math" })
+            val source = withTimeout(5000) {
+                (TimetableComparisonRepository(db).observe(listOf("A", "B"), listOf(friendId),
+                    mapOf("A" to setOf("math")), emptyMap()).first() as ComparisonSourceState.Ready).source
+            }
+            assertEquals(listOf("b"), source.ownCourses.map { it.id })
+            val day = TimetableComparisonEngine().compareAll(source.own,
+                source.participatingFriends().map { it.schedule }, ComparisonRequest(monday)).days.first()
+            assertEquals(PeriodStatus.UNKNOWN, day.slots.first().status)
+            assertEquals(monday + 9 * 3600000L, source.own.valid.startMillis)
+        } finally { db.close() }
+    }
+
+    @Test fun mismatchedBusyMetadataCannotExposeFullSnapshotInComparison() = runBlocking {
+        val db = database()
+        try {
+            seed(db)
+            db.friendTimetableDao().updateSync(row().copy(mode = ShareMode.BUSY.name))
+            assertEquals(ComparisonSourceState.Invalid, read(db))
+            val menu = cn.limpu.hita.ui.main.timetable.compare.readFriendCourseMenu(row().copy(mode = ShareMode.BUSY.name))
+            assertFalse(menu.valid)
+            assertTrue(menu.courses.isEmpty())
+        } finally { db.close() }
+    }
+
+    @Test fun namedFriendFiltersFollowDictionaryIndexesAfterReplacement(): Unit = runBlocking {
+        val db = database()
+        try {
+            seed(db)
+            val updates = Channel<ComparisonSourceState>(Channel.UNLIMITED)
+            val job = launch {
+                TimetableComparisonRepository(db).observe(listOf("A"), listOf(friendId),
+                    emptyMap(), emptyMap(), excludedFriendCourseKeys = mapOf(friendId to setOf("0:math")))
+                    .collect { updates.send(it) }
+            }
+            suspend fun awaitReady(predicate: (ComparisonSource) -> Boolean) = withTimeout(5000) {
+                var state = updates.receive()
+                while (state !is ComparisonSourceState.Ready || !predicate(state.source)) state = updates.receive()
+                (state as ComparisonSourceState.Ready).source
+            }
+            try {
+                val first = awaitReady { it.friend.occupied.isEmpty() }
+                assertEquals(setOf(0), first.friends.single().excludedCourseIndexes)
+                val updated = snapshot().copy(courses = listOf("biology", "math"), occurrences = listOf(
+                    SharedOccurrence(monday + 9 * 3600000L, monday + 10 * 3600000L, 1)))
+                db.friendTimetableDao().updateSync(row(updated))
+                val next = awaitReady { it.friendSnapshot.courses.size == 2 }
+                assertTrue(next.friend.occupied.isEmpty())
+                assertEquals(setOf(1), next.friends.single().excludedCourseIndexes)
+            } finally { job.cancelAndJoin(); updates.close() }
+        } finally { db.close() }
+    }
 }

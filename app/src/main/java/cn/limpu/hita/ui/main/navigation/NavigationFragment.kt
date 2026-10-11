@@ -62,7 +62,6 @@ import cn.limpu.hita.data.analytics.UsageAnalyticsClient
 import cn.limpu.hita.data.analytics.UsageAnalyticsEvent
 import cn.limpu.hita.data.model.eas.EASToken
 import cn.limpu.hita.data.repository.EASRepository
-import cn.limpu.hita.data.repository.TimetableRepository
 import cn.limpu.hita.data.source.preference.CourseReminderStore
 import cn.limpu.hita.data.work.CourseReminderScheduler
 import cn.limpu.hita.feature.livecourse.guard.LiveCourseGuardService
@@ -83,14 +82,12 @@ import cn.limpu.hita.ui.eas.classroom.EmptyClassroomActivity
 import cn.limpu.hita.ui.eas.catalog.ShenzhenCourseCatalogActivity
 import cn.limpu.hita.ui.eas.exam.ExamActivity
 import cn.limpu.hita.ui.eas.grade.ShenzhenGradeAnalysisActivity
-import cn.limpu.hita.ui.eas.imp.ImportTimetableActivity
 import cn.limpu.hita.ui.notice.AppNoticesActivity
 import cn.limpu.hita.ui.links.UsefulLinksActivity
 import cn.limpu.hita.ui.eas.login.PopUpLoginEAS
 import cn.limpu.hita.ui.eas.score.ScoreInquiryActivity
 import cn.limpu.hita.utils.ActivityUtils
 import cn.limpu.hita.utils.ActivityUtils.CourseResourceMode
-import cn.limpu.hita.utils.IcsImportUtils
 import com.limpu.hitauser.data.model.UserLocal
 import com.limpu.hitauser.data.repository.LocalUserRepository
 import com.limpu.hitauser.util.ImageUtils
@@ -102,7 +99,6 @@ class NavigationFragment : androidx.fragment.app.Fragment() {
 
     @Inject lateinit var localUserRepository: LocalUserRepository
     @Inject lateinit var easRepository: EASRepository
-    @Inject lateinit var timetableRepository: TimetableRepository
 
     private val viewModel: NavigationViewModel by viewModels()
     private var reminderEnabledState by mutableStateOf(false)
@@ -115,10 +111,6 @@ class NavigationFragment : androidx.fragment.app.Fragment() {
         ActivityResultContracts.GetContent()
     ) { uri: Uri? ->
         uri?.let { saveAvatarLocally(it) }
-    }
-
-    private val selectIcsLauncher = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? ->
-        uri?.let { importICS(it) }
     }
 
     private val notificationPermissionLauncher = registerForActivityResult(
@@ -178,15 +170,6 @@ class NavigationFragment : androidx.fragment.app.Fragment() {
                         onAvatarClick = { showAvatarPicker() },
                         onUserClick = { openUserCard() },
                         onTimetableManager = { ActivityUtils.startTimetableManager(requireContext()) },
-                        onRecentTimetable = {
-                            viewModel.recentTimetableLiveData.value?.let {
-                                ActivityUtils.startTimetableDetailActivity(requireContext(), it.id)
-                            }
-                        },
-                        onImportTimetable = {
-                            ActivityUtils.startActivity(requireContext(), ImportTimetableActivity::class.java)
-                        },
-                        onImportIcs = { selectIcsLauncher.launch(IcsImportUtils.pickerMimeTypes()) },
                         onExam = { openExam() },
                         onScores = { ActivityUtils.startActivity(requireContext(), ScoreInquiryActivity::class.java) },
                         onGradeAnalysis = {
@@ -336,42 +319,6 @@ class NavigationFragment : androidx.fragment.app.Fragment() {
         }
     }
 
-    private fun importICS(uri: Uri) {
-        val context = requireContext()
-        try {
-            context.contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
-        } catch (_: SecurityException) {
-        }
-
-        try {
-            val inputStream = context.contentResolver.openInputStream(uri)
-            if (inputStream == null) {
-                Toast.makeText(context, "无法读取所选 ICS 文件", Toast.LENGTH_SHORT).show()
-                return
-            }
-            timetableRepository.importFromICSAsNewTimetable(inputStream, IcsImportUtils.getDisplayName(context, uri))
-                .observe(viewLifecycleOwner) { result ->
-                    when (result.state) {
-                        com.limpu.component.data.DataState.STATE.SUCCESS -> {
-                            val importResult = result.data ?: return@observe
-                            Toast.makeText(
-                                context,
-                                "已创建课表“${importResult.timetableName}”，导入 ${importResult.importedCount} 个课程",
-                                Toast.LENGTH_SHORT
-                            ).show()
-                            ActivityUtils.startTimetableDetailActivity(context, importResult.timetableId)
-                        }
-                        com.limpu.component.data.DataState.STATE.FETCH_FAILED -> {
-                            Toast.makeText(context, "导入失败: ${result.message}", Toast.LENGTH_SHORT).show()
-                        }
-                        else -> Toast.makeText(context, "导入失败", Toast.LENGTH_SHORT).show()
-                    }
-                }
-        } catch (e: Exception) {
-            Toast.makeText(context, "读取文件失败: ${e.message}", Toast.LENGTH_SHORT).show()
-        }
-    }
-
     private fun enableCourseReminder() {
         reminderEnabledState = true
         val reminderStore = CourseReminderStore(requireContext())
@@ -468,10 +415,7 @@ private fun NavigationScreen(
     usageAnalyticsEnabled: Boolean,
     onAvatarClick: () -> Unit,
     onUserClick: () -> Unit,
-    onRecentTimetable: () -> Unit,
     onTimetableManager: () -> Unit,
-    onImportTimetable: () -> Unit,
-    onImportIcs: () -> Unit,
     onExam: () -> Unit,
     onScores: () -> Unit,
     onGradeAnalysis: () -> Unit,
@@ -489,7 +433,6 @@ private fun NavigationScreen(
     onOpenNotices: () -> Unit,
 ) {
     val tokens = HitaTheme.tokens
-    val recentTimetable by viewModel.recentTimetableLiveData.observeAsState()
     val timetableCount by viewModel.timetableCountLiveData.observeAsState(0)
 
 
@@ -513,37 +456,21 @@ private fun NavigationScreen(
             onAvatarClick = onAvatarClick,
             onClick = onUserClick,
         )
-        Row(
-            modifier = Modifier.padding(horizontal = tokens.spacing.lg),
-            horizontalArrangement = Arrangement.spacedBy(tokens.spacing.sm)
-        ) {
-            ShortcutCard(
-                title = stringResource(R.string.recent_timetable),
-                subtitle = recentTimetable?.name ?: stringResource(R.string.none),
-                icon = R.drawable.ic_nav_timetable,
-                onClick = onRecentTimetable,
-                modifier = Modifier
-                    .weight(1f)
-                    .height(80.dp)
-            )
-            ShortcutCard(
-                title = stringResource(R.string.title_timetable_manager),
-                subtitle = if (timetableCount == 0) {
-                    stringResource(R.string.no_timetable)
-                } else {
-                    stringResource(R.string.timetable_count_format, timetableCount)
-                },
-                icon = R.drawable.ic_list,
-                onClick = onTimetableManager,
-                modifier = Modifier
-                    .weight(1f)
-                    .height(80.dp)
-            )
-        }
-        NavigationGroup(title = "课表工具") {
-            NavigationRow(icon = R.drawable.ic_import, title = stringResource(R.string.import_timetable), onClick = onImportTimetable)
-            NavigationRow(icon = R.drawable.ic_baseline_cloud_download_24, title = "导入 ICS 课表", subtitle = "从日历文件导入课程", onClick = onImportIcs)
-        }
+        // 课表区域只保留「课表管理」一个入口;导入(教务/ICS/口令)与好友课表都收纳进管理页。
+        ShortcutCard(
+            title = stringResource(R.string.title_timetable_manager),
+            subtitle = if (timetableCount == 0) {
+                stringResource(R.string.no_timetable)
+            } else {
+                stringResource(R.string.timetable_count_format, timetableCount)
+            },
+            icon = R.drawable.ic_list,
+            onClick = onTimetableManager,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = tokens.spacing.lg)
+                .height(80.dp)
+        )
         NavigationGroup(title = stringResource(R.string.navi_jw_title)) {
             NavigationRow(icon = R.drawable.ic_baseline_today_24, title = stringResource(R.string.ade_exam), onClick = onExam)
             NavigationRow(icon = R.drawable.ic_baseline_format_list_bulleted_24, title = stringResource(R.string.jw_tabs_cj), onClick = onScores)

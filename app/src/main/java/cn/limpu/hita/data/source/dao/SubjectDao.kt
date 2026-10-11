@@ -28,6 +28,10 @@ interface SubjectDao {
     @Query("select id,color from subject where id in (:ids)")
     fun getSubjectColorsWithId(ids: Set<String>): LiveData<List<SubjectColor>>
 
+    /** 显示目标全量课程颜色：周视图颜色分配器的输入,不随周窗口变化。 */
+    @Query("select id,color from subject where timetableId in (:timetableIds)")
+    fun getSubjectColorsOfTimetables(timetableIds: List<String>): LiveData<List<SubjectColor>>
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     fun saveSubjectSync(data: TermSubject)
 

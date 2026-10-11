@@ -83,14 +83,16 @@ data class SnapshotEvent(
     val createdAtMillis: Long
 )
 
-internal class TimetableSnapshotStore(context: Context) {
+internal class TimetableSnapshotStore(
+    context: Context,
+    private val database: AppDatabase = AppDatabase.getDatabase(context.applicationContext),
+) {
     private data class Payload(
         val version: Int = 1,
         val snapshots: List<TimetableVersionSnapshot> = emptyList()
     )
 
     private val appContext = context.applicationContext
-    private val database = AppDatabase.getDatabase(appContext)
     private val timetableDao = database.timetableDao()
     private val eventDao = database.eventItemDao()
     private val subjectDao = database.subjectDao()
@@ -146,26 +148,35 @@ internal class TimetableSnapshotStore(context: Context) {
         val snapshot = payload().snapshots.firstOrNull {
             it.ownerKey == ownerKey && it.id == snapshotId
         } ?: error("课表版本不存在或不属于当前账号")
-        val current = timetableDao.getTimetableByIdSync(snapshot.timetable.id)
-        if (current != null) {
-            val termParts = snapshot.termId.split('-')
-            val term = TermItem(
-                yearCode = termParts.take(2).joinToString("-"),
-                yearName = termParts.take(2).joinToString("-"),
-                termCode = termParts.lastOrNull().orEmpty(),
-                termName = ""
-            )
-            capture(ownerKey, term, current, TimetableSnapshotKind.BEFORE_RESTORE)
+        database.runInTransaction {
+            val current = timetableDao.getTimetableByIdSync(snapshot.timetable.id)
+            if (current != null) {
+                val termParts = snapshot.termId.split('-')
+                val term = TermItem(
+                    yearCode = termParts.take(2).joinToString("-"),
+                    yearName = termParts.take(2).joinToString("-"),
+                    termCode = termParts.lastOrNull().orEmpty(),
+                    termName = ""
+                )
+                capture(ownerKey, term, current, TimetableSnapshotKind.BEFORE_RESTORE)
+            }
+            val oldSubjectIds = eventDao.getImportedClassEventsOfTimetableSync(snapshot.timetable.id)
+                .mapTo(hashSetOf()) { it.subjectId }
+            eventDao.deleteCourseFromTimetable(snapshot.timetable.id)
+            if (oldSubjectIds.isNotEmpty()) {
+                subjectDao.deleteSubjectsInIdsSync(oldSubjectIds.toList())
+            }
+            val restored = snapshot.timetable.toEntity().apply {
+                // Source snapshots restore courses, not current local display management.
+                if (current != null) {
+                    name = current.name
+                    groupId = current.groupId
+                }
+            }
+            timetableDao.saveTimetableSync(restored)
+            subjectDao.saveSubjectsSync(snapshot.subjects.map { it.toEntity() })
+            eventDao.saveEvents(snapshot.events.map { it.toEntity() })
         }
-        val oldSubjectIds = eventDao.getImportedClassEventsOfTimetableSync(snapshot.timetable.id)
-            .mapTo(hashSetOf()) { it.subjectId }
-        eventDao.deleteCourseFromTimetable(snapshot.timetable.id)
-        if (oldSubjectIds.isNotEmpty()) {
-            subjectDao.deleteSubjectsInIdsSync(oldSubjectIds.toList())
-        }
-        timetableDao.saveTimetableSync(snapshot.timetable.toEntity())
-        subjectDao.saveSubjectsSync(snapshot.subjects.map { it.toEntity() })
-        eventDao.saveEvents(snapshot.events.map { it.toEntity() })
         snapshot
     }
 

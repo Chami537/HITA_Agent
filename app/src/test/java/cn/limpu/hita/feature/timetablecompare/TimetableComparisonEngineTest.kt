@@ -55,12 +55,14 @@ class TimetableComparisonEngineTest {
         assertEquals(PeriodStatus.FRIEND_ONLY, compare(friend = own).days.first().slots.first().status)
     }
 
-    @Test fun rangeFiltersWholePeriodsWithoutClippingOrRenumbering() {
+    @Test fun rangeIsViewportOnlyAndNeverFiltersPeriods() {
+        // 时间范围只是展示视口：无论范围如何，全部节次都参与对比且保持原始序号。
         val day = compare(request = ComparisonRequest(at(0,0), 540, 1350)).days.first()
-        assertEquals(5, day.slots.size)
-        assertEquals(1, day.slots.first().index)
-        assertEquals(span(10,30,12,15), day.slots.first().span)
-        assertTrue(compare(request = ComparisonRequest(at(0,0), 616, 629)).days.all { it.slots.isEmpty() })
+        assertEquals(6, day.slots.size)
+        assertEquals(0, day.slots.first().index)
+        assertEquals(span(8,30,10,15), day.slots.first().span)
+        val narrow = compare(request = ComparisonRequest(at(0,0), 616, 629)).days.first()
+        assertEquals(6, narrow.slots.size)
     }
 
     @Test fun partialValidityMakesWholePeriodUnknown() {
@@ -150,5 +152,49 @@ class TimetableComparisonEngineTest {
         val day = compare(schedule().copy(valid = TimeSpan(at(8,30), at(10,15)))).days.first()
         assertEquals(listOf(span(8,30,10,15)),day.free)
         assertEquals(PeriodStatus.UNKNOWN, compare(schedule().copy(valid = TimeSpan(at(8,30)+1,at(10,15)))).days.first().slots[0].status)
+    }
+
+    @Test fun groupFreeRequiresEveryFriendAndConflictNamesWhoIsBusy() {
+        val own = schedule(listOf(span(8, 30, 10, 15)))
+        val busyFriend = schedule(listOf(span(8, 30, 9, 0)))
+        val freeFriend = schedule()
+        val day = TimetableComparisonEngine().compareAll(own, listOf(busyFriend, freeFriend), ComparisonRequest(at(0, 0)))
+            .days.first()
+        assertEquals(PeriodStatus.CONFLICT, day.slots.first().status)
+        assertEquals(listOf(0), day.slots.first().busyFriendIndexes)
+        val allFree = TimetableComparisonEngine().compareAll(schedule(), listOf(freeFriend, freeFriend), ComparisonRequest(at(0, 0)))
+            .days.first()
+        assertEquals(PeriodStatus.FREE, allFree.slots.first().status)
+        val onlyFriend = TimetableComparisonEngine().compareAll(schedule(), listOf(busyFriend), ComparisonRequest(at(0, 0)))
+            .days.first()
+        assertEquals(PeriodStatus.FRIEND_ONLY, onlyFriend.slots.first().status)
+        assertTrue(onlyFriend.free.none { it == span(8, 30, 10, 15) })
+    }
+
+    @Test fun excludedFriendCourseDoesNotOccupy() {
+        val occurrence = cn.limpu.hita.feature.timetableshare.protocol.SharedOccurrence(
+            span(8, 30, 10, 0).startMillis, span(8, 30, 10, 0).endMillis, 0, "A",
+        )
+        val kept = ComparisonSelection.friendSpans(cn.limpu.hita.feature.timetableshare.protocol.ShareMode.FULL, listOf(occurrence), emptySet())
+        val dropped = ComparisonSelection.friendSpans(cn.limpu.hita.feature.timetableshare.protocol.ShareMode.FULL, listOf(occurrence), setOf(0))
+        assertEquals(1, kept.size)
+        assertTrue(dropped.isEmpty())
+    }
+
+    @Test fun friendCourseExclusionSurvivesUnrelatedDictionaryInsertion() {
+        assertEquals(setOf(0), ComparisonSelection.friendExcludedIndexes(
+            listOf("math"), setOf("0:math"), emptySet()))
+        assertEquals(setOf(1), ComparisonSelection.friendExcludedIndexes(
+            listOf("biology", "math"), setOf("0:math"), emptySet()))
+        assertEquals(emptySet<Int>(), ComparisonSelection.friendExcludedIndexes(
+            listOf("biology"), setOf("0:math"), emptySet()))
+    }
+
+    @Test fun equalCourseNamesRemainIndividuallySelectable() {
+        assertEquals(listOf("0:math", "1:math"), ComparisonSelection.friendCourseKeys(listOf("math", "math")))
+        assertEquals(setOf(1), ComparisonSelection.friendExcludedIndexes(
+            listOf("math", "math"), setOf("1:math"), emptySet()))
+        assertEquals(setOf(2), ComparisonSelection.friendExcludedIndexes(
+            listOf("biology", "math", "math"), setOf("1:math"), emptySet()))
     }
 }

@@ -36,10 +36,20 @@ data class TimetableStyleSheet(
     val subtitleAlpha: Int = 60,
     val drawNowLine: Boolean = true,
     val courseBubbleStyle: CourseBubbleStyle = CourseBubbleStyle.SOLID,
+    /** 课程文字档位：0=默认 / 1=小字 / 2=大字。 */
+    val fontSizeLevel: Int = 0,
 ) {
     val cardOpacity: Int get() = storedCardOpacity.coerceIn(20, 100)
     val startHour: Int get() = startTime / 100
     val startMinute: Int get() = startTime % 100
+
+    /** 字体系数：作用于课程卡标题/副标题、冲突合并卡、时间轴标签。 */
+    val fontScale: Float
+        get() = when (fontSizeLevel.coerceIn(0, 2)) {
+            1 -> 0.85f
+            2 -> 1.12f
+            else -> 1f
+        }
 
     fun withCardOpacity(value: Int): TimetableStyleSheet =
         copy(storedCardOpacity = value.coerceIn(20, 100))

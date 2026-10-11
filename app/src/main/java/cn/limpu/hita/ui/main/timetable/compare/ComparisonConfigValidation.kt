@@ -3,12 +3,19 @@ package cn.limpu.hita.ui.main.timetable.compare
 import cn.limpu.hita.feature.timetablecompare.ComparisonPeriod
 import cn.limpu.hita.feature.timetablecompare.PeriodStructure
 
-enum class ConfigProblem { INVALID_RANGE, INVALID_STRUCTURE, INCOMPATIBLE, NO_COMPLETE_PERIOD }
+enum class ConfigProblem { INVALID_RANGE, INVALID_STRUCTURE, INCOMPATIBLE }
 fun comparisonConfigError(config: ComparisonConfig, own: List<ComparisonPeriod>, friend: List<ComparisonPeriod>): ConfigProblem? = when {
     !config.isValid() -> ConfigProblem.INVALID_RANGE
     !PeriodStructure.isValid(own) || !PeriodStructure.isValid(friend) -> ConfigProblem.INVALID_STRUCTURE
     !PeriodStructure.isCompatible(own, friend) -> ConfigProblem.INCOMPATIBLE
-    own.none { it.startMinute >= config.startMinute && it.endMinute <= config.endMinute } -> ConfigProblem.NO_COMPLETE_PERIOD
+    else -> null
+}
+
+/** 多份我的课表与多位好友：作息必须彼此完全一致，视口不改变参与节次。 */
+fun comparisonGroupError(config: ComparisonConfig, structures: List<List<ComparisonPeriod>>): ConfigProblem? = when {
+    !config.isValid() -> ConfigProblem.INVALID_RANGE
+    structures.isEmpty() || structures.any { !PeriodStructure.isValid(it) } -> ConfigProblem.INVALID_STRUCTURE
+    structures.any { it != structures.first() } -> ConfigProblem.INCOMPATIBLE
     else -> null
 }
 fun parseComparisonTime(text: String): Int? {

@@ -50,7 +50,7 @@ data/
 ├── model/           # Data classes (course, score, timetable, chat, resource, etc.)
 ├── repository/      # Business logic & data coordination
 ├── source/
-│   ├── dao/         # Room DAOs (ChatDao, SubjectDao, TimetableDao, EventItemDao)
+│   ├── dao/         # Room DAOs (TimetableDao, TimetableGroupDao, TimetableShareDao, FriendTimetableDao, SubjectDao, EventItemDao, ChatSessionDao, etc.)
 │   ├── preference/  # SharedPreferences wrappers
 │   └── web/         # Retrofit services + HTML parsers (Jsoup)
 │       ├── eas/     # EAS (教务系统) parsers: BenbuEASWebSource, WeihaiEASWebSource
@@ -58,7 +58,7 @@ data/
 └── work/            # WorkManager workers (CourseReminder, ScoreReminder)
 ```
 
-Room databases: `AppDatabase` (app module), `UserDatabase` (hitauser module), and the independent `UsageQueueDatabase` analytics queue. Keep historical exported schemas for migrations. See [analytics v2](docs/analytics-v2.md).
+Room databases: `AppDatabase` (app module, currently version 16 — v15 added timetable sharing tables `timetable_share_identity`/`friend_timetable`, v16 added timetable groups via `timetable_group` + `timetable.groupId`), `UserDatabase` (hitauser module), and the independent `UsageQueueDatabase` analytics queue. Keep historical exported schemas for migrations. See [analytics v2](docs/analytics-v2.md).
 
 ### Agent / AI System (ReAct Framework)
 
@@ -80,6 +80,13 @@ agent/
 **Typed agent path**: `TimetableAgentEngine` and `SubjectReadmeAgentEngine` implement `AgentEngine`. Their tools implement `AgentTool<I, O>` and are registered in `AgentToolRegistry`. `AgentOrchestrator` delegates execution to the engine; `AgentToolExecutor` handles timeouts, retries, and result callbacks. These interfaces are distinct from the chat `ReActTool` interface.
 
 **Tool data sources**: Local timetable capabilities use the Android data layer, and academic queries use `EASRepository`. Course resource queries use `PrServerClient`; search, RAG, and crawling use `AgentBackendClient`.
+
+### Timetable Sharing & Comparison
+
+- **Protocol**: `feature/timetableshare/protocol/` — offline HITA1 token codec (Base64URL + GZIP + compact JSON), `StrictShareJson` bounded lexical validation, `ShareLimits` resource caps, FULL/BUSY privacy modes. No backend, no encryption or signing.
+- **Comparison**: `feature/timetablecompare/` — pure-Kotlin `TimetableComparisonEngine` (common free time / same-slot conflicts); standalone UI under `ui/main/timetable/compare/`.
+- **Repositories**: `TimetableSharingRepository` (snapshot build), `FriendTimetableRepository` (transactional friend import/confirm), `TimetableExportRepository` (ICS/token export; oversized multi-token share falls back to a `.txt` attachment), `SharedTimetableImporter` (bounded friend token/ICS → entities, 8 MiB cap), `TimetableComparisonRepository` (transactional reads), `DisplayScopeResolver` (display target — single timetable or group — driving main grid, timeline, widgets, reminders and Agent queries), `TimetableSnapshotStore`/`TimetableSourceApplier` (per-account EAS refresh snapshots and adoption preserving local rename/group).
+- Feature docs: [timetable-sharing](docs/timetable-sharing.md), [timetable-comparison](docs/timetable-comparison.md), [timetable-display-management](docs/timetable-display-management.md).
 
 ### Network Clients
 

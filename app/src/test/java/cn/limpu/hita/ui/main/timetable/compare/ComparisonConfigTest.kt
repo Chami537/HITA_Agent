@@ -22,9 +22,10 @@ class ComparisonConfigTest {
             listOf(ComparisonPeriod(510,610), ComparisonPeriod(630,735))))
         assertEquals(ConfigProblem.INVALID_STRUCTURE, comparisonConfigError(ComparisonConfig("o","f"), emptyList(),periods))
     }
-    @Test fun gapAndPartialPeriodCannotConfirm() {
-        assertEquals(ConfigProblem.NO_COMPLETE_PERIOD, comparisonConfigError(ComparisonConfig("o","f",615,630),periods,periods))
-        assertEquals(ConfigProblem.NO_COMPLETE_PERIOD, comparisonConfigError(ComparisonConfig("o","f",520,610),periods,periods))
+    @Test fun gapAndPartialPeriodViewportsDoNotChangeParticipation() {
+        assertNull(comparisonConfigError(ComparisonConfig("o","f",615,630),periods,periods))
+        assertNull(comparisonConfigError(ComparisonConfig("o","f",520,610),periods,periods))
+        assertNull(comparisonGroupError(ComparisonConfig("o","f",615,630), listOf(periods, periods)))
         assertNull(comparisonConfigError(ComparisonConfig("o","f",510,615),periods,periods))
     }
     @Test fun sameIdentityStructureChangesAreNotSuppressed() {

@@ -9,21 +9,11 @@ import java.time.*
 import java.time.temporal.TemporalAdjusters
 
 val CAMPUS_ZONE: ZoneId = ZoneId.of("Asia/Shanghai")
-data class ComparisonSegmentPosition(val topMinute: Double, val durationMinute: Double)
-fun position(span: TimeSpan, date: LocalDate, startHour: Int): ComparisonSegmentPosition {
-    val midnight = date.atStartOfDay(CAMPUS_ZONE).toInstant().toEpochMilli()
-    return ComparisonSegmentPosition((span.startMillis - midnight) / 60_000.0 - startHour * 60,
-        (span.endMillis - span.startMillis) / 60_000.0)
-}
-fun visibleComparisonSlots(day: ComparisonDay, showFree: Boolean, showConflicts: Boolean) =
-    day.slots.filter { (showFree && it.status == PeriodStatus.FREE) || (showConflicts && it.status == PeriodStatus.CONFLICT) }
 
 /** The host keeps its ordinary system-zone anchor. Convert its displayed date, not its instant. */
 fun comparisonMonday(anchor: Long, sourceZone: ZoneId): Long = Instant.ofEpochMilli(anchor).atZone(sourceZone)
     .toLocalDate().with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY))
     .atStartOfDay(CAMPUS_ZONE).toInstant().toEpochMilli()
-fun ordinaryMonday(campusMonday: Long, targetZone: ZoneId): Long = Instant.ofEpochMilli(campusMonday)
-    .atZone(CAMPUS_ZONE).toLocalDate().atStartOfDay(targetZone).toInstant().toEpochMilli()
 
 data class ComparisonCourseSegment(val display: EventItem, val original: EventItem)
 /** Only display copies are split. Raw records remain the time authority and are never mutated. */
@@ -57,29 +47,32 @@ fun projectComparisonCourses(courses: List<EventItem>, monday: Long,
 }
 
 data class ComparisonCourseDetail(val span: TimeSpan, val name: String?, val place: String?)
-data class ComparisonSlotDetails(val own: List<ComparisonCourseDetail>, val friend: List<ComparisonCourseDetail>)
 private fun intersects(a: TimeSpan, b: TimeSpan) = a.startMillis < b.endMillis && a.endMillis > b.startMillis
-fun comparisonSlotDetails(slot: TimeSpan, own: List<EventItem>, friend: SharedTimetable): ComparisonSlotDetails {
-    val ownDetails = own.filter { intersects(slot, TimeSpan(it.from.time, it.to.time)) }
-        .map { ComparisonCourseDetail(TimeSpan(it.from.time,it.to.time),it.name,it.place) }
-    val friendDetails = friend.occurrences.filter { intersects(slot,TimeSpan(it.startMillis,it.endMillis)) }.map {
-        val span = TimeSpan(it.startMillis,it.endMillis)
-        // Branch before touching the dictionary or place; BUSY never resolves hidden details.
-        if (friend.mode == ShareMode.BUSY) ComparisonCourseDetail(span,null,null)
-        else ComparisonCourseDetail(span,it.courseIndex?.let(friend.courses::getOrNull),it.place)
+
+/** 每位好友只列出仍参与对比的安排;忙闲不解析名称。 */
+fun comparisonFriendSlotDetails(
+    slot: TimeSpan,
+    side: cn.limpu.hita.data.repository.ComparisonFriendSource,
+    excludedIndexes: Set<Int>,
+): List<ComparisonCourseDetail> {
+    val friend = side.snapshot
+    return friend.occurrences.filter { occurrence ->
+        intersects(slot, TimeSpan(occurrence.startMillis, occurrence.endMillis)) &&
+            (friend.mode != ShareMode.FULL || occurrence.courseIndex == null || occurrence.courseIndex !in excludedIndexes)
+    }.map { occurrence ->
+        val span = TimeSpan(occurrence.startMillis, occurrence.endMillis)
+        if (friend.mode == ShareMode.BUSY) ComparisonCourseDetail(span, null, null)
+        else ComparisonCourseDetail(span, occurrence.courseIndex?.let(friend.courses::getOrNull), occurrence.place)
     }
-    return ComparisonSlotDetails(ownDetails,friendDetails)
 }
 
-/** Any course portion outside the full structure warrants the notice, including rest gaps. */
-fun hasOutOfStructureCourses(segments: List<ComparisonCourseSegment>, periods: List<ComparisonPeriod>): Boolean =
-    segments.any { segment ->
-        val from = segment.display.from.time
-        val to = segment.display.to.time
-        val date = Instant.ofEpochMilli(from).atZone(CAMPUS_ZONE).toLocalDate()
-        val midnight = date.atStartOfDay(CAMPUS_ZONE).toInstant().toEpochMilli()
-        val covered = periods.sumOf { period ->
-            (minOf(to,midnight+period.endMinute*60_000L) - maxOf(from,midnight+period.startMinute*60_000L)).coerceAtLeast(0)
-        }
-        covered < to-from
+/** A selected merged block may become invalid while sources refresh; never fabricate FREE. */
+internal fun comparisonDetailSlot(result: ComparisonResult, span: TimeSpan): ComparedPeriod {
+    val slots = result.days.flatMap { it.slots }.filter { intersects(it.span, span) }
+    val status = when {
+        slots.isEmpty() || slots.any { it.status == PeriodStatus.UNKNOWN } -> PeriodStatus.UNKNOWN
+        slots.all { it.status == PeriodStatus.FREE } -> PeriodStatus.FREE
+        else -> slots.first { it.status != PeriodStatus.FREE }.status
     }
+    return ComparedPeriod(-1, span, status)
+}

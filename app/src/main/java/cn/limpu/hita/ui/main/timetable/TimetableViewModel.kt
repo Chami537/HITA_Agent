@@ -10,6 +10,9 @@ import com.limpu.component.data.MTransformations
 import com.limpu.component.data.Trigger
 import cn.limpu.hita.data.model.timetable.EventItem
 import cn.limpu.hita.data.model.timetable.Timetable
+import cn.limpu.hita.data.model.timetable.DisplayScope
+import cn.limpu.hita.data.repository.DisplayScopeResolver
+import cn.limpu.hita.data.repository.ResolvedDisplayScope
 import cn.limpu.hita.data.repository.TimetableChangeStore
 import cn.limpu.hita.data.repository.TimetableChangeState
 import cn.limpu.hita.data.repository.TimetableRepository
@@ -33,7 +36,8 @@ class TimetableViewModel @Inject constructor(
     private val timetableRepository: TimetableRepository,
     private val timetableStyleRepository: TimetableStyleRepository,
     private val changeStore: TimetableChangeStore,
-    private val sourceApplier: TimetableSourceApplier
+    private val sourceApplier: TimetableSourceApplier,
+    private val scopeResolver: DisplayScopeResolver
 ) : ViewModel() {
 
     private val timetableController = MutableLiveData<Trigger>()
@@ -73,6 +77,23 @@ class TimetableViewModel @Inject constructor(
 
     private val timetableStyleLiveData: LiveData<TimetableStyleSheet> =
         timetableStyleRepository.getStyleSheetLiveData()
+
+    /** 当前显示目标（独立课表或组合课表）；主课表/标题/添加事件的归属都经它。 */
+    val resolvedScope: LiveData<ResolvedDisplayScope?> = scopeResolver.resolved
+    val scopeOptions: LiveData<List<DisplayScopeResolver.ScopeOption>> = scopeResolver.options
+
+    /** 显示目标内全部课程的存储色（subjectId → color）；颜色分配器输入,不随周导航变化。 */
+    val scopeCourseColors: LiveData<Map<String, Int>> = scopeResolver.resolved.switchMap { scope ->
+        if (scope == null || scope.timetableIds.isEmpty()) {
+            return@switchMap MutableLiveData(emptyMap())
+        }
+        MTransformations.map(timetableRepository.getSubjectColorsOfTimetables(scope.timetableIds)) { colors ->
+            colors.associate { it.id to it.color }
+        }
+    }
+
+    fun selectScope(scope: DisplayScope) = scopeResolver.select(scope)
+
     val windowEventsData: MutableList<MediatorLiveData<EventStylePair>> =
         mutableListOf()
     val windowStartData: MutableList<MutableLiveData<Long>> = mutableListOf()
@@ -91,10 +112,22 @@ class TimetableViewModel @Inject constructor(
             windowHashesData.add(0)
             val startLD = MutableLiveData<Long>()
             windowStartData.add(startLD)
-            val eventsRawData =  startLD.switchMap{
+            val scopeAndStart = MediatorLiveData<Pair<Long, List<String>>>()
+            fun refreshScopeAndStart() {
+                val start = startLD.value ?: return
+                // resolver 尚未产出时保持空窗,避免闪现全量叠加事件。
+                val ids = scopeResolver.resolved.value?.timetableIds.orEmpty()
+                val current = scopeAndStart.value
+                val next = start to ids
+                if (current != next) scopeAndStart.value = next
+            }
+            scopeAndStart.addSource(startLD) { refreshScopeAndStart() }
+            scopeAndStart.addSource(scopeResolver.resolved) { refreshScopeAndStart() }
+            val eventsRawData = scopeAndStart.switchMap { (start, ids) ->
                 return@switchMap timetableRepository.getEventsDuringWithColor(
-                    it,
-                    it + WEEK_MILLS
+                    start,
+                    start + WEEK_MILLS,
+                    ids
                 )
             }
             val eventsData = MTransformations.switchMap(eventsRawData,timetableStyleLiveData){
