@@ -75,14 +75,16 @@ fun Modifier.hitaDeepSpaceCardModifier(
         .drawWithCache {
             val outline = shape.createOutline(size, layoutDirection, this)
             val big = max(size.width, size.height)
-            // 星云微光：左上暗紫、右下暗玫瑰，非常淡
+            // 星云微光：左上暗紫、右下暗玫瑰。issue #20：必须画在 drawContent()
+            // 之后，否则会被卡片容器底色整片盖住；alpha 提到可见阈值以上
+            //（此前暗色 0.10f 时提亮仅约 15/255，低于视觉阈值）。
             val nebulaBrush = Brush.radialGradient(
-                colors = listOf(nebula.copy(alpha = if (isDark) 0.10f else 0.06f), Color.Transparent),
+                colors = listOf(nebula.copy(alpha = if (isDark) 0.26f else 0.14f), Color.Transparent),
                 center = Offset(size.width * 0.12f, size.height * 0.08f),
                 radius = big * 0.75f
             )
             val roseBrush = Brush.radialGradient(
-                colors = listOf(rose.copy(alpha = if (isDark) 0.08f else 0.05f), Color.Transparent),
+                colors = listOf(rose.copy(alpha = if (isDark) 0.22f else 0.12f), Color.Transparent),
                 center = Offset(size.width * 0.92f, size.height * 0.95f),
                 radius = big * 0.70f
             )
@@ -95,9 +97,10 @@ fun Modifier.hitaDeepSpaceCardModifier(
             val edgeStroke = Stroke(width = 0.8.dp.toPx())
             val edgeColor = glow.copy(alpha = if (isDark) 0.32f else 0.38f)
             onDrawWithContent {
+                // 容器底色先画，星云叠在之上（issue #20：此前在底色之下，不可见）
+                drawContent()
                 drawOutline(outline = outline, brush = nebulaBrush)
                 drawOutline(outline = outline, brush = roseBrush)
-                drawContent()
                 stars.forEach { (fx, fy, r) ->
                     drawCircle(starColor, radius = r.dp.toPx(), center = Offset(size.width * fx, size.height * fy))
                 }
