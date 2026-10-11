@@ -42,17 +42,18 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.draw.shadow
-import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
-import androidx.compose.ui.geometry.RoundRect
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
+import androidx.compose.ui.graphics.Outline
 import androidx.compose.ui.graphics.Paint
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.graphics.asAndroidPath
+import androidx.compose.ui.graphics.asComposePath
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.util.VelocityTracker
@@ -70,8 +71,13 @@ import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Density
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.graphics.shapes.CornerRounding
+import androidx.graphics.shapes.RoundedPolygon
+import androidx.graphics.shapes.toPath
 import cn.limpu.hita.ui.design.hitaDeepSpaceCardModifier
 import com.limpu.style.ThemeTools
 import dev.chrisbanes.haze.HazeState
@@ -103,7 +109,51 @@ private const val DOCK_LENS_ALPHA_GLASS = 0.16f
 private const val DOCK_LENS_ALPHA_DEEP_SPACE = 0.18f
 private const val DOCK_LENS_LIFT_ALPHA = 0.08f
 
-private val DockShape = RoundedCornerShape(percent = 50)
+/** 超椭圆平滑系数：0 为纯圆弧，1 为最强过渡；连续圆角常用 0.5~0.7。issue #19 */
+private const val DOCK_SMOOTHING = 0.6f
+
+/**
+ * 超椭圆胶囊路径。顶点直接给像素坐标：官方示例的归一化图形+矩阵缩放到目标尺寸
+ * 会把圆角半径一起缩放，底栏宽高比随屏宽与标签数变化，非等比缩放会把圆角压变形。
+ * issue #19
+ */
+private fun dockPillNativePath(
+    width: Float,
+    height: Float,
+    smoothing: Float = DOCK_SMOOTHING,
+): android.graphics.Path {
+    val radius = min(width, height) / 2f
+    val rounding = List(4) { CornerRounding(radius, smoothing) }
+    return RoundedPolygon(
+        vertices = floatArrayOf(0f, 0f, width, 0f, width, height, 0f, height),
+        perVertexRounding = rounding,
+        centerX = 0f,
+        centerY = 0f,
+    ).toPath()
+}
+
+private fun dockPillPath(
+    width: Float,
+    height: Float,
+    smoothing: Float = DOCK_SMOOTHING,
+): Path = dockPillNativePath(width, height, smoothing).asComposePath()
+
+private class DockPillShape(private val smoothing: Float = DOCK_SMOOTHING) : Shape {
+    override fun createOutline(
+        size: Size,
+        layoutDirection: LayoutDirection,
+        density: Density,
+    ): Outline = Outline.Generic(dockPillPath(size.width, size.height, smoothing))
+}
+
+private val DockShape: Shape = DockPillShape()
+
+/**
+ * 阴影继续用平台友好的胶囊轮廓：API 26~28 的系统 HWUI 只认矩形/圆角矩形/椭圆，
+ * 通用路径轮廓从 API 29 起才支持投影。与超椭圆本体的轮廓差只在端头几个像素，
+ * 实际不可见。issue #19
+ */
+private val DockShadowShape = RoundedCornerShape(percent = 50)
 
 private val DockHazeStyle = HazeStyle(
     tint = Color.White.copy(alpha = 0.16f),
@@ -260,7 +310,7 @@ internal fun DockTabBar(
                     color = Color.White.copy(alpha = 0.52f),
                     shape = barShape,
                 )
-                isDeepSpace -> Modifier.hitaDeepSpaceCardModifier(barShape)
+                isDeepSpace -> Modifier.hitaDeepSpaceCardModifier(barShape, shadowShape = DockShadowShape)
                 else -> Modifier
             }
         )
@@ -269,6 +319,8 @@ internal fun DockTabBar(
         Paint().apply { colorFilter = ColorFilter.tint(activeColor, BlendMode.SrcIn) }
     }
     val clipPath = remember { Path() }
+    // 指示器超椭圆路径：remember + rewind 复用，避免每帧构造（issue #19 坑 5）。
+    val lensPath = remember { Path() }
     val lensGrowthPx = with(density) { DockMetrics.LENS_GROWTH_DP.dp.toPx() }
 
     Box(
@@ -349,7 +401,7 @@ internal fun DockTabBar(
         Box(
             modifier = Modifier
                 .matchParentSize()
-                .shadow(barElevation, barShape, clip = false)
+                .shadow(barElevation, DockShadowShape, clip = false)
                 .then(barSurface)
                 .background(barColor, barShape)
         )
@@ -379,16 +431,21 @@ internal fun DockTabBar(
                         lift = lift.value,
                         growthPx = lensGrowthPx,
                     )
-                    drawRoundRect(
+                    // 指示器与栏体同形：超椭圆，只在端头曲率处与胶囊不同。
+                    // drawPath 没有 topLeft 参数，路径先平移到 box 左上角。issue #19
+                    lensPath.rewind()
+                    lensPath.asAndroidPath().apply {
+                        set(dockPillNativePath(box.width, box.height))
+                        offset(box.left, box.top)
+                    }
+                    drawPath(
+                        path = lensPath,
                         color = lensColor.copy(
                             alpha = (
                                 lensColor.alpha +
                                     DOCK_LENS_LIFT_ALPHA * lift.value.coerceIn(0f, 1f)
                                 ).coerceAtMost(1f)
                         ),
-                        topLeft = Offset(box.left, box.top),
-                        size = Size(box.width, box.height),
-                        cornerRadius = CornerRadius(box.height / 2f, box.height / 2f),
                     )
                 }
 
@@ -504,13 +561,12 @@ private fun Modifier.dockLensTint(
     if (!box.overlaps(size.width, size.height)) return@drawWithContent
 
     clipPath.rewind()
-    clipPath.addRoundRect(
-        RoundRect(
-            rect = Rect(box.left, box.top, box.right, box.bottom),
-            radiusX = box.height / 2f,
-            radiusY = box.height / 2f,
-        )
-    )
+    // 染色裁剪与指示器本体用同一函数产出的路径，平移到 box 左上角，
+    // 否则指示器滑到首尾项时会与栏体端头轮廓错开、露出边缘。issue #19
+    clipPath.asAndroidPath().apply {
+        set(dockPillNativePath(box.width, box.height))
+        offset(box.left, box.top)
+    }
     target.save()
     target.clipPath(clipPath)
     target.saveLayer(Rect(Offset.Zero, size), tintPaint)
