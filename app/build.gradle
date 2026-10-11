@@ -11,8 +11,8 @@ plugins {
 def envVersionCode = System.getenv("VERSION_CODE")
 def appVersionCodeValue = (envVersionCode != null && envVersionCode.matches("\\d+"))
     ? Integer.parseInt(envVersionCode)
-    : 2026093005
-def appVersionNameValue = "3.0.3"
+    : 2026101101
+def appVersionNameValue = "3.0.4"
 
 def keystorePropertiesFile = rootProject.file("keystore.properties")
 def keystoreProperties = new Properties()
@@ -98,9 +98,7 @@ android {
         debug {
             // 诊断版使用独立 applicationId，与正式版共存不冲突
             applicationIdSuffix ".diag"
-            if (keystorePropertiesFile.exists() && keystoreProperties['storeFile']) {
-                signingConfig signingConfigs.release
-            }
+            // 固定 debug 签名：诊断版长期用本机 debug 密钥，混用 release 签名会导致覆盖安装冲突
         }
         release {
             signingConfig signingConfigs.release
