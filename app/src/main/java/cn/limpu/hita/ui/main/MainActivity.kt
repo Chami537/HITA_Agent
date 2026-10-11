@@ -1069,25 +1069,44 @@ private fun MainScreen(
 
 
         if (!imeVisible) {
-            MainPillTabBar(
-                selectedTab = selectedTab,
-                visibleTabs = visibleTabs,
-                showBlogDot = showBlogDot,
-                alpha = if (showTimetableWallpaper) 0.72f else 1f,
-                themeStyle = themeStyle,
-                hazeState = if (useGlobalHaze) hazeState else null,
-                liquidGlassBackdrop = if (isAppleGlass) liquidGlassBackdropHandle else null,
-                onSelectTab = onSelectTab,
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .padding(bottom = systemNavAvoidance)
-                    .graphicsLayer {
-                        translationX = contentOffset
-                        scaleX = contentScale
-                        scaleY = contentScale
-                        transformOrigin = androidx.compose.ui.graphics.TransformOrigin(1f, 0.5f)
-                    }
-            )
+            val tabBarAlpha = if (showTimetableWallpaper) 0.72f else 1f
+            val drawerFollow = Modifier.graphicsLayer {
+                translationX = contentOffset
+                scaleX = contentScale
+                scaleY = contentScale
+                transformOrigin = androidx.compose.ui.graphics.TransformOrigin(1f, 0.5f)
+            }
+            if (usesDockTabBar(themeStyle)) {
+                DockTabBar(
+                    selectedTab = selectedTab,
+                    tabs = visibleTabs,
+                    showBlogDot = showBlogDot,
+                    alpha = tabBarAlpha,
+                    themeStyle = themeStyle,
+                    hazeState = if (useGlobalHaze) hazeState else null,
+                    liquidGlassBackdrop = if (isAppleGlass) liquidGlassBackdropHandle else null,
+                    onSelectTab = onSelectTab,
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .padding(dockBarChromePadding())
+                        .then(drawerFollow)
+                )
+            } else {
+                MainPillTabBar(
+                    selectedTab = selectedTab,
+                    visibleTabs = visibleTabs,
+                    showBlogDot = showBlogDot,
+                    alpha = tabBarAlpha,
+                    themeStyle = themeStyle,
+                    hazeState = if (useGlobalHaze) hazeState else null,
+                    liquidGlassBackdrop = if (isAppleGlass) liquidGlassBackdropHandle else null,
+                    onSelectTab = onSelectTab,
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .padding(bottom = systemNavAvoidance)
+                        .then(drawerFollow)
+                )
+            }
         }
 
         if (drawerProgress > 0.01f) {
@@ -1596,14 +1615,14 @@ private fun MainFragmentPager(
     }
 }
 
-private val CapsuleBlue = Color(0xFF3390EC)
-private val ActiveBlue = Color(0xFF0088CC)
+internal val CapsuleBlue = Color(0xFF3390EC)
+internal val ActiveBlue = Color(0xFF0088CC)
 private val CapsuleTabWidth = 68.dp
 private val CapsuleTabIconSize = 18.dp
 
-private class LiquidGlassBackdropHandle(val value: Any)
+internal class LiquidGlassBackdropHandle(val value: Any)
 
-private fun Modifier.liquidGlassSurface(
+internal fun Modifier.liquidGlassSurface(
     backdropHandle: LiquidGlassBackdropHandle,
     shape: Shape,
     blurRadius: Float,
