@@ -10,16 +10,19 @@ object WeightedScoreCalculator {
     )
 
     /**
-     * 对当前页面中可解析为百分制数字的成绩做加权平均。
+     * 对当前列表中有有效数字成绩、且学分大于 0 的课程做加权估算。
      *
      * 这不是教务系统的平均学分绩：接口没有提供“是否计入”、重修替代等规则，
-     * 等级制和“合格/不合格”成绩也会被排除。结果只能用于核对当前列表。
+     * 优先使用教务返回的数字成绩，保留等级文字用于显示。
+     * 没有数字成绩的等级制和“合格/不合格”成绩仍会被排除。结果只能用于核对当前列表。
      */
     fun calculate(items: List<CourseScoreItem>): ScoreResult {
         val validItems = items.mapNotNull { item ->
-            if (item.credits <= 0f) return@mapNotNull null
+            if (!item.credits.isFinite() || item.credits <= 0f) return@mapNotNull null
             val rawText = item.finalScoresText?.trim()
-            val score = if (!rawText.isNullOrEmpty()) {
+            val score = item.numericScore
+                ?.takeIf { it.isFinite() && it in 0.0..100.0 }
+                ?: if (!rawText.isNullOrEmpty()) {
                 rawText.toDoubleOrNull()
             } else {
                 item.finalScores.takeIf { it >= 0 }?.toDouble()
