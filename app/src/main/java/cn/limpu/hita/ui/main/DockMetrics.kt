@@ -14,7 +14,7 @@ import kotlin.math.sign
 internal object DockMetrics {
 
     /** 栏体基准高度（dp）；实际高度还要加上标签字体缩放带来的增量，见 [dockBarHeight]。 */
-    const val BAR_HEIGHT = 62f
+    const val BAR_HEIGHT = 54f
 
     /** 栏体内边距（dp），同时也是 [dockPositionAt] 换算浮点索引时的基准。 */
     const val BAR_PADDING = 4f
@@ -26,12 +26,12 @@ internal object DockMetrics {
     const val SHADOW_ROOM = 8f
 
     /** 单项宽度上限（dp）；超过后不再拉宽，改为铺满可用宽度。 */
-    const val MAX_ITEM_EXTENT = 72f
+    const val MAX_ITEM_EXTENT = 56f
 
     /** 达到该标签数后栏体铺满可用宽度。 */
-    const val FULL_WIDTH_COUNT = 5
+    const val FULL_WIDTH_COUNT = 6
 
-    const val ICON_SIZE = 24f
+    const val ICON_SIZE = 20f
     const val LABEL_GAP = 2f
     const val LABEL_INSET = 2f
 

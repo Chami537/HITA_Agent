@@ -287,7 +287,7 @@ internal fun DockTabBar(
             if (isAppleGlass && liquidGlassBackdrop != null) {
                 Modifier.liquidGlassSurface(
                     backdropHandle = liquidGlassBackdrop,
-                    shape = barShape,
+                    shape = DockShadowShape,
                     blurRadius = 22f,
                     refractionHeight = 26f,
                     refractionAmount = 40f,

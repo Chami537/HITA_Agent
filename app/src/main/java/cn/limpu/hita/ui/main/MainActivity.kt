@@ -56,6 +56,7 @@ import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsTopHeight
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.CornerBasedShape
 import androidx.compose.foundation.shape.CutCornerShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
@@ -1658,7 +1659,7 @@ internal class LiquidGlassBackdropHandle(val value: Any)
 
 internal fun Modifier.liquidGlassSurface(
     backdropHandle: LiquidGlassBackdropHandle,
-    shape: Shape,
+    shape: CornerBasedShape,
     blurRadius: Float,
     refractionHeight: Float,
     refractionAmount: Float,
@@ -1733,10 +1734,11 @@ private fun MainPillTabBar(
     val isPersona = themeStyle == ThemeTools.STYLE.P5
     val isDeepSpace = themeStyle == ThemeTools.STYLE.DEEP_SPACE
     val isSumi = themeStyle == ThemeTools.STYLE.SUMI
+    val appleGlassBarShape = RoundedCornerShape(30.dp)
     val barShape = when {
         isCyber -> cyberChamferShape(20.dp)
         isPersona -> personaSlashShape(18.dp)
-        isAppleGlass -> RoundedCornerShape(30.dp)
+        isAppleGlass -> appleGlassBarShape
         isSoraCloud -> soraCloudCardShape(18.dp)
         isDeepSpace -> deepSpaceCardShape(28.dp)
         isSumi -> sumiCardShape(8.dp)
@@ -1786,7 +1788,7 @@ private fun MainPillTabBar(
                 if (isAppleGlass && liquidGlassBackdrop != null) {
                     Modifier.liquidGlassSurface(
                         backdropHandle = liquidGlassBackdrop,
-                        shape = barShape,
+                        shape = appleGlassBarShape,
                         blurRadius = 22f,
                         refractionHeight = 26f,
                         refractionAmount = 40f

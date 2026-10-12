@@ -269,16 +269,23 @@ class DockMetricsTest {
 
     @Test
     fun barHeightFollowsLabelScaling() {
-        assertEquals(62f, dockBarHeight(DockMetrics.LABEL_SIZE), EPSILON)
-        assertEquals(65f, dockBarHeight(13f), EPSILON)
+        assertEquals(54f, dockBarHeight(DockMetrics.LABEL_SIZE), EPSILON)
+        assertEquals(57f, dockBarHeight(13f), EPSILON)
     }
 
     @Test
     fun barWidthIsCappedUntilThereAreEnoughTabs() {
-        assertEquals(80f, dockBarMaxWidth(1)!!, EPSILON)
-        assertEquals(296f, dockBarMaxWidth(4)!!, EPSILON)
+        assertEquals(64f, dockBarMaxWidth(1)!!, EPSILON)
+        assertEquals(232f, dockBarMaxWidth(4)!!, EPSILON)
+        assertEquals(288f, dockBarMaxWidth(5)!!, EPSILON)
         assertNull(dockBarMaxWidth(DockMetrics.FULL_WIDTH_COUNT))
-        assertNull(dockBarMaxWidth(6))
+        assertNull(dockBarMaxWidth(7))
+    }
+
+    @Test
+    fun navigationContentKeepsTheCompactVisualScale() {
+        assertEquals(20f, DockMetrics.ICON_SIZE, EPSILON)
+        assertEquals(10f, DockMetrics.LABEL_SIZE, EPSILON)
     }
 
     // ── 按下缩放 ───────────────────────────────────────────
