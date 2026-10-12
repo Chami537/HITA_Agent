@@ -592,10 +592,44 @@ class MainActivity : HiltBaseActivity<ComposeViewBinding>(),
         if (now - last < autoReimportIntervalMs) return
         autoReimportAttempted = true
         val isUndergrad = token.stutype == cn.limpu.hita.data.model.eas.EASToken.TYPE.UNDERGRAD
-        easRepository.startAutoImportCurrentTimetable(isUndergrad) {
-            // 每次尝试都记录：故障恢复后下次打开仍可再试
-            settings.setLastAutoReimportTs(System.currentTimeMillis())
+        easRepository.startAutoImportCurrentTimetable(isUndergrad) { result ->
+            when (result) {
+                // 仅成功才记录节流时间戳：失败后下次打开可立即重试。
+                cn.limpu.hita.data.repository.AutoImportResult.SUCCESS ->
+                    settings.setLastAutoReimportTs(System.currentTimeMillis())
+                cn.limpu.hita.data.repository.AutoImportResult.NOT_LOGGED_IN ->
+                    runOnUiThread { promptSessionExpiredRelogin() }
+                else -> Unit
+            }
         }
+    }
+
+    /** 自动刷新发现会话失效时的一次性重登引导；重登成功前不再重复弹。 */
+    private var sessionExpiredPromptShown = false
+
+    private fun promptSessionExpiredRelogin() {
+        if (sessionExpiredPromptShown || isFinishing || isDestroyed) return
+        sessionExpiredPromptShown = true
+        MaterialAlertDialogBuilder(this)
+            .setTitle(R.string.eas_session_expired_title)
+            .setMessage(R.string.eas_session_expired_message)
+            .setPositiveButton(R.string.eas_relogin_now) { _, _ ->
+                ActivityUtils.showEasVerifyWindow<Activity>(
+                    this,
+                    easRepository,
+                    directTo = null,
+                    onResponseListener = object : PopUpLoginEAS.OnResponseListener {
+                        override fun onSuccess(window: PopUpLoginEAS) {
+                            sessionExpiredPromptShown = false
+                            window.dismiss()
+                        }
+
+                        override fun onFailed(window: PopUpLoginEAS) {}
+                    }
+                )
+            }
+            .setNegativeButton(R.string.eas_relogin_later, null)
+            .show()
     }
 
     private fun refreshDrawerState() {

@@ -36,6 +36,15 @@ import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicLong
 import kotlin.concurrent.thread
 
+/** 自动刷新课表的结果：会话失效单独上报，供上层引导重登而不是静默吞掉。 */
+enum class AutoImportResult {
+    SUCCESS,
+    FAILED,
+    NOT_LOGGED_IN,
+    /** 已有自动导入在跑，本次请求被去重跳过。 */
+    SKIPPED_IN_PROGRESS,
+}
+
 internal class EASTimetableImportRepository(
     private val getService: (EASToken.Campus) -> EASService,
     private val easPreferenceSource: EasPreferenceSource,
@@ -782,26 +791,31 @@ internal class EASTimetableImportRepository(
 
     fun startAutoImportCurrentTimetable(
         isUndergraduate: Boolean,
-        onResult: ((Boolean) -> Unit)? = null
+        onResult: ((AutoImportResult) -> Unit)? = null
     ) {
         val token = easPreferenceSource.getEasToken()
         if (!token.isLogin()) {
-            onResult?.invoke(false)
+            onResult?.invoke(AutoImportResult.NOT_LOGGED_IN)
             return
         }
         if (!autoImportInProgress.compareAndSet(false, true)) {
             LogUtils.d("autoImport: ignored duplicate request while another import is running")
-            onResult?.invoke(false)
+            onResult?.invoke(AutoImportResult.SKIPPED_IN_PROGRESS)
             return
         }
         val expectedEpoch = authEpoch.get()
         Thread {
-            var importedSuccessfully = false
+            // 会话失效优先上报：上层据此引导重登，而不是当作普通失败静默吞掉。
+            var result = AutoImportResult.FAILED
             try {
                 if (!isCurrentAuthOperation(expectedEpoch)) return@Thread
                 val service = getService(token.campus)
                 val termsState = awaitLiveData(service.getAllTerms(token), 6)
                 LogUtils.d("autoImport: terms state=${termsState.state} count=${termsState.data?.size ?: -1}")
+                if (termsState.state == DataState.STATE.NOT_LOGGED_IN) {
+                    result = AutoImportResult.NOT_LOGGED_IN
+                    return@Thread
+                }
                 if (!isCurrentAuthOperation(expectedEpoch)) return@Thread
                 val term = termsState.data?.firstOrNull { it.isCurrent }
                     ?: termsState.data?.firstOrNull()
@@ -810,11 +824,19 @@ internal class EASTimetableImportRepository(
                 val startState = awaitLiveData(service.getStartDate(token, term), 6)
                 val startDate = startState.data
                 LogUtils.d("autoImport: startDate state=${startState.state}")
+                if (startState.state == DataState.STATE.NOT_LOGGED_IN) {
+                    result = AutoImportResult.NOT_LOGGED_IN
+                    return@Thread
+                }
                 if (!isCurrentAuthOperation(expectedEpoch)) return@Thread
                 val scheduleState = awaitLiveData(
                     service.getScheduleStructure(term, isUndergraduate, token),
                     6
                 )
+                if (scheduleState.state == DataState.STATE.NOT_LOGGED_IN) {
+                    result = AutoImportResult.NOT_LOGGED_IN
+                    return@Thread
+                }
                 val schedule = scheduleState.data
                     ?: timetablePreferenceSource.getSchedule(isUndergraduate)
                 LogUtils.d("autoImport: schedule state=${scheduleState.state} size=${schedule.size}")
@@ -822,12 +844,13 @@ internal class EASTimetableImportRepository(
 
                 val importLive = MediatorLiveData<DataState<Boolean>>()
                 val latch = CountDownLatch(1)
-                var timetableImported = false
+                val importState = java.util.concurrent.atomic.AtomicReference<DataState.STATE?>()
                 val observer = Observer<DataState<Boolean>> { state ->
                     if (state.state == DataState.STATE.SUCCESS ||
-                        state.state == DataState.STATE.FETCH_FAILED
+                        state.state == DataState.STATE.FETCH_FAILED ||
+                        state.state == DataState.STATE.NOT_LOGGED_IN
                     ) {
-                        timetableImported = state.state == DataState.STATE.SUCCESS
+                        importState.set(state.state)
                         latch.countDown()
                     }
                 }
@@ -848,9 +871,17 @@ internal class EASTimetableImportRepository(
                 }
                 latch.await(25, TimeUnit.SECONDS)
                 mainHandler.post { importLive.removeObserver(observer) }
+                if (importState.get() == DataState.STATE.NOT_LOGGED_IN) {
+                    result = AutoImportResult.NOT_LOGGED_IN
+                    return@Thread
+                }
                 if (!isCurrentAuthOperation(expectedEpoch)) return@Thread
 
                 val examState = awaitLiveData(service.getExamItems(token, term), 8)
+                if (examState.state == DataState.STATE.NOT_LOGGED_IN) {
+                    result = AutoImportResult.NOT_LOGGED_IN
+                    return@Thread
+                }
                 if (!isCurrentAuthOperation(expectedEpoch)) return@Thread
                 val timetableCode = EASTimetableCode.of(token.campus, term)
                 val timetable = timetableDao.getTimetableByEASCodeCandidatesSync(
@@ -868,18 +899,25 @@ internal class EASTimetableImportRepository(
                     "autoImport: exam state=${examState.state} " +
                         "total=${examState.data?.size ?: -1} imported=$importedExamCount"
                 )
-                importedSuccessfully = timetableImported || importedExamCount > 0
+                if (importState.get() == DataState.STATE.SUCCESS || importedExamCount > 0) {
+                    result = AutoImportResult.SUCCESS
+                }
             } catch (error: Exception) {
                 LogUtils.e("autoImport: failed, error=${error.message}", error)
             } finally {
                 autoImportInProgress.set(false)
-                onResult?.invoke(importedSuccessfully)
+                onResult?.invoke(result)
             }
         }.start()
     }
 
     private fun isCurrentAuthOperation(expectedEpoch: Long): Boolean {
         return authEpoch.get() == expectedEpoch && easPreferenceSource.getEasToken().isLogin()
+    }
+
+    /** 重新登录后调用：清空「记住忽略」指纹，让上游现状重新提示一次。 */
+    fun clearIgnoredTimetableChangeFingerprints() {
+        timetableChangeStore.clearIgnoredFingerprints()
     }
 
     @WorkerThread

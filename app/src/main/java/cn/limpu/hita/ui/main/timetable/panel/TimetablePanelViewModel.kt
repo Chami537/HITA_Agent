@@ -118,8 +118,8 @@ class TimetablePanelViewModel @Inject constructor(
         val token = easRepository.getEasToken()
         if (!token.isLogin()) return
         val isUndergrad = token.stutype == cn.limpu.hita.data.model.eas.EASToken.TYPE.UNDERGRAD
-        easRepository.startAutoImportCurrentTimetable(isUndergrad) { success ->
-            if (success) {
+        easRepository.startAutoImportCurrentTimetable(isUndergrad) { result ->
+            if (result == cn.limpu.hita.data.repository.AutoImportResult.SUCCESS) {
                 easSettingsRepository.setLastAutoReimportTs(System.currentTimeMillis())
             }
         }

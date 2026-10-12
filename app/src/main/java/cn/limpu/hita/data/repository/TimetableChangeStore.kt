@@ -181,6 +181,15 @@ class TimetableChangeStore @Inject constructor(application: Application) {
         }
     }
 
+    /**
+     * 清空「记住忽略」指纹：重新登录后上游现状应重新提示一次，
+     * 避免用户曾忽略的变更永远不再出现。vetoes/挂起批/待确认不受影响。
+     */
+    fun clearIgnoredFingerprints() = synchronized(lock) {
+        if (cached.ignoredFingerprints.isEmpty()) return@synchronized
+        mutate { state -> state.copy(ignoredFingerprints = emptyList()) }
+    }
+
     fun markInfoViewed() = synchronized(lock) {
         mutate { state -> state.copy(info = null) }
     }

@@ -739,7 +739,19 @@ class EASRepository @Inject constructor(
         importTimetableLiveData: MediatorLiveData<DataState<Boolean>>,
         importMode: TimetableImportMode = TimetableImportMode.REPLACE) = timetableImportRepository.startImportTimetableOfTerm(term, startDate, schedule, importTimetableLiveData, importMode)
     fun startAutoImportCurrentTimetable(isUndergraduate: Boolean,
-        onResult: ((Boolean) -> Unit)? = null) = timetableImportRepository.startAutoImportCurrentTimetable(isUndergraduate, onResult)
+        onResult: ((AutoImportResult) -> Unit)? = null) = timetableImportRepository.startAutoImportCurrentTimetable(isUndergraduate, onResult)
+
+    /**
+     * 教务重登成功后的统一收尾：清空「记住忽略」指纹（让上游现状重新提示一次），
+     * 并立即强制 MERGE 刷新当前学期（绕过打开应用的 10 分钟节流，节流在调用方）。
+     */
+    fun onEasReloginSuccess() {
+        timetableImportRepository.clearIgnoredTimetableChangeFingerprints()
+        val token = easPreferenceSource.getEasToken()
+        if (!token.isLogin()) return
+        val isUndergrad = token.stutype == EASToken.TYPE.UNDERGRAD
+        startAutoImportCurrentTimetable(isUndergrad)
+    }
 
     // ===== 委托给 shenzhenRepository =====
     fun isSubjectMetaSupported(campus: EASToken.Campus = easPreferenceSource.getEasToken().campus): Boolean = shenzhenRepository.isSubjectMetaSupported(campus)

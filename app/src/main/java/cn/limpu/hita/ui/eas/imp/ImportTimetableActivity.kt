@@ -91,7 +91,8 @@ class ImportTimetableActivity :
     override val viewModel: ImportTimetableViewModel by viewModels()
 
     override fun shouldRefreshOnStart(): Boolean = false
-    override fun shouldCheckLoginOnStart(): Boolean = false
+    // 进页即校验教务会话：过期立即弹重登窗，而不是等导入失败才发现。
+    override fun shouldCheckLoginOnStart(): Boolean = true
 
     private var autoImportPending: Boolean = false
     private var autoImportTriggered: Boolean = false
@@ -275,24 +276,28 @@ class ImportTimetableActivity :
         viewModel.importTimetableResultLiveData.observe(this) {
             importing = false
             importSuccess = it.state == DataState.STATE.SUCCESS
-            if (it.state == DataState.STATE.SUCCESS) {
-                importActionInFlight = false
-                resetSessionRetryState()
-                Toast.makeText(this, R.string.import_success, Toast.LENGTH_SHORT).show()
-                viewModel.refreshSnapshots()
-            } else if (it.state == DataState.STATE.NOT_LOGGED_IN && importActionInFlight) {
-                if (!handleSessionExpired { retryImportFlow() }) {
+            when {
+                it.state == DataState.STATE.SUCCESS -> {
                     importActionInFlight = false
+                    resetSessionRetryState()
+                    Toast.makeText(this, R.string.import_success, Toast.LENGTH_SHORT).show()
+                    viewModel.refreshSnapshots()
                 }
-            } else if (it.state != DataState.STATE.SUCCESS) {
-                importActionInFlight = false
-                resetSessionRetryState()
-                val msg = it.message?.trim().orEmpty()
-                Toast.makeText(
-                    this,
-                    msg.ifEmpty { getString(R.string.import_failed) },
-                    Toast.LENGTH_SHORT
-                ).show()
+
+                it.state == DataState.STATE.NOT_LOGGED_IN -> {
+                    // 不再受 importActionInFlight 门控：会话失效时始终提供重登入口。
+                    if (!handleSessionExpired { retryImportFlow() }) {
+                        importActionInFlight = false
+                        showImportFailureWithRelogin(it.message)
+                    }
+                }
+
+                else -> {
+                    // 失效页特征漏匹配时归类为普通失败：toast 升级为带重登入口的对话框。
+                    importActionInFlight = false
+                    resetSessionRetryState()
+                    showImportFailureWithRelogin(it.message)
+                }
             }
             WidgetUtils.sendRefreshToAll(this)
         }
@@ -315,6 +320,24 @@ class ImportTimetableActivity :
                 else -> Unit
             }
         }
+    }
+
+    /**
+     * 导入失败兜底对话框：会话失效页特征漏匹配（归类为普通失败）时
+     * 仍保留一键重登入口，不再只有 toast 后无路可走。
+     */
+    private fun showImportFailureWithRelogin(message: String?) {
+        val msg = message?.trim().orEmpty().ifEmpty { getString(R.string.import_failed) }
+        AlertDialog.Builder(this)
+            .setTitle(R.string.import_failed)
+            .setMessage(msg)
+            .setPositiveButton(R.string.eas_relogin_now) { _, _ ->
+                // 用户显式点重登是新一轮尝试：重置计数，否则 3 次上限后按钮失效。
+                resetSessionRetryState()
+                handleSessionExpired { retryImportFlow() }
+            }
+            .setNegativeButton(R.string.eas_relogin_later, null)
+            .show()
     }
 
     private fun recoverImportSessionIfNeeded(state: DataState<*>) {

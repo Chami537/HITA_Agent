@@ -163,7 +163,18 @@ object ActivityUtils {
             window.lock = lock
             window.autoLaunchWebLogin = autoLaunchWebLogin
             window.preferredCampus = preferredCampus
-            window.onResponseListener = onResponseListener
+            window.onResponseListener = object : PopUpLoginEAS.OnResponseListener {
+                override fun onSuccess(window: PopUpLoginEAS) {
+                    // 重登成功统一收尾：清「记住忽略」指纹并立即强制 MERGE 刷新，
+                    // 上游课表变更无需等 10 分钟节流即可进入待确认。
+                    easRepository.onEasReloginSuccess()
+                    onResponseListener.onSuccess(window)
+                }
+
+                override fun onFailed(window: PopUpLoginEAS) {
+                    onResponseListener.onFailed(window)
+                }
+            }
             window.show(activity.supportFragmentManager, "verify")
         } else {
             LogUtils.e("❌ showEasVerifyWindow FAILED: unable to extract AppCompatActivity from context")

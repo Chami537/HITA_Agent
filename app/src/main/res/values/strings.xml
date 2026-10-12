@@ -567,6 +567,10 @@
     <string name="course_selection_result_unconfirmed">尚未确认</string>
     <string name="course_selection_result_business_failure">教务拒绝</string>
     <string name="course_selection_result_auth_required">登录已失效</string>
+    <string name="eas_session_expired_title">教务登录已过期</string>
+    <string name="eas_session_expired_message">课表自动刷新失败：教务系统登录已过期。重新登录后将立即刷新课表。</string>
+    <string name="eas_relogin_now">重新登录</string>
+    <string name="eas_relogin_later">稍后</string>
     <string name="course_selection_result_unknown">结果未知</string>
     <string name="course_selection_result_waiting">等待提交</string>
     <string name="course_selection_result_running">正在处理</string>
