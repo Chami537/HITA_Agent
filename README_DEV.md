@@ -9,14 +9,14 @@ HITA Agent 是一款面向哈工大三校区的 Android 校园助手 App，集�
 - **目标 SDK**：35 (Android 15)
 - **编译 SDK**：`app` 为 36 (Android 16)，`hitauser` / `component` / `style` 为 35
 - **构建工具**：Gradle 8.11.1, AGP 8.10.1, Kotlin 2.2.21
-- **JDK**：17（本地用 JDK 21 亦可构建通过）
+- **JDK**：21（AndroidLiquidGlass/backdrop 为 Java 21 字节码，运行单元测试需要 JDK 21；JDK 17 只能编译）
 - **架构**：MVVM + Repository，Hilt 依赖注入，Room 数据库，WorkManager 定时任务
 - **UI**：Jetpack Compose（Material3）与 ViewBinding 混合，Markwon 渲染 Markdown
 - **网络**：Retrofit + Jsoup（教务系统 HTML 解析），OkHttp
 
 ## 环境要求
 - Android Studio 2025.3.2 或更高
-- JDK 17
+- JDK 21
 - Android SDK Platform 35 和 36（应用最低支持 API 26）
 
 ## 项目结构
