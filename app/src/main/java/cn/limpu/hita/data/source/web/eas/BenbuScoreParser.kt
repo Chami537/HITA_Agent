@@ -4,6 +4,8 @@ import cn.limpu.hita.utils.LogUtils
 import cn.limpu.hita.data.model.eas.CourseScoreItem
 import org.jsoup.Jsoup
 import org.jsoup.nodes.Element
+import org.jsoup.nodes.Comment
+import org.jsoup.nodes.TextNode
 
 internal fun parseScoreCredit(raw: String): Float {
     return raw.trim().toFloatOrNull() ?: 0f
@@ -68,6 +70,12 @@ object BenbuScoreParser {
                     credits = parseScoreCredit(getValue(values, "学分"))
                     finalScoresText = getValue(values, "最终成绩", "成绩", "总成绩").ifBlank { null }
                     finalScores = parseGradeToInt(finalScoresText.orEmpty())
+                    val scoreIndex = listOf("最终成绩", "成绩", "总成绩")
+                        .map { headers.indexOf(normalizeHeader(it)) }
+                        .firstOrNull { it >= 0 }
+                    numericScore = parseNumericScore(
+                        scoreIndex?.let { cells.getOrNull(it) }
+                    )
                     hours = getValue(values, "学时").toIntOrNull() ?: 0
                 }
                 tableResult.add(item)
@@ -145,6 +153,31 @@ object BenbuScoreParser {
             .replace("：", "")
             .replace(":", "")
             .trim()
+    }
+
+    private fun parseNumericScore(cell: Element?): Double? {
+        if (cell == null) return null
+
+        // 跳过成绩单元格前的空白，找到紧邻的节点。
+        var previous = cell.previousSibling()
+        while (previous is TextNode && previous.text().isBlank()) {
+            previous = previous.previousSibling()
+        }
+
+        // 本部教务将原始数字成绩放在最终成绩单元格前的注释中。
+        val commentScore = (previous as? Comment)?.let { comment ->
+            val doc = Jsoup.parse("<table><tr>${comment.data}</tr></table>")
+            val cells = doc.select("table > tbody > tr > td")
+            if (cells.size == 1) {
+                cells.first()?.text()?.trim()?.toDoubleOrNull()
+            } else {
+                null
+            }
+        }?.takeIf { it.isFinite() && it in 0.0..100.0 }
+
+        return commentScore
+            ?: cell.text().trim().toDoubleOrNull()
+                ?.takeIf { it.isFinite() && it in 0.0..100.0 }
     }
 
     private fun parseGradeToInt(raw: String): Int {
