@@ -7,6 +7,19 @@ import java.net.URI
 internal object WebLoginSuccessPolicy {
     private const val WEIHAI_TICKET_COOKIE_PREFIX = "wengine_vpn_ticket"
 
+    fun shouldOpenWeihaiTeachingEntry(url: String, teachingBaseUrl: String): Boolean {
+        val uri = runCatching { URI(url) }.getOrNull() ?: return false
+        val teachingBase = runCatching { URI(teachingBaseUrl) }.getOrNull() ?: return false
+        if (!uri.scheme.equals("https", ignoreCase = true) ||
+            !uri.host.equals("webvpn.hitwh.edu.cn", ignoreCase = true) ||
+            uri.port != -1 || uri.userInfo != null
+        ) return false
+
+        val path = uri.path.orEmpty().trim('/').lowercase()
+        val teachingPath = teachingBase.path.orEmpty().trim('/').lowercase()
+        return path.isEmpty() || path == "m/portal" || path == "portal/home" || path == teachingPath
+    }
+
     fun isWeihaiAuthenticatedPage(url: String, cookies: Map<String, String>): Boolean {
         val uri = runCatching { URI(url) }.getOrNull() ?: return false
         val path = uri.path.orEmpty().lowercase()

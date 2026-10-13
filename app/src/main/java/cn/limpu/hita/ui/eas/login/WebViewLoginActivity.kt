@@ -116,7 +116,7 @@ class WebViewLoginActivity : AppCompatActivity() {
 
             // 威海校区URL
             private const val WEIHAI_BASE = "https://webvpn.hitwh.edu.cn"
-            private const val WEIHAI_EAS_PREFIX = "$WEIHAI_BASE/http/77726476706e69737468656265737421fae0558f693861446900c7a99c406d3667"
+            const val WEIHAI_EAS_PREFIX = "$WEIHAI_BASE/http/77726476706e69737468656265737421fae0558f693861446900c7a99c406d3667"
 
             val BENBU_LOGIN = "$BENBU_BASE/portal/home/"
             val BENBU_JWTS = "$JWTS_BASE/loginCAS"
@@ -1608,7 +1608,10 @@ class WebViewLoginActivity : AppCompatActivity() {
         return when (config.campus) {
             EASToken.Campus.BENBU -> uri.host == "i-hit-edu-cn.ivpn.hit.edu.cn" &&
                 (normalizedPath == "/portal/home" || normalizedPath == "/portal")
-            EASToken.Campus.WEIHAI -> uri.host == "webvpn.hitwh.edu.cn" && (normalizedPath.isBlank() || normalizedPath == "/portal/home")
+            EASToken.Campus.WEIHAI -> WebLoginSuccessPolicy.shouldOpenWeihaiTeachingEntry(
+                url,
+                CampusUrls.WEIHAI_EAS_PREFIX
+            )
             EASToken.Campus.SHENZHEN -> ShenzhenWebAutoLogin.isProxyRoot(
                 url,
                 CampusUrls.SHENZHEN_PROXY_BASE

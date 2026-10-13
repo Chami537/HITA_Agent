@@ -6,6 +6,31 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class WebLoginSuccessPolicyTest {
+    private val weihaiTeachingBase =
+        "https://webvpn.hitwh.edu.cn/http/77726476706e69737468656265737421fae0558f693861446900c7a99c406d3667"
+
+    @Test
+    fun `Weihai mobile portal advances to teaching login`() {
+        assertTrue(
+            WebLoginSuccessPolicy.shouldOpenWeihaiTeachingEntry(
+                "https://webvpn.hitwh.edu.cn/m/portal/?locale=zh",
+                weihaiTeachingBase
+            )
+        )
+    }
+
+    @Test
+    fun `Weihai teaching root advances but login and foreign hosts do not`() {
+        assertTrue(WebLoginSuccessPolicy.shouldOpenWeihaiTeachingEntry(weihaiTeachingBase + "/", weihaiTeachingBase))
+        assertFalse(WebLoginSuccessPolicy.shouldOpenWeihaiTeachingEntry(weihaiTeachingBase + "/loginCAS", weihaiTeachingBase))
+        assertFalse(
+            WebLoginSuccessPolicy.shouldOpenWeihaiTeachingEntry(
+                "https://other.example/m/portal",
+                weihaiTeachingBase
+            )
+        )
+    }
+
     @Test
     fun `Weihai loginCAS without authenticated cookies is not success`() {
         assertFalse(
