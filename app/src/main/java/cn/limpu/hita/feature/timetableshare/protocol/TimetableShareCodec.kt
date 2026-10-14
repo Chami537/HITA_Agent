@@ -13,14 +13,16 @@ import java.util.zip.CRC32
 import java.util.zip.GZIPOutputStream
 import java.util.zip.Inflater
 
-/** Pure JVM v1 protocol. Callers perform this bounded work off the UI thread. */
+/** Pure JVM share protocol. Callers perform this bounded work off the UI thread. */
 class TimetableShareCodec {
     fun encode(snapshot: SharedTimetable): String {
-        val bytes = canonicalJson(snapshot).toByteArray(Charsets.UTF_8)
+        // V1 canonical JSON remains the stable saved snapshot and digest format.
+        val normalized = StrictShareJson.decode(canonicalJson(snapshot))
+        val bytes = CompactShareJson.encode(normalized).toByteArray(Charsets.UTF_8)
         if (bytes.size > ShareLimits.JSON_BYTES) throw ShareFormatException(ShareError.DECOMPRESSED_TOO_LARGE)
         val out = ByteArrayOutputStream()
         GZIPOutputStream(out).use { it.write(bytes) }
-        val token = "HITA1:" + Base64.getUrlEncoder().withoutPadding().encodeToString(out.toByteArray())
+        val token = "HITA2:" + Base64.getUrlEncoder().withoutPadding().encodeToString(out.toByteArray())
         if (token.length > ShareLimits.TOKEN_CHARS) throw ShareFormatException(ShareError.TOO_LONG)
         return token
     }
@@ -41,14 +43,15 @@ class TimetableShareCodec {
         if (token.length > ShareLimits.TOKEN_CHARS) throw ShareFormatException(ShareError.TOO_LONG)
         val payload = message.substring(match.range.last + 1, end)
         if (payload.isEmpty() || payload.any { !base64Char(it) } || payload.length % 4 == 1) throw ShareFormatException(ShareError.CORRUPT_DATA)
-        if (match.groupValues[1] != "1") throw ShareFormatException(ShareError.UNSUPPORTED_VERSION)
+        val version = match.groupValues[1]
+        if (version != "1" && version != "2") throw ShareFormatException(ShareError.UNSUPPORTED_VERSION)
         val bytes = try { Base64.getUrlDecoder().decode(payload) } catch (_: IllegalArgumentException) { throw ShareFormatException(ShareError.CORRUPT_DATA) }
         if (Base64.getUrlEncoder().withoutPadding().encodeToString(bytes) != payload) throw ShareFormatException(ShareError.CORRUPT_DATA)
         val plain = inflate(bytes)
         val json = try {
             Charsets.UTF_8.newDecoder().onMalformedInput(CodingErrorAction.REPORT).onUnmappableCharacter(CodingErrorAction.REPORT).decode(ByteBuffer.wrap(plain)).toString()
         } catch (_: java.nio.charset.CharacterCodingException) { throw ShareFormatException(ShareError.CORRUPT_DATA) }
-        return decodeJson(json)
+        return if (version == "1") decodeJson(json) else normalize(CompactShareJson.decode(json))
     }
 
     fun decodeJson(json: String): SharedTimetable = normalize(StrictShareJson.decode(json))

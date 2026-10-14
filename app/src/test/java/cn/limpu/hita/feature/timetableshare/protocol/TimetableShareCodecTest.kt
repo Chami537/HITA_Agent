@@ -11,7 +11,7 @@ class TimetableShareCodecTest {
     }
     @Test fun unsupportedVersionHasSpecificError() {
         val error = assertThrows(ShareFormatException::class.java) {
-            TimetableShareCodec().decodeMessage("HITA2:AAAA")
+            TimetableShareCodec().decodeMessage("HITA3:AAAA")
         }
         assertEquals(ShareError.UNSUPPORTED_VERSION, error.error)
     }

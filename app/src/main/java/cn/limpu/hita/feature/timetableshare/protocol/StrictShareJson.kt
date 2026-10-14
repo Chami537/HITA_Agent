@@ -13,18 +13,7 @@ import java.time.temporal.ChronoUnit
 /** Token reading preserves duplicate-key and numeric-type checks before any tree mapping. */
 internal object StrictShareJson {
     fun decode(json: String): SharedTimetable {
-        if (json.length > ShareLimits.JSON_BYTES || json.toByteArray(Charsets.UTF_8).size > ShareLimits.JSON_BYTES) throw ShareFormatException(ShareError.DECOMPRESSED_TOO_LARGE)
-        validateStringSyntax(json)
-        val root = try {
-            JsonReader(StringReader(json)).use { reader ->
-                reader.isLenient = false
-                val value = read(reader, 0)
-                if (reader.peek() != JsonToken.END_DOCUMENT) invalidFields()
-                value
-            }
-        } catch (e: ShareFormatException) { throw e } catch (_: java.io.IOException) { invalidFields() } catch (_: IllegalStateException) { invalidFields() } catch (_: NumberFormatException) { invalidFields() }
-        if (!root.isJsonObject) invalidFields()
-        val obj = root.asJsonObject
+        val obj = parseObject(json)
         val mode = when (string(obj.get("m"))) { "full" -> ShareMode.FULL; "busy" -> ShareMode.BUSY; else -> invalidFields() }
         val required = setOf("v", "id", "n", "m", "t", "p", "e") + if (mode == ShareMode.FULL) setOf("c") else emptySet()
         if (obj.keySet() != required || number(obj.get("v")) != 1L) invalidFields()
@@ -45,6 +34,21 @@ internal object StrictShareJson {
         }
         return validate(SharedTimetable(string(obj.get("id")), string(obj.get("n")), mode,
             SharedTerm(string(term[0]), string(term[1]), number(term[2]), number(term[3]), string(term[4])), periods, courses, occurrences))
+    }
+
+    fun parseObject(json: String): JsonObject {
+        if (json.length > ShareLimits.JSON_BYTES || json.toByteArray(Charsets.UTF_8).size > ShareLimits.JSON_BYTES) throw ShareFormatException(ShareError.DECOMPRESSED_TOO_LARGE)
+        validateStringSyntax(json)
+        val root = try {
+            JsonReader(StringReader(json)).use { reader ->
+                reader.isLenient = false
+                val value = read(reader, 0)
+                if (reader.peek() != JsonToken.END_DOCUMENT) invalidFields()
+                value
+            }
+        } catch (e: ShareFormatException) { throw e } catch (_: java.io.IOException) { invalidFields() } catch (_: IllegalStateException) { invalidFields() } catch (_: NumberFormatException) { invalidFields() }
+        if (!root.isJsonObject) invalidFields()
+        return root.asJsonObject
     }
 
     // JsonReader's non-lenient legacy mode still accepts raw control characters,
@@ -108,24 +112,24 @@ internal object StrictShareJson {
             else -> invalidFields()
         }
     }
-    private fun string(value: JsonElement?): String {
+    fun string(value: JsonElement?): String {
         if (value == null || !value.isJsonPrimitive || !value.asJsonPrimitive.isString) invalidFields()
         return value.asString
     }
-    private fun number(value: JsonElement?): Long {
+    fun number(value: JsonElement?): Long {
         if (value == null || !value.isJsonPrimitive || !value.asJsonPrimitive.isNumber) invalidFields()
         return value.asLong
     }
-    private fun integer(value: JsonElement?): Int {
+    fun integer(value: JsonElement?): Int {
         val n = number(value)
         if (n !in Int.MIN_VALUE.toLong()..Int.MAX_VALUE.toLong()) invalidFields()
         return n.toInt()
     }
-    private fun list(value: JsonElement?, max: Int): List<JsonElement> {
+    fun list(value: JsonElement?, max: Int): List<JsonElement> {
         if (value == null || !value.isJsonArray || value.asJsonArray.size() > max) invalidFields()
         return value.asJsonArray.toList()
     }
-    private fun array(value: JsonElement?, size: Int): List<JsonElement> = list(value, size).also { if (it.size != size) invalidFields() }
+    fun array(value: JsonElement?, size: Int): List<JsonElement> = list(value, size).also { if (it.size != size) invalidFields() }
 
     fun validate(input: SharedTimetable): SharedTimetable {
         fun text(s: String, max: Int, nonempty: Boolean = true) {

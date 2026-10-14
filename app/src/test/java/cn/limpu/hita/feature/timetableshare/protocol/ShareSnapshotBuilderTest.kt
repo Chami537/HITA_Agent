@@ -39,7 +39,7 @@ class ShareSnapshotBuilderTest {
         assertTrue(result.courses.isEmpty()); assertEquals("忙闲课表", result.term.timetableName)
         assertEquals(listOf(SharedOccurrence(time("2026-08-31T08:30:00"), time("2026-08-31T12:15:00"))), result.occurrences)
         val token = TimetableShareCodec().encode(result)
-        val json = GZIPInputStream(Base64.getUrlDecoder().decode(token.removePrefix("HITA1:")).inputStream()).reader().use { it.readText() }
+        val json = GZIPInputStream(Base64.getUrlDecoder().decode(token.removePrefix("HITA2:")).inputStream()).reader().use { it.readText() }
         listOf("数学", "物理", "秘密教室", "private-subject", "秘密教师", "BENBU", "subjectId", "teacher", "code").forEach { assertFalse(json.contains(it)) }
         events.forEach { it.name = "changed"; it.subjectId = "same"; it.place = "changed" }
         assertEquals(result, ShareSnapshotBuilder().build(tt, events, id, "小林", ShareMode.BUSY))

@@ -1,6 +1,8 @@
 package cn.limpu.hita.feature.timetableshare.protocol
 
 import java.util.Base64
+import java.io.ByteArrayOutputStream
+import java.util.zip.GZIPOutputStream
 import org.junit.Assert.*
 import org.junit.Test
 
@@ -49,7 +51,11 @@ class ShareTokenSizeTest {
         assertEquals(occurrenceCount, decoded.occurrences.size)
         assertEquals(codec.decodeJson(codec.canonicalJson(snapshot)), decoded)
         val jsonBytes = codec.canonicalJson(snapshot).toByteArray(Charsets.UTF_8).size
-        val compressedBytes = Base64.getUrlDecoder().decode(token.removePrefix("HITA1:")).size
-        println("SYNTHETIC mode=${snapshot.mode} courses=$courseCount occurrences=$occurrenceCount jsonBytes=$jsonBytes compressedBytes=$compressedBytes tokenChars=${token.length}")
+        val compressedBytes = Base64.getUrlDecoder().decode(token.removePrefix("HITA2:")).size
+        val legacyCompressedBytes = ByteArrayOutputStream().also { out ->
+            GZIPOutputStream(out).use { it.write(codec.canonicalJson(snapshot).toByteArray(Charsets.UTF_8)) }
+        }.size()
+        assertTrue("compact format should reduce this synthetic share", compressedBytes < legacyCompressedBytes)
+        println("SYNTHETIC mode=${snapshot.mode} courses=$courseCount occurrences=$occurrenceCount legacyJsonBytes=$jsonBytes legacyCompressedBytes=$legacyCompressedBytes compactBytes=$compressedBytes tokenChars=${token.length}")
     }
 }
