@@ -134,6 +134,10 @@
         <activity android:name=".ui.timetable.friend.FriendTimetableActivity" android:exported="false" />
         <activity android:name=".ui.timetable.friend.FriendTimetableDetailActivity" android:exported="false" />
         <activity android:name=".ui.timetable.share.TimetableShareActivity" android:exported="false" />
+        <activity
+            android:name="com.journeyapps.barcodescanner.CaptureActivity"
+            android:screenOrientation="portrait"
+            tools:replace="android:screenOrientation" />
         <activity android:name=".ui.main.timetable.compare.TimetableComparisonActivity" android:exported="false" />
         <activity
             android:name=".ui.ActivitySplash"

@@ -41,6 +41,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import cn.limpu.hita.R
+import cn.limpu.hita.ui.timetable.share.TimetableQrDialog
 import cn.limpu.hita.utils.FileProviderUtils
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -150,6 +151,11 @@ fun TimetableExportTokensDialog(
     onShareAll: () -> Unit,
     onDismiss: () -> Unit,
 ) {
+    var qrToken by remember(tokens) { mutableStateOf<String?>(null) }
+    qrToken?.let { token ->
+        TimetableQrDialog(token, onDismiss = { qrToken = null })
+        return
+    }
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(stringResource(R.string.timetable_export_tokens_title)) },
@@ -165,6 +171,9 @@ fun TimetableExportTokensDialog(
                                 maxLines = 1, overflow = TextOverflow.Ellipsis)
                             TextButton(onClick = { onCopy(token) }) {
                                 Text(stringResource(R.string.timetable_share_copy))
+                            }
+                            TextButton(onClick = { qrToken = token }) {
+                                Text(stringResource(R.string.timetable_share_qr_show))
                             }
                         }
                         SelectionContainer {

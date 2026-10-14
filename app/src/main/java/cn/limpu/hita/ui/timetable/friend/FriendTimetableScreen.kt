@@ -13,7 +13,7 @@ import cn.limpu.hita.ui.design.HitaTheme
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun FriendTimetableScreen(viewModel: FriendTimetableViewModel, onBack: () -> Unit,
+fun FriendTimetableScreen(viewModel: FriendTimetableViewModel, onBack: () -> Unit, onScan: () -> Unit,
     onCompare: (cn.limpu.hita.data.model.timetable.share.FriendTimetableEntity) -> Unit) {
     val spacing = HitaTheme.tokens.spacing
     Scaffold(
@@ -54,7 +54,7 @@ fun FriendTimetableScreen(viewModel: FriendTimetableViewModel, onBack: () -> Uni
         }
     }
     if (viewModel.importOpen) FriendImportDialog(viewModel.form, viewModel::editInput, viewModel::parse,
-        viewModel::confirm, viewModel::dismissImport)
+        onScan, viewModel::confirm, viewModel::dismissImport)
     viewModel.renameRow?.let {
         AlertDialog(onDismissRequest = viewModel::dismissRename,
             title = { Text(stringResource(R.string.friend_remark_title)) },

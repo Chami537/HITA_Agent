@@ -21,7 +21,7 @@ internal fun friendDate(millis: Long): String = DateTimeFormatter.ofPattern("yyy
 
 @Composable
 fun FriendImportDialog(state: FriendImportUiState, onEdit: (String) -> Unit, onParse: () -> Unit,
-                       onConfirm: () -> Unit, onDismiss: () -> Unit) {
+                       onScan: () -> Unit, onConfirm: () -> Unit, onDismiss: () -> Unit) {
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(stringResource(R.string.friend_import_title)) },
@@ -30,8 +30,13 @@ fun FriendImportDialog(state: FriendImportUiState, onEdit: (String) -> Unit, onP
                 OutlinedTextField(value = state.input, onValueChange = onEdit, enabled = !state.saving,
                     label = { Text(stringResource(R.string.friend_import_input)) },
                     modifier = Modifier.fillMaxWidth().heightIn(max = 150.dp), minLines = 3, maxLines = 5)
-                TextButton(onClick = onParse, enabled = state.input.isNotBlank() && !state.loading && !state.saving) {
-                    Text(stringResource(R.string.friend_import_parse))
+                Row {
+                    TextButton(onClick = onParse, enabled = state.input.isNotBlank() && !state.loading && !state.saving) {
+                        Text(stringResource(R.string.friend_import_parse))
+                    }
+                    TextButton(onClick = onScan, enabled = !state.loading && !state.saving) {
+                        Text(stringResource(R.string.timetable_share_qr_scan))
+                    }
                 }
                 if (state.loading || state.saving) CircularProgressIndicator(Modifier.size(24.dp))
                 state.errorResource?.let { Text(stringResource(it), color = MaterialTheme.colorScheme.error) }

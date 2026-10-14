@@ -1608,6 +1608,15 @@
     <string name="timetable_share_retry">重试读取课表</string>
     <string name="timetable_share_generating">正在生成…</string>
     <string name="timetable_share_token_title">课表分享口令</string>
+    <string name="timetable_share_qr_show">显示二维码</string>
+    <string name="timetable_share_qr_scan">扫码</string>
+    <string name="timetable_share_qr_scan_prompt">扫描课表分享二维码</string>
+    <string name="timetable_share_qr_camera_unavailable">相机权限不可用，请允许相机权限后重试或粘贴口令。</string>
+    <string name="timetable_share_qr_title">课表分享二维码</string>
+    <string name="timetable_share_qr_too_large">此课表内容超过单张二维码容量，可继续使用口令分享。</string>
+    <string name="timetable_share_qr_failed">生成二维码失败，请使用口令分享。</string>
+    <string name="timetable_share_qr_full_notice">任何人扫码都可读取课程和地点，请只向信任的人展示。</string>
+    <string name="timetable_share_qr_busy_notice">扫码者可读取你的忙闲时间，请只向信任的人展示。</string>
     <string name="timetable_share_copy">复制</string>
     <string name="timetable_share_copied">分享口令已复制</string>
     <string name="timetable_share_system">系统分享</string>

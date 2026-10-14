@@ -82,6 +82,12 @@ class FriendTimetableViewModel @Inject constructor(
         }
     }
     fun showImport() { importOpen = true }
+    fun acceptScannedToken(text: String) {
+        if (text.isBlank() || form.saving) return
+        showImport()
+        editInput(text)
+        parse()
+    }
     fun dismissImport() { if (!form.saving) { parsing?.cancel(); form = form.edit(form.input); importOpen = false } }
     fun editInput(text: String) { if (!form.saving) { parsing?.cancel(); form = form.edit(text) } }
     fun parse() {

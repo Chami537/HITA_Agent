@@ -18,6 +18,12 @@ class ShareFormStateTest {
         assertFalse(edited.generating)
         assertEquals(old.revision + 1, edited.revision)
     }
+    @Test fun everyShareChoiceInvalidatesDisplayedQrToken() {
+        val original = ShareFormState("a", "好友", token = "HITA2:old")
+        assertNull(original.edit(id = "b").token)
+        assertNull(original.edit(name = "新昵称").token)
+        assertNull(original.edit(selectedMode = ShareMode.BUSY).token)
+    }
     @Test fun currentGenerationIsAcceptedAndNicknameUsesCodePoints() {
         val state = ShareFormState("a", "😀".repeat(40), generating = true)
         assertTrue(state.nicknameValid)

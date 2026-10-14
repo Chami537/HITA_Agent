@@ -211,6 +211,7 @@ fun TokenImportSheet(
     onDismiss: () -> Unit,
     onInputChange: (String) -> Unit,
     onParse: (String) -> Unit,
+    onScan: () -> Unit,
     onImportFriend: () -> Unit,
     onImportMine: () -> Unit,
 ) {
@@ -244,6 +245,9 @@ fun TokenImportSheet(
                     enabled = input.isNotBlank() && !loading && !saving
                 ) {
                     Text(stringResource(R.string.friend_import_parse))
+                }
+                TextButton(onClick = onScan, enabled = !loading && !saving) {
+                    Text(stringResource(R.string.timetable_share_qr_scan))
                 }
                 if (loading || saving) {
                     CircularProgressIndicator(

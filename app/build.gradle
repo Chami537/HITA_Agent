@@ -196,6 +196,8 @@ dependencies {
     implementation 'com.cncoderx.wheelview:library:1.2.2'//滚轮选择器
 
     implementation 'org.mnode.ical4j:ical4j:1.0.2'
+    implementation 'com.google.zxing:core:3.5.3'
+    implementation 'com.journeyapps:zxing-android-embedded:4.3.0'
 
     //文档解析库 - PDF本地解析，Office使用4.x版本兼容Android
     implementation 'com.tom-roush:pdfbox-android:2.0.27.0' //PDF解析（已添加资源文件）

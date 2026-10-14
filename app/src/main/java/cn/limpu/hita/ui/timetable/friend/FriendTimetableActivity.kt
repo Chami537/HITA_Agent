@@ -2,6 +2,8 @@ package cn.limpu.hita.ui.timetable.friend
 
 import android.content.Context
 import android.content.Intent
+import android.Manifest
+import android.content.pm.PackageManager
 import android.os.Bundle
 import android.widget.Toast
 import androidx.activity.viewModels
@@ -20,11 +22,21 @@ import dagger.hilt.android.AndroidEntryPoint
 import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
+import com.journeyapps.barcodescanner.ScanContract
+import com.journeyapps.barcodescanner.ScanOptions
 
 @AndroidEntryPoint
 class FriendTimetableActivity : HiltBaseActivity<ComposeViewBinding>() {
     private val viewModel: FriendTimetableViewModel by viewModels()
     private var importIntentConsumed = false
+    private val scanQrLauncher = registerForActivityResult(ScanContract()) { result ->
+        val text = result.contents
+        if (text != null) {
+            viewModel.acceptScannedToken(text)
+        } else if (checkSelfPermission(Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
+            Toast.makeText(this, R.string.timetable_share_qr_camera_unavailable, Toast.LENGTH_SHORT).show()
+        }
+    }
     override fun onCreate(savedInstanceState: Bundle?) {
         importIntentConsumed = savedInstanceState?.getBoolean("importIntentConsumed") ?: false
         super.onCreate(savedInstanceState)
@@ -59,7 +71,13 @@ class FriendTimetableActivity : HiltBaseActivity<ComposeViewBinding>() {
                             R.string.timetable_export_failed, Toast.LENGTH_SHORT).show()
                     }
                 }
-                FriendTimetableScreen(viewModel, onBack = { finish() }, onCompare = { row ->
+                FriendTimetableScreen(viewModel, onBack = { finish() }, onScan = {
+                    scanQrLauncher.launch(ScanOptions()
+                        .setDesiredBarcodeFormats(ScanOptions.QR_CODE)
+                        .setPrompt(getString(R.string.timetable_share_qr_scan_prompt))
+                        .setBeepEnabled(false)
+                        .setOrientationLocked(false))
+                }, onCompare = { row ->
                     startActivity(TimetableComparisonActivity.intent(this@FriendTimetableActivity, row.shareId))
                 })
 

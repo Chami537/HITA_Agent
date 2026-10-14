@@ -26,6 +26,7 @@ fun TimetableShareScreen(
     onDismiss: () -> Unit, onCopy: (String) -> Unit, onShare: (String) -> Unit,
 ) {
     var expanded by remember { mutableStateOf(false) }
+    var qrVisible by remember(form.token) { mutableStateOf(false) }
     Scaffold(topBar = {
         TopAppBar(title = { Text(stringResource(R.string.timetable_share_action)) }, navigationIcon = {
             TextButton(onClick = onBack) { Text(stringResource(R.string.timetable_share_back)) }
@@ -84,7 +85,8 @@ fun TimetableShareScreen(
         }
     }
     form.token?.let { token ->
-        AlertDialog(onDismissRequest = onDismiss,
+        if (qrVisible) TimetableQrDialog(token, onDismiss = { qrVisible = false })
+        else AlertDialog(onDismissRequest = onDismiss,
             title = { Text(stringResource(R.string.timetable_share_token_title)) },
             text = { SelectionContainer {
                 Text(token, modifier = Modifier.heightIn(max = 280.dp).verticalScroll(rememberScrollState()))
@@ -92,6 +94,7 @@ fun TimetableShareScreen(
             confirmButton = { TextButton(onClick = { onCopy(token) }) { Text(stringResource(R.string.timetable_share_copy)) } },
             dismissButton = {
                 Row {
+                    TextButton(onClick = { qrVisible = true }) { Text(stringResource(R.string.timetable_share_qr_show)) }
                     TextButton(onClick = { onShare(token) }) { Text(stringResource(R.string.timetable_share_system)) }
                     TextButton(onClick = onDismiss) { Text(stringResource(R.string.timetable_share_close)) }
                 }

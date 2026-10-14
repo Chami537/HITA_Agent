@@ -1,6 +1,8 @@
 package cn.limpu.hita.ui.timetable.manager
 
 import android.content.Intent
+import android.Manifest
+import android.content.pm.PackageManager
 import android.view.HapticFeedbackConstants
 import android.widget.Toast
 import androidx.activity.OnBackPressedCallback
@@ -91,6 +93,8 @@ import cn.limpu.hita.utils.IcsImportUtils
 import cn.limpu.hita.utils.TimeTools
 import com.limpu.component.data.DataState
 import dagger.hilt.android.AndroidEntryPoint
+import com.journeyapps.barcodescanner.ScanContract
+import com.journeyapps.barcodescanner.ScanOptions
 import javax.inject.Inject
 
 /**
@@ -134,6 +138,17 @@ class TimetableManagerActivity : HiltBaseActivity<ComposeViewBinding>() {
         uri?.let { picked ->
             val displayName = IcsImportUtils.getDisplayName(this, picked)
             pendingIcsFile = picked to (displayName ?: "课程.ics")
+        }
+    }
+
+    private val scanQrLauncher = registerForActivityResult(ScanContract()) { result ->
+        val text = result.contents
+        if (text != null) {
+            viewModel.editTokenInput(text)
+            tokenSheetOpen = true
+            viewModel.parseToken(text)
+        } else if (checkSelfPermission(Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
+            Toast.makeText(this, R.string.timetable_share_qr_camera_unavailable, Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -324,6 +339,13 @@ class TimetableManagerActivity : HiltBaseActivity<ComposeViewBinding>() {
                         },
                         onInputChange = viewModel::editTokenInput,
                         onParse = viewModel::parseToken,
+                        onScan = {
+                            scanQrLauncher.launch(ScanOptions()
+                                .setDesiredBarcodeFormats(ScanOptions.QR_CODE)
+                                .setPrompt(getString(R.string.timetable_share_qr_scan_prompt))
+                                .setBeepEnabled(false)
+                                .setOrientationLocked(false))
+                        },
                         onImportFriend = viewModel::importTokenAsFriend,
                         onImportMine = viewModel::importTokenAsMine,
                     )
